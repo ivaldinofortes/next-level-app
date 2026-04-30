@@ -1,0 +1,88 @@
+{
+  "name": "next-level-app",
+  "productName": "Next Level Academia",
+  "private": true,
+  "version": "1.0.0-beta.1",
+  "description": "Sistema de gestão da Next Level Academia desenvolvido pela NEXT LAB.",
+  "main": "main.cjs",
+  "author": {
+    "name": "Ivaldino da Luz Fortes",
+    "email": "ivaldinofortes@gmail.com"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "lint": "eslint .",
+    "preview": "vite preview",
+    "electron": "electron .",
+    "dist": "npm run build && electron-builder",
+    "rebuild": "electron-rebuild"
+  },
+  "dependencies": {
+    "adm-zip": "^0.5.17",
+    "better-sqlite3": "^12.9.0",
+    "electron-is-dev": "^3.0.1",
+    "jspdf": "^4.2.1",
+    "jspdf-autotable": "^5.0.7",
+    "lucide-react": "^1.8.0",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5",
+    "xlsx": "^0.18.5"
+  },
+  "build": {
+    "appId": "cv.nextlab.nextlevel",
+    "productName": "Next Level Academia",
+    "artifactName": "${productName}-${version}.${ext}",
+    "icon": "build/icon.png",
+    "files": [
+      "dist/**/*",
+      "main.cjs",
+      "package.json",
+      "public/**/*",
+      "build/**/*"
+    ],
+    "directories": {
+      "buildResources": "build"
+    },
+    "mac": {
+      "category": "public.app-category.business",
+      "icon": "build/icon.png"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Next Level Academia",
+      "installerIcon": "build/icon.png",
+      "uninstallerIcon": "build/icon.png"
+    }
+  },
+  "devDependencies": {
+    "@electron/rebuild": "^4.0.4",
+    "@eslint/js": "^9.39.4",
+    "@types/node": "^24.12.2",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.1",
+    "autoprefixer": "^10.4.16",
+    "electron": "^31.7.7",
+    "electron-rebuild": "^3.2.9",
+    "eslint": "^9.39.4",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.2",
+    "globals": "^17.5.0",
+    "postcss": "^8.4.31",
+    "tailwindcss": "^3.4.1",
+    "typescript": "~6.0.2",
+    "typescript-eslint": "^8.58.2",
+    "vite": "^8.0.9",
+    "electron-builder": "^24.13.3"
+  }
+}
