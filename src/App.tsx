@@ -36,6 +36,8 @@ interface Notificacao {
   data: string;
   lida: boolean;
   tipo: 'info' | 'sucesso' | 'alerta' | 'erro';
+  categoria?: 'prioritaria' | 'relatorio' | 'app';
+  alunoId?: string;
 }
 
 interface ConfirmDialogState {
@@ -55,6 +57,7 @@ interface PaymentFormState {
   valor: string;
   dataPagamento: string;
   metodo: string;
+  mesReferencia?: string;
 }
 
 const DEFAULT_PAYMENT_METHOD = 'Dinheiro';
@@ -81,7 +84,7 @@ const getStudentStatusLabel = (status?: string) => {
 const getBillingBadgeLabel = (status?: string) => {
   switch (status) {
     case 'atrasado':
-      return 'Em dívida';
+      return 'Mensalidade em Atraso';
     case 'hoje':
       return 'Vence hoje';
     case 'critico':
@@ -899,6 +902,10 @@ function App() {
   const [mostrarListaMatriculas, setMostrarListaMatriculas] = useState(false);
   const [notificacoes, setNotificacoes] = useState<Notificacao[]>(JSON.parse(localStorage.getItem('nl_notificacoes') || '[]'));
   const [mostrarNotificacoes, setMostrarNotificacoes] = useState(false);
+  // Boas-vindas pós-matrícula
+  const [mostrarBoasVindas, setMostrarBoasVindas] = useState(false);
+  const [alunoBoasVindas, setAlunoBoasVindas] = useState<Aluno | null>(null);
+  const [msgBoasVindas, setMsgBoasVindas] = useState('');
 
   // Quick Access — login sem senha
   const [quickAccessUsers, setQuickAccessUsers] = useState<number[]>(() => {
@@ -954,14 +961,38 @@ function App() {
     return () => window.clearInterval(intervalId);
   }, []);
 
-  const adicionarNotificacao = (titulo: string, mensagem: string, tipo: Notificacao['tipo'] = 'info') => {
+  const adicionarNotificacao = (titulo: string, mensagem: string, tipo: Notificacao['tipo'] = 'info', alunoId?: string) => {
+    // Auto-categorizar por tipo de evento
+    const tituloBaixo = titulo.toLowerCase();
+    let categoria: Notificacao['categoria'] = 'app';
+    if (
+      tituloBaixo.includes('matr') ||
+      tituloBaixo.includes('atraso') ||
+      tituloBaixo.includes('pagamento') ||
+      tituloBaixo.includes('status') ||
+      tituloBaixo.includes('cancelamento') ||
+      tipo === 'alerta' || tipo === 'erro'
+    ) {
+      categoria = 'prioritaria';
+    } else if (
+      tituloBaixo.includes('relat') ||
+      tituloBaixo.includes('export') ||
+      tituloBaixo.includes('dossier') ||
+      tituloBaixo.includes('mensal') ||
+      tituloBaixo.includes('receita') ||
+      tituloBaixo.includes('taxa')
+    ) {
+      categoria = 'relatorio';
+    }
     const nova: Notificacao = {
       id: Date.now().toString(),
       titulo,
       mensagem,
       data: new Date().toLocaleString('pt-PT'),
       lida: false,
-      tipo
+      tipo,
+      categoria,
+      alunoId,
     };
     setNotificacoes(prev => [nova, ...prev]);
   };
@@ -1956,6 +1987,12 @@ function App() {
         setNovoAluno(novoAlunoDefault);
         setExpandirExtras(false);
         await carregarConfiguracoes();
+        // Mostrar modal de boas-vindas
+        const alunoBoasVindasObj = { ...alunoParaSalvar } as Aluno;
+        const msgDefault = `Olá ${novoAluno.nome.split(' ')[0]}! 🎉\n\nBem-vindo à ${nomeAcademia}!\n\nEstamos felizes por te ter connosco. O teu plano está ativo e pronto para usar.\n\nQualquer dúvida, estamos aqui para ajudar!\n\nAbraços,\nEquipa da ${nomeAcademia}`;
+        setMsgBoasVindas(msgDefault);
+        setAlunoBoasVindas(alunoBoasVindasObj);
+        setMostrarBoasVindas(true);
       }
     } catch (error) {
       console.error('Erro ao salvar aluno:', error);
@@ -6020,14 +6057,46 @@ function App() {
                   ))}
                 </div>
 
-                <div className="px-6 py-5 bg-slate-50/30 border-y border-slate-100 space-y-5">
+                <div className="px-6 py-5 bg-slate-50/30 border-y border-slate-100 space-y-4">
+                  {/* Valor com sugestão do plano */}
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between ml-1">
+                      <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500">Valor a Receber</label>
+                      {!pagamentoForm.valor && (
+                        <button
+                          type="button"
+                          onClick={() => setPagamentoForm(prev => ({ ...prev, valor: String(normalizeAmount(alunoParaPagamento.plano)) }))}
+                          className="text-[9px] font-black uppercase tracking-wide text-blue-600 hover:underline"
+                        >
+                          Usar valor do plano ({formatCve(normalizeAmount(alunoParaPagamento.plano))})
+                        </button>
+                      )}
+                    </div>
+                    <input
+                      type="text"
+                      value={pagamentoForm.valor}
+                      onChange={e => setPagamentoForm(prev => ({ ...prev, valor: e.target.value }))}
+                      className="nl-input h-11 px-4 text-[14px] font-black text-blue-700 !bg-white shadow-sm"
+                      placeholder={`Sugerido: ${formatCve(normalizeAmount(alunoParaPagamento.plano))}`}
+                      style={{ fontVariantNumeric: 'tabular-nums' }}
+                    />
+                  </div>
+                  {/* Mês de referência + Data */}
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1.5">
-                      <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Valor a Receber</label>
-                      <input type="text" value={pagamentoForm.valor} onChange={e => setPagamentoForm(prev => ({ ...prev, valor: e.target.value }))} className="nl-input h-11 px-4 text-[14px] font-black text-blue-700 !bg-white shadow-sm" placeholder="Ex: 3500" style={{ fontVariantNumeric: 'tabular-nums' }} />
+                      <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Mês de Referência</label>
+                      <select
+                        className="nl-input h-11 px-3 text-[12px] font-bold !bg-white shadow-sm capitalize"
+                        value={pagamentoForm.mesReferencia || mesFinanceiro}
+                        onChange={e => setPagamentoForm(prev => ({ ...prev, mesReferencia: e.target.value }))}
+                      >
+                        {MONTH_OPTIONS.map(m => (
+                          <option key={m} value={m} className="capitalize">{m.charAt(0).toUpperCase() + m.slice(1)}</option>
+                        ))}
+                      </select>
                     </div>
                     <div className="space-y-1.5">
-                      <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Data</label>
+                      <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Data do Pagamento</label>
                       <input type="date" value={pagamentoForm.dataPagamento} onChange={e => setPagamentoForm(prev => ({ ...prev, dataPagamento: e.target.value }))} className="nl-input h-11 px-4 text-[13px] font-bold !bg-white shadow-sm" />
                     </div>
                   </div>
@@ -6303,58 +6372,182 @@ function App() {
       )}
 
       {/* Modal: Notificações */}
-      {mostrarNotificacoes && (
-        <div className="fixed top-16 right-6 w-[420px] bg-[var(--bg-surface)] shadow-2xl rounded-[3px] border border-[var(--border)] z-[500] overflow-hidden flex flex-col animate-slide-down">
-           <div className="px-6 py-5 border-b border-[var(--border)] flex items-center justify-between bg-[var(--color-secondary-lighter)]/50">
-              <div className="flex items-center gap-3">
-                 <Bell size={20} className="text-[var(--color-primary)]" />
-                 <h3 className="text-[13px] font-extrabold nl-text uppercase tracking-widest">Notificações</h3>
-              </div>
-              <div className="flex items-center gap-4">
-                 {notificacoes.length > 0 && (
-                   <button onClick={limparNotificacoes} className="text-[11px] font-bold text-red-600 hover:underline uppercase tracking-tight">Limpar</button>
-                 )}
-                 <button onClick={() => setMostrarNotificacoes(false)} className="nl-text-muted hover:text-[var(--color-primary)]"><X size={20} /></button>
-              </div>
-           </div>
+      {mostrarNotificacoes && (() => {
+        const prioritarias = notificacoes.filter(n => n.categoria === 'prioritaria');
+        const relatorios = notificacoes.filter(n => n.categoria === 'relatorio');
+        const appNotifs = notificacoes.filter(n => !n.categoria || n.categoria === 'app');
+        const naoLidas = notificacoes.filter(n => !n.lida).length;
 
-           <div className="max-h-[60vh] overflow-y-auto custom-scrollbar bg-[var(--bg-surface)] divide-y divide-[var(--border-light)]">
+        const NotifItem = ({ n, onClick }: { n: Notificacao; onClick: () => void }) => {
+          const iconColor = n.tipo === 'sucesso' ? 'bg-green-500' : n.tipo === 'alerta' ? 'bg-orange-500' : n.tipo === 'erro' ? 'bg-red-500' : 'bg-[var(--color-primary)]';
+          return (
+            <div
+              className={`px-5 py-3.5 flex items-start gap-3 hover:bg-[var(--color-secondary-lighter)]/60 transition-all cursor-pointer ${!n.lida ? 'bg-blue-50/40' : ''}`}
+              onClick={onClick}
+            >
+              <div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${iconColor}`} />
+              <div className="flex-1 min-w-0">
+                <p className={`text-[12px] font-bold nl-text leading-tight ${!n.lida ? 'text-[var(--color-primary)]' : ''}`}>{n.titulo}</p>
+                <p className="text-[11px] nl-text-muted leading-relaxed mt-0.5 line-clamp-2">{n.mensagem}</p>
+              </div>
+              <span className="text-[9px] font-bold nl-text-muted uppercase opacity-60 shrink-0 mt-0.5">{n.data.split(',')[0]}</span>
+            </div>
+          );
+        };
+
+        const SectionHeader = ({ label, count, color }: { label: string; count: number; color: string }) => (
+          <div className={`px-5 py-2 flex items-center justify-between border-b border-[var(--border-light)]`}>
+            <span className={`text-[9px] font-black uppercase tracking-[0.2em] ${color}`}>{label}</span>
+            <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-full ${color} opacity-80 border border-current`}>{count}</span>
+          </div>
+        );
+
+        return (
+          <div className="fixed top-16 right-6 w-[400px] bg-[var(--bg-surface)] shadow-2xl rounded-[3px] border border-[var(--border)] z-[500] overflow-hidden flex flex-col animate-slide-up" style={{ maxHeight: 'calc(100vh - 80px)' }}>
+            {/* Header */}
+            <div className="px-5 py-4 border-b border-[var(--border)] flex items-center justify-between bg-[var(--color-secondary-lighter)]/40">
+              <div className="flex items-center gap-2.5">
+                <Bell size={16} className="text-[var(--color-primary)]" />
+                <h3 className="text-[12px] font-black nl-text uppercase tracking-widest">Notificações</h3>
+                {naoLidas > 0 && (
+                  <span className="bg-[var(--color-primary)] text-white text-[9px] font-black px-1.5 py-0.5 rounded-full">{naoLidas}</span>
+                )}
+              </div>
+              <div className="flex items-center gap-3">
+                {notificacoes.length > 0 && (
+                  <button onClick={limparNotificacoes} className="text-[10px] font-bold text-red-500 hover:underline uppercase tracking-tight">Limpar</button>
+                )}
+                <button onClick={() => setMostrarNotificacoes(false)} className="nl-text-muted hover:text-[var(--color-primary)] transition-colors"><X size={16} /></button>
+              </div>
+            </div>
+
+            <div className="overflow-y-auto custom-scrollbar flex-1 divide-y divide-[var(--border-light)]">
               {notificacoes.length === 0 ? (
-                <div className="py-20 text-center">
-                   <div className="w-16 h-16 rounded-full bg-[var(--color-secondary-lighter)] flex items-center justify-center mx-auto mb-4 opacity-40">
-                      <Bell size={32} />
-                   </div>
-                   <p className="text-[14px] font-bold nl-text-muted">Sem novas notificações.</p>
+                <div className="py-16 text-center">
+                  <div className="w-14 h-14 rounded-full bg-[var(--color-secondary-lighter)] flex items-center justify-center mx-auto mb-3 opacity-40"><Bell size={28} /></div>
+                  <p className="text-[13px] font-bold nl-text-muted">Sem notificações.</p>
                 </div>
               ) : (
-                notificacoes.map((n, i) => (
-                  <div key={n.id} className={`p-6 hover:bg-[var(--color-secondary-lighter)]/50 transition-all cursor-pointer relative ${!n.lida ? 'bg-[var(--color-primary-light)]/10' : coresPasteis[i % coresPasteis.length].bg}`} onClick={() => marcarComoLida(n.id)}>
-                     <div className="flex justify-between items-start mb-2">
-                        <div className="flex items-center gap-3">
-                           <div className={`w-2.5 h-2.5 rounded-full ${n.tipo === 'sucesso' ? 'bg-green-500' : n.tipo === 'alerta' ? 'bg-orange-500' : n.tipo === 'erro' ? 'bg-red-500' : 'bg-[var(--color-primary)]'}`} />
-                           <span className="text-[14px] font-extrabold nl-text tracking-tight">{n.titulo}</span>
-                        </div>
-                        <span className="text-[10px] font-bold nl-text-muted uppercase opacity-60">{n.data.split(',')[0]}</span>
-                     </div>
-                     <p className="text-[13px] nl-text-muted leading-relaxed pl-5">{n.mensagem}</p>
-                     {!n.lida && (
-                       <div className="absolute right-6 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-[var(--color-primary)] shadow-sm shadow-[var(--color-primary)]/50" />
-                     )}
-                  </div>
-                ))
-              )}
-           </div>
+                <>
+                  {/* 🔴 PRIORITÁRIAS */}
+                  {prioritarias.length > 0 && (
+                    <div>
+                      <SectionHeader label="🔴 Prioritárias" count={prioritarias.length} color="text-red-600" />
+                      {prioritarias.map(n => (
+                        <NotifItem key={n.id} n={n} onClick={() => marcarComoLida(n.id)} />
+                      ))}
+                    </div>
+                  )}
 
-           <div className="p-4 bg-[var(--color-secondary-lighter)]/50 border-t border-[var(--border)] text-center">
-              <button onClick={() => { setAba('configuracoes'); setConfigAba('notificacoes'); setMostrarNotificacoes(false); }} className="text-[11px] font-extrabold text-[var(--color-primary)] uppercase tracking-widest hover:underline">Configurações</button>
-           </div>
-        </div>
-      )}
+                  {/* 📊 RELATÓRIOS */}
+                  {relatorios.length > 0 && (
+                    <div>
+                      <SectionHeader label="📊 Relatórios" count={relatorios.length} color="text-blue-600" />
+                      {relatorios.map(n => (
+                        <NotifItem key={n.id} n={n} onClick={() => marcarComoLida(n.id)} />
+                      ))}
+                    </div>
+                  )}
+
+                  {/* ℹ️ APP */}
+                  {appNotifs.length > 0 && (
+                    <div>
+                      <SectionHeader label="ℹ️ Sistema" count={appNotifs.length} color="text-slate-500" />
+                      {appNotifs.map(n => (
+                        <NotifItem key={n.id} n={n} onClick={() => marcarComoLida(n.id)} />
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+
+            <div className="p-3 bg-[var(--color-secondary-lighter)]/40 border-t border-[var(--border)] text-center">
+              <button onClick={() => { setAba('configuracoes'); setConfigAba('notificacoes'); setMostrarNotificacoes(false); }} className="text-[10px] font-extrabold text-[var(--color-primary)] uppercase tracking-widest hover:underline">Configurações de Notificações</button>
+            </div>
+          </div>
+        );
+      })()}
+
 
 
       {/* Modais de configuração foram removidos para se tornarem abas principais */}
 
+      {/* Modal: Boas-Vindas Nova Matrícula */}
+      {mostrarBoasVindas && alunoBoasVindas && (() => {
+        const telefone = (alunoBoasVindas.telefone || '').replace(/\D/g, '');
+        const whatsappUrl = telefone
+          ? `https://wa.me/${telefone}?text=${encodeURIComponent(msgBoasVindas)}`
+          : null;
+        const fechar = () => { setMostrarBoasVindas(false); setAlunoBoasVindas(null); setMsgBoasVindas(''); };
+        return (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-[2px] flex items-center justify-center z-[200] p-4 animate-fade-in" onClick={fechar}>
+            <div className="bg-[var(--bg-surface)] w-full max-w-[480px] shadow-2xl rounded-[6px] border border-[var(--border)] overflow-hidden animate-scale-in flex flex-col" onClick={e => e.stopPropagation()}>
+              {/* Header */}
+              <div className="bg-[#F1F4F9] border-b border-[#DDE2EB] h-12 flex items-center shrink-0 px-4 gap-3">
+                <div className="h-6 w-6 rounded-md bg-white/50 p-1 border border-white/40 shadow-sm flex items-center justify-center">
+                  <img src={appLogo || APP_ICON_PATH} alt="Logo" className="w-full h-full object-contain" />
+                </div>
+                <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">{nomeAcademia}</span>
+                <div className="flex-1" />
+                <h2 className="text-[12px] font-black text-slate-700 uppercase tracking-wider">Nova Matrícula</h2>
+                <div className="flex-1" />
+                <button onClick={fechar} className="h-8 w-8 flex items-center justify-center rounded-md text-slate-400 hover:bg-red-50 hover:text-red-500 transition-all"><X size={16} /></button>
+              </div>
+
+              {/* Conteúdo */}
+              <div className="px-6 py-5 space-y-4">
+                {/* Confirmação */}
+                <div className="flex items-center gap-4 p-4 rounded-[6px] bg-green-50 border border-green-100">
+                  <div className="w-12 h-12 rounded-full bg-white shadow-sm border-2 border-green-200 flex items-center justify-center shrink-0">
+                    <CheckCircle2 size={24} className="text-green-500" />
+                  </div>
+                  <div>
+                    <p className="text-[13px] font-black text-green-800">{alunoBoasVindas.nome} matriculado com sucesso!</p>
+                    <p className="text-[11px] text-green-600 font-medium mt-0.5">
+                      Plano: {alunoBoasVindas.plano} · {new Date().toLocaleDateString('pt-PT')}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Mensagem editável */}
+                <div className="space-y-1.5">
+                  <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500">Mensagem de Boas-Vindas</label>
+                  <textarea
+                    value={msgBoasVindas}
+                    onChange={e => setMsgBoasVindas(e.target.value)}
+                    rows={6}
+                    className="nl-input resize-none text-[12px] leading-relaxed"
+                  />
+                </div>
+              </div>
+
+              {/* Rodapé */}
+              <div className="bg-[#F8F9FC] border-t border-[#DDE2EB] px-6 py-4 flex items-center justify-between gap-3 shrink-0">
+                <button onClick={fechar} className="nl-btn nl-btn-ghost !h-9 !px-4 !text-[11px] font-bold">Pular</button>
+                <div className="flex items-center gap-2">
+                  {whatsappUrl && (
+                    <a
+                      href={whatsappUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      onClick={fechar}
+                      className="nl-btn !h-9 !px-5 !text-[11px] font-bold text-white flex items-center gap-2 rounded-[5px] transition-all hover:brightness-105 shadow-sm"
+                      style={{ background: '#25D366' }}
+                    >
+                      <MessageSquare size={14} /> Enviar via WhatsApp
+                    </a>
+                  )}
+                  <button onClick={fechar} className="nl-btn nl-btn-secondary !h-9 !px-5 !text-[11px] font-bold">Fechar</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Modal: Sobre o App (Página Estilo Word) */}
+
       {mostrarSobreDoc && (
         <div className="fixed inset-0 z-[2000] flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(6px)' }}>
           <div className="relative bg-white w-full max-w-[520px] rounded-[12px] overflow-hidden shadow-[0_32px_80px_rgba(0,0,0,0.25)]" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
