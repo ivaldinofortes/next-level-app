@@ -16,7 +16,7 @@ import {
   BarChart2, BookUser, PieChart, UserPlus, Info, Bell, Sun, Moon, Sparkles,
   Archive, Database, HelpCircle, Globe,
   Menu, ChevronDown, ChevronUp, Clock, ShieldOff, UserCheck, Wallet, Landmark, LayoutList,
-  Star, FileBarChart, Zap, Activity
+  Star, FileBarChart, Zap, Activity, Printer, ArrowLeft
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import {
@@ -180,23 +180,29 @@ const getBillingTone = (status?: string) => {
         accent: 'text-red-700',
         subtle: 'text-red-700/70',
         button: 'bg-red-600 hover:bg-red-700 text-white',
+        color: '#DC2626',
       };
-    case 'hoje':
-    case 'critico':
-      return {
-        badge: 'badge-warning',
-        surface: 'border-orange-200 bg-orange-50/80',
-        accent: 'text-orange-700',
-        subtle: 'text-orange-700/70',
-        button: 'bg-orange-500 hover:bg-orange-600 text-white',
-      };
-    default:
+    case 'pago':
       return {
         badge: 'badge-success',
         surface: 'border-emerald-200 bg-emerald-50/80',
         accent: 'text-emerald-700',
         subtle: 'text-emerald-700/70',
-        button: 'bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-white',
+        button: 'bg-emerald-600 hover:bg-emerald-700 text-white',
+        color: '#16A34A',
+      };
+    case 'hoje':
+    case 'critico':
+    case 'pendente':
+    case 'alerta':
+    default:
+      return {
+        badge: 'badge-info',
+        surface: 'border-blue-200 bg-blue-50/80',
+        accent: 'text-blue-700',
+        subtle: 'text-blue-700/70',
+        button: 'bg-blue-600 hover:bg-blue-700 text-white',
+        color: '#2563EB',
       };
   }
 };
@@ -217,8 +223,9 @@ const getTimelineMetricWidth = (summary: { status?: string; daysUntilCharge?: nu
 
 const getTimelineMetricBarClass = (summaryStatus?: string) => {
   if (summaryStatus === 'atrasado' || summaryStatus === 'hoje') return 'bg-red-500';
-  if (summaryStatus === 'critico' || summaryStatus === 'pendente') return 'bg-orange-500';
-  return 'bg-[var(--color-primary)]';
+  if (summaryStatus === 'pago') return 'bg-emerald-500';
+  // "Dentro do prazo" -> Azul
+  return 'bg-blue-600';
 };
 
 const prioridadeResumoAlunos = {
@@ -392,7 +399,7 @@ const themeVars = {
   },
 };
 
-const GlobalStyles = ({ theme }: { theme: 'light' | 'dark' }) => {
+const GlobalStyles = ({ theme }: { theme: 'light' | 'dark' | 'claude' }) => {
   const vars = themeVars[theme] || themeVars.light;
   const cssVars = Object.entries(vars).map(([k,v]) => `${k}:${v};`).join('');
 
@@ -848,9 +855,9 @@ function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(!!sessionUser);
   const [loginForm, setLoginForm] = useState({ email: localStorage.getItem('nl_last_user_email') || '', password: '' });
   const [loginError, setLoginError] = useState('');
-  const [appTheme, setAppTheme] = useState<'light' | 'dark'>(() => {
+  const [appTheme, setAppTheme] = useState<'light' | 'dark' | 'claude'>(() => {
     const saved = localStorage.getItem('nl_app_theme') || localStorage.getItem('nl_gnome_theme');
-    return (saved === 'light' || saved === 'dark') ? saved : 'light';
+    return (saved === 'light' || saved === 'dark' || saved === 'claude') ? saved : 'light';
   });
   const [themeColor, setThemeColor] = useState(DEFAULT_THEME);
   const [contextMenu, setContextMenu] = useState<{ x: number, y: number, alunoId: string } | null>(null);
@@ -899,9 +906,14 @@ function App() {
   const [mesFinanceiro, setMesFinanceiro] = useState(new Date().toLocaleString('pt-PT', { month: 'long' }).toLowerCase());
   const [anoFinanceiro, setAnoFinanceiro] = useState(new Date().getFullYear());
   const [mostrarRelatorioMensal, setMostrarRelatorioMensal] = useState(false);
+  const [mesRelatorio, setMesRelatorio] = useState(new Date().toLocaleString('pt-PT', { month: 'long' }).toLowerCase());
+  const [anoRelatorio, setAnoRelatorio] = useState(new Date().getFullYear());
   const [mostrarListaMatriculas, setMostrarListaMatriculas] = useState(false);
   const [notificacoes, setNotificacoes] = useState<Notificacao[]>(JSON.parse(localStorage.getItem('nl_notificacoes') || '[]'));
   const [mostrarNotificacoes, setMostrarNotificacoes] = useState(false);
+  const [mostrarResolverPendencias, setMostrarResolverPendencias] = useState(false);
+  const [alunoParaResolver, setAlunoParaResolver] = useState<any>(null);
+  const [mesesParaResolver, setMesesParaResolver] = useState<string[]>([]);
   // Boas-vindas pós-matrícula
   const [mostrarBoasVindas, setMostrarBoasVindas] = useState(false);
   const [alunoBoasVindas, setAlunoBoasVindas] = useState<Aluno | null>(null);
@@ -1205,7 +1217,7 @@ function App() {
       monthStart,
       monthEnd,
     };
-  });
+  }).filter((month) => !month.future);
 
   const alunosNoPeriodo = periodoSelecionadoFuturo
     ? []
@@ -1321,6 +1333,63 @@ function App() {
 
   const historicoPagamentosOrdenado = [...historicoPagamentos].sort((left, right) => (right.id || 0) - (left.id || 0));
 
+  const abrirResolverPendencias = (aluno: any) => {
+    const summary = summarizeStudentBilling(aluno, pagamentos);
+    setAlunoParaResolver(aluno);
+    setMesesParaResolver(summary.monthsInDebt);
+    setMostrarResolverPendencias(true);
+  };
+
+  const resolverPendencias = async () => {
+    if (!alunoParaResolver || !mesesParaResolver.length) return;
+    
+    setCarregando(true);
+    try {
+      let currentDueDate = parseFlexibleDate(alunoParaResolver.vencimento) || new Date();
+      
+      for (const mes of mesesParaResolver) {
+        const dataPagamento = formatPtDate(new Date());
+        const janela = buildCoverageWindow(dataPagamento, formatPtDate(currentDueDate));
+        
+        const novoPagamento = {
+          alunoId: alunoParaResolver.id,
+          valor: String(normalizeAmount(alunoParaResolver.plano)),
+          status: 'pago',
+          data_pagamento: dataPagamento,
+          metodo_pagamento: 'Dinheiro',
+          mes_referencia: mes,
+          referencia_inicio: janela.coverageStart,
+          referencia_fim: janela.coverageEnd
+        };
+
+        if (window.electron) {
+          await window.electron.ipcRenderer.invoke('add-pagamento', novoPagamento);
+        }
+        
+        // Projetar próximo vencimento para o próximo loop ou para o estado final
+        currentDueDate = parseFlexibleDate(janela.nextChargeDate) || new Date();
+      }
+      
+      // Atualizar vencimento final do aluno
+      if (window.electron) {
+        const alunoAtualizado = {
+          ...alunoParaResolver,
+          vencimento: formatPtDate(currentDueDate)
+        };
+        await window.electron.ipcRenderer.invoke('update-aluno-dados', alunoAtualizado);
+      }
+      
+      await carregarDados();
+      setMostrarResolverPendencias(false);
+      abrirNotificacao('sucesso', 'Regularização concluída', `Foram regularizados ${mesesParaResolver.length} meses para ${alunoParaResolver.nome}.`);
+    } catch (err) {
+      console.error(err);
+      abrirNotificacao('erro', 'Falha ao resolver', 'Ocorreu um erro ao processar os pagamentos.');
+    } finally {
+      setCarregando(false);
+    }
+  };
+
   const resumoAlunoSelecionado = alunoSelecionado ? summarizeStudentBilling(alunoSelecionado, pagamentos) : null;
   const resumoAlunoParaPagamento = alunoParaPagamento ? summarizeStudentBilling(alunoParaPagamento, pagamentos) : null;
   const previewPagamento = alunoParaPagamento
@@ -1435,6 +1504,7 @@ function App() {
         if (configs.telefone_academia) setTelefoneAcademia(configs.telefone_academia);
         if (configs.categorias) setCategorias(JSON.parse(configs.categorias));
         if (configs.theme_color) setThemeColor(configs.theme_color);
+        if (configs.app_theme && ['light','dark','claude'].includes(configs.app_theme)) setAppTheme(configs.app_theme as 'light' | 'dark' | 'claude');
         if (configs.banner_academia) setBannerAcademia(configs.banner_academia);
         setDesktopNotificationsEnabled(configs.desktop_notifications !== '0');
         setNotifPagamentos(configs.notif_pagamentos !== '0');
@@ -1837,13 +1907,15 @@ function App() {
     await Promise.all([
       guardarConfiguracao('app_logo', appLogo),
       guardarConfiguracao('banner_academia', bannerAcademia),
+      guardarConfiguracao('app_theme', appTheme),
     ]);
 
     localStorage.setItem('nl_app_logo', appLogo);
     localStorage.setItem('nl_banner_academia', bannerAcademia);
+    localStorage.setItem('nl_app_theme', appTheme);
 
     showToast('Aparência guardada com sucesso.');
-    adicionarNotificacao('Identidade visual atualizada', 'O logotipo e o banner de login foram guardados.', 'sucesso');
+    adicionarNotificacao('Identidade visual atualizada', 'O logotipo, o banner e o tema foram guardados.', 'sucesso');
   };
 
   const salvarDefinicoesGerais = async () => {
@@ -2492,6 +2564,46 @@ function App() {
 
     XLSX.writeFile(workbook, `${nomeAcademia.replace(/\s+/g, '_')}_Export.xlsx`);
     setMostrarModalExport(false);
+  };
+
+  const exportarRelatorioExcel = () => {
+    const mesIdx = MONTH_OPTIONS.indexOf(mesRelatorio);
+    const refRel = new Date(anoRelatorio, mesIdx + 1, 0);
+    const alunosRel = [...alunos]
+      .filter(a => { const e = parseFlexibleDate(a.data_matricula); return e ? e.getTime() <= refRel.getTime() : true; })
+      .sort((a, b) => a.nome.localeCompare(b.nome));
+
+    const rows = alunosRel.map((a, idx) => {
+      const resumo = summarizeStudentBilling(a, pagamentos, refRel);
+      return {
+        '#': idx + 1,
+        'Nome': a.nome,
+        'Telefone': a.telefone || '',
+        'Plano (CVE)': normalizeAmount(a.plano),
+        'Modalidade': a.modalidade || 'Musculação',
+        'Estado': getBillingBadgeLabel(resumo.status),
+        'Próx. Vencimento': resumo.nextChargeDate || '',
+        'Cobertura até': resumo.coverageEnd || '',
+        'Último Pagamento': resumo.lastPaymentDate || '',
+      };
+    });
+
+    const worksheet = XLSX.utils.json_to_sheet(rows);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, `${mesRelatorio}_${anoRelatorio}`);
+
+    const receitaMesExp = pagamentos.filter(p => isPaymentInsideMonth(p, mesRelatorio, anoRelatorio)).reduce((s, p) => s + normalizeAmount(p.valor), 0);
+    const resumoRows = [
+      [],
+      ['RESUMO FINANCEIRO', '', `${mesRelatorio.toUpperCase()} ${anoRelatorio}`],
+      ['Total Inscritos', alunosRel.length],
+      ['Receita Cobrada (CVE)', receitaMesExp],
+      ['Gerado em', new Date().toLocaleString('pt-PT')],
+    ];
+    XLSX.utils.sheet_add_aoa(worksheet, resumoRows, { origin: -1 });
+
+    XLSX.writeFile(workbook, `Relatorio_${nomeAcademia.replace(/\s+/g,'_')}_${mesRelatorio}_${anoRelatorio}.xlsx`);
+    showToast(`Relatório ${mesRelatorio} ${anoRelatorio} exportado.`);
   };
 
   const exportarPDFPersonalizado = () => {
@@ -3380,12 +3492,15 @@ function App() {
 
         {/* Center: Navigation */}
         <div className="flex-1 flex items-center justify-center">
-          <nav className="flex items-center gap-1.5 p-1 rounded-[5px] bg-[var(--color-secondary-lighter)] border border-[var(--border-light)] w-[545px]">
+          <nav className="flex items-center gap-1.5 p-1 rounded-[5px] bg-[var(--color-secondary-lighter)] border border-[var(--border-light)] w-[660px]">
             {[
-              { id: 'home',         label: 'Painel',     icon: <Layout size={15} /> },
-              { id: 'gestao',       label: 'Alunos',     icon: <Users size={15} /> },
-              { id: 'contactos',    label: 'Contactos',  icon: <BookUser size={15} /> },
-              ...(sessionUser?.role === 'admin' ? [{ id: 'configuracoes', label: 'Ajustes', icon: <Settings size={15} /> }] : [])
+              { id: 'home',                 label: 'Painel',     icon: <Layout size={15} /> },
+              { id: 'gestao',               label: 'Alunos',     icon: <Users size={15} /> },
+              { id: 'contactos',            label: 'Contactos',  icon: <BookUser size={15} /> },
+              ...(sessionUser?.role === 'admin' ? [
+                { id: 'relatorios_detalhado', label: 'Relatório', icon: <FileBarChart size={15} /> },
+                { id: 'configuracoes',        label: 'Ajustes',   icon: <Settings size={15} /> },
+              ] : [])
             ].map((nav) => (
               <button
                 key={nav.id}
@@ -3407,8 +3522,17 @@ function App() {
         <div className="flex items-center gap-1.5 min-w-[220px] justify-end">
           {aba === 'gestao' && (
             <div className="flex items-center gap-1.5 mr-1">
-              <button onClick={() => setMostrarRelatorioMensal(true)} className="nl-btn nl-btn-secondary !h-8 !px-3 !text-[12px]" title="Relatório">
-                <FileText size={14} /> Relatório
+              <button 
+                onClick={() => setMostrarRelatorioMensal(true)} 
+                className={`nl-btn !h-8 !px-3 !text-[12px] flex items-center gap-2 transition-all ${
+                  relatorioMensalDisponivel 
+                    ? '!bg-emerald-600 !text-white shadow-lg shadow-emerald-600/20 ring-1 ring-emerald-400' 
+                    : 'nl-btn-secondary'
+                }`} 
+                title="Relatório Mensal"
+              >
+                {relatorioMensalDisponivel ? <Star size={14} className="text-amber-300 fill-amber-300 animate-pulse" /> : <FileText size={14} />}
+                Relatório
               </button>
               <button onClick={() => { setNovoAluno(novoAlunoDefault); setMostrarForm(true); }} className="nl-btn nl-btn-primary !h-8 !px-3 !text-[12px]">
                 <Plus size={14} /> Matricular
@@ -3416,13 +3540,7 @@ function App() {
             </div>
           )}
           {aba === 'contactos' && alunoPerfil && (
-            <div className="flex items-center gap-2 mr-1">
-              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-[4px] border border-[var(--border)] bg-[var(--color-secondary-lighter)] max-w-[180px]">
-                <div className="w-5 h-5 rounded-[3px] bg-[var(--color-primary)] flex items-center justify-center text-[8px] font-black text-white shrink-0">
-                  {alunoPerfil.nome.charAt(0).toUpperCase()}
-                </div>
-                <span className="text-[11px] font-bold nl-text truncate">{alunoPerfil.nome.split(' ')[0]}</span>
-              </div>
+            <div className="flex items-center gap-1.5 mr-1">
               <button onClick={() => marcarComoPago(alunoPerfil.id)} className="nl-btn nl-btn-primary !h-8 !px-3 !text-[11px]">
                 <Wallet size={13} /> Cobrar
               </button>
@@ -3465,12 +3583,20 @@ function App() {
 
                   <div className="px-1.5 space-y-0.5">
                     {sessionUser?.role === 'admin' && (
-                      <button
-                        onClick={() => { setAba('configuracoes'); setMostrarUserMenu(false); }}
-                        className="w-full flex items-center gap-2.5 px-3 py-2 rounded-[4px] hover:bg-[#F4F5F7] text-[13px] font-medium nl-text transition-colors"
-                      >
-                        <Settings size={15} className="text-slate-400" /> Definições do Sistema
-                      </button>
+                      <>
+                        <button
+                          onClick={() => { setAba('configuracoes'); setMostrarUserMenu(false); }}
+                          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-[4px] hover:bg-[#F4F5F7] text-[13px] font-medium nl-text transition-colors"
+                        >
+                          <Settings size={15} className="text-slate-400" /> Definições do Sistema
+                        </button>
+                        <button
+                          onClick={() => { setAba('relatorios_detalhado'); setMostrarUserMenu(false); }}
+                          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-[4px] hover:bg-emerald-50 text-[13px] font-bold text-emerald-700 transition-colors"
+                        >
+                          <FileBarChart size={15} className="text-emerald-500" /> Dossier de Desempenho
+                        </button>
+                      </>
                     )}
 
                     <button
@@ -3671,12 +3797,12 @@ function App() {
                       {
                         id: 'relatorio',
                         label: 'Relatório',
-                        sublabel: relatorioMensalDisponivel ? 'Disponível' : 'Exportar',
+                        sublabel: relatorioMensalDisponivel ? 'Disponível' : 'Dossier Mensal',
                         icon: <FileBarChart size={26} />,
-                        gradient: relatorioMensalDisponivel ? 'from-amber-500 to-orange-500' : 'from-slate-500 to-slate-600',
-                        glow: relatorioMensalDisponivel ? 'rgba(245,158,11,0.20)' : 'rgba(100,116,139,0.15)',
-                        badge: null,
-                        action: () => { setAba('gestao'); setMostrarModalExport(true); },
+                        gradient: relatorioMensalDisponivel ? 'from-emerald-500 to-teal-600' : 'from-slate-500 to-slate-600',
+                        glow: relatorioMensalDisponivel ? 'rgba(16,185,129,0.20)' : 'rgba(100,116,139,0.15)',
+                        badge: relatorioMensalDisponivel ? '★' : null,
+                        action: () => setAba('relatorios_detalhado'),
                       },
                       {
                         id: 'config',
@@ -3765,6 +3891,275 @@ function App() {
           </div>
         )}
 
+        {aba === 'relatorios_detalhado' && (() => {
+          const mesIdxRel = MONTH_OPTIONS.indexOf(mesRelatorio);
+          const refRelatorio = new Date(anoRelatorio, mesIdxRel + 1, 0);
+          const geradoEm = new Date().toLocaleString('pt-PT');
+
+          const alunosPeriodoRel = [...alunos]
+            .filter(a => { const e = parseFlexibleDate(a.data_matricula); return e ? e.getTime() <= refRelatorio.getTime() : true; })
+            .sort((a, b) => a.nome.localeCompare(b.nome));
+
+          const resumosRel = alunosPeriodoRel.map(aluno => ({ aluno, resumo: summarizeStudentBilling(aluno, pagamentos, refRelatorio) }));
+
+          const totalInscritos = alunosPeriodoRel.length;
+          const pagosCount   = resumosRel.filter(r => r.resumo.status === 'pago').length;
+          const emDiaCount   = resumosRel.filter(r => ['alerta','pendente','critico','hoje'].includes(r.resumo.status)).length;
+          const atrasadosCount = resumosRel.filter(r => r.resumo.status === 'atrasado').length;
+          const inativosCount  = resumosRel.filter(r => ['pausado','suspenso','bloqueado'].includes(r.resumo.status)).length;
+
+          const receitaMes   = pagamentos.filter(p => isPaymentInsideMonth(p, mesRelatorio, anoRelatorio)).reduce((s, p) => s + normalizeAmount(p.valor), 0);
+          const previsaoMes  = alunosPeriodoRel.filter(a => isOperationallyActive(a.status)).reduce((s, a) => s + normalizeAmount(a.plano), 0);
+          const pendenteMes  = Math.max(0, previsaoMes - receitaMes);
+
+          const dadosBarra = MONTH_OPTIONS
+            .map((mes, idx) => { if (isFutureMonth(idx, anoRelatorio, new Date())) return null; const total = pagamentos.filter(p => isPaymentInsideMonth(p, mes, anoRelatorio)).reduce((s, p) => s + normalizeAmount(p.valor), 0); return { mes: mes.slice(0,3), total, ativo: mes === mesRelatorio }; })
+            .filter(Boolean) as { mes: string; total: number; ativo: boolean }[];
+          const maxBarra = Math.max(...dadosBarra.map(d => d.total), 1);
+
+          const donutSegments = [
+            { label: 'Em dia',   count: emDiaCount,    color: '#2563EB' },
+            { label: 'Pago',     count: pagosCount,    color: '#16A34A' },
+            { label: 'Atrasado', count: atrasadosCount, color: '#DC2626' },
+            { label: 'Pausado',  count: inativosCount,  color: '#94A3B8' },
+          ].filter(s => s.count > 0);
+          const donutTotal = donutSegments.reduce((s, seg) => s + seg.count, 0);
+          const donutR = 42; const donutCx = 65; const donutCy = 65;
+          const donutC = 2 * Math.PI * donutR;
+          let donutAngle = 0;
+          const donutArcs = donutSegments.map(seg => { const pct = seg.count / donutTotal; const len = pct * donutC; const startAngle = donutAngle - 90; donutAngle += pct * 360; return { ...seg, len, startAngle }; });
+
+          return (
+            <div className="animate-slide-up h-full w-full flex flex-col overflow-hidden">
+              {/* Timeline — idêntica às outras páginas */}
+              <div className="shrink-0 border-b border-[var(--border)] bg-[var(--color-secondary-lighter)]/12">
+                <div className="overflow-x-auto py-1.5">
+                  <div className="flex min-w-[1100px] items-center gap-4 px-6">
+                    <span className="text-[11px] font-extrabold nl-text tracking-tight whitespace-nowrap shrink-0">Período</span>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button onClick={() => setAnoRelatorio(p => p - 1)} className="flex h-7 w-7 items-center justify-center rounded-full border border-[var(--border-light)] text-[var(--text-secondary)] hover:border-[var(--color-primary)]/30 hover:text-[var(--color-primary)] transition-colors"><ChevronLeft size={14} /></button>
+                      <div className="rounded-full border border-[var(--border-light)] bg-[var(--bg-surface)] px-3 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--text-secondary)]">{anoRelatorio}</div>
+                      <button onClick={() => setAnoRelatorio(p => p + 1)} className="flex h-7 w-7 items-center justify-center rounded-full border border-[var(--border-light)] text-[var(--text-secondary)] hover:border-[var(--color-primary)]/30 hover:text-[var(--color-primary)] transition-colors"><ChevronRight size={14} /></button>
+                    </div>
+                    <div className="relative flex-1 min-w-[520px]">
+                      <div className="absolute left-0 right-0 top-1/2 h-px -translate-y-1/2 bg-[#D9E2F2]" />
+                      <div className="relative flex items-center justify-between gap-1">
+                        {MONTH_OPTIONS.map((mes, index) => {
+                          if (isFutureMonth(index, anoRelatorio, new Date())) return null;
+                          const ativo = mesRelatorio === mes;
+                          const atual = anoRelatorio === new Date().getFullYear() && index === new Date().getMonth();
+                          return (
+                            <button key={mes} onClick={() => setMesRelatorio(mes)} className="group flex min-w-[70px] flex-col items-center gap-0.5 py-1 transition-all">
+                              <span className={`h-3 w-3 rounded-full border transition-all ${ativo ? 'border-[var(--color-primary)] bg-[var(--color-primary)] shadow-[0_0_0_3px_rgba(37,99,235,0.12)]' : atual ? 'border-[#2563EB] bg-white' : 'border-[var(--border)] bg-[var(--bg-surface)] group-hover:border-[var(--color-primary)]/45'}`} />
+                              <div className={`text-[10px] font-bold uppercase tracking-[0.12em] transition-all ${ativo ? 'text-[var(--color-primary)]' : 'text-[var(--text-secondary)]'}`}>{mes.slice(0,3)}</div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button onClick={() => window.print()} className="inline-flex h-7 items-center gap-1.5 rounded-full border border-[var(--border-light)] px-3 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--text-secondary)] hover:bg-[var(--color-secondary-lighter)]/45 transition-colors"><Printer size={12} /> Imprimir</button>
+                      <button onClick={() => exportarRelatorioExcel()} className="inline-flex h-7 items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 text-[10px] font-bold uppercase tracking-[0.12em] text-emerald-700 hover:bg-emerald-100 transition-colors"><Download size={12} /> Excel</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Corpo — folha de relatório */}
+              <div className="flex-1 overflow-y-auto custom-scrollbar bg-[var(--bg-app)] px-8 py-8">
+                <div className="mx-auto max-w-[860px]">
+                  <div className="bg-white rounded-[3px] shadow-[0_6px_40px_rgba(15,23,42,0.13),0_1px_4px_rgba(15,23,42,0.07)]">
+
+                    {/* Cabeçalho do documento */}
+                    <div className="px-12 pt-10 pb-6 border-b-2 border-[#1E3A5F]">
+                      <div className="flex items-start justify-between mb-5">
+                        <div className="flex items-center gap-4">
+                          <img src={appLogo} alt="" className="w-11 h-11 object-contain" />
+                          <div>
+                            <h1 className="text-[22px] font-black tracking-tight leading-tight uppercase" style={{ color: '#0F1F35' }}>{nomeAcademia}</h1>
+                            <p className="text-[10px] font-bold uppercase tracking-[0.18em]" style={{ color: '#526070' }}>Sistema de Gestão · {COMPANY_NAME}</p>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-[12px] font-black uppercase tracking-[0.1em]" style={{ color: '#1E3A5F' }}>Dossier de Desempenho</p>
+                          <p className="text-[10px] mt-0.5" style={{ color: '#526070' }}>Relatório Mensal de Mensalidades</p>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-3 gap-6 pt-4 border-t border-[#D9E2EF]">
+                        <div><p className="text-[9px] font-black uppercase tracking-[0.16em] mb-1" style={{ color: '#1E3A5F' }}>Período</p><p className="text-[11px] font-semibold capitalize" style={{ color: '#0F1F35' }}>{mesRelatorio} {anoRelatorio}</p></div>
+                        <div><p className="text-[9px] font-black uppercase tracking-[0.16em] mb-1" style={{ color: '#1E3A5F' }}>Gerado em</p><p className="text-[11px] font-semibold" style={{ color: '#0F1F35' }}>{geradoEm}</p></div>
+                        <div><p className="text-[9px] font-black uppercase tracking-[0.16em] mb-1" style={{ color: '#1E3A5F' }}>Total no Período</p><p className="text-[11px] font-semibold" style={{ color: '#0F1F35' }}>{totalInscritos} aluno{totalInscritos !== 1 ? 's' : ''}</p></div>
+                      </div>
+                    </div>
+
+                    {/* KPIs */}
+                    <div className="px-12 py-6 border-b border-[#E2E8F0]" style={{ background: '#F8FAFD' }}>
+                      <div className="grid grid-cols-4 gap-4">
+                        {[
+                          { label: 'Total Inscritos', value: String(totalInscritos), sub: 'no período', bg: '#EBF0F8', fg: '#1E3A5F' },
+                          { label: 'Em dia / Pago', value: String(pagosCount + emDiaCount), sub: `${Math.round(((pagosCount + emDiaCount) / Math.max(totalInscritos, 1)) * 100)}% do total`, bg: '#DCFCE7', fg: '#166534' },
+                          { label: 'Em Atraso', value: String(atrasadosCount), sub: atrasadosCount === 0 ? 'Tudo em dia ✓' : 'requerem atenção', bg: atrasadosCount > 0 ? '#FEE2E2' : '#DCFCE7', fg: atrasadosCount > 0 ? '#991B1B' : '#166534' },
+                          { label: 'Receita Cobrada', value: formatCve(receitaMes), sub: `Previsão: ${formatCve(previsaoMes)}`, bg: '#D1FAE5', fg: '#065F46' },
+                        ].map((kpi, i) => (
+                          <div key={i} className="rounded-[4px] border border-[#E2E8F0] p-4" style={{ background: kpi.bg }}>
+                            <p className="text-[9px] font-black uppercase tracking-[0.15em] mb-2" style={{ color: '#526070' }}>{kpi.label}</p>
+                            <p className="text-[20px] font-black leading-none truncate" style={{ color: kpi.fg }}>{kpi.value}</p>
+                            <p className="text-[9px] mt-1.5" style={{ color: '#526070' }}>{kpi.sub}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Gráficos */}
+                    <div className="px-12 py-7 border-b border-[#E2E8F0]">
+                      <p className="text-[9px] font-black uppercase tracking-[0.22em] mb-5" style={{ color: '#526070' }}>Análise Gráfica</p>
+                      <div className="grid grid-cols-2 gap-10">
+                        {/* Donut */}
+                        <div>
+                          <p className="text-[10px] font-bold mb-4" style={{ color: '#1E3A5F' }}>Distribuição por Estado</p>
+                          <div className="flex items-center gap-6">
+                            <svg width="130" height="130" viewBox="0 0 130 130" style={{ flexShrink: 0 }}>
+                              <circle cx={donutCx} cy={donutCy} r={donutR} fill="none" stroke="#E2E8F0" strokeWidth={13} />
+                              {donutTotal > 0 && donutArcs.map((arc, i) => (
+                                <circle key={i} cx={donutCx} cy={donutCy} r={donutR} fill="none" stroke={arc.color} strokeWidth={13}
+                                  strokeDasharray={`${arc.len} ${donutC - arc.len}`} strokeDashoffset={0}
+                                  transform={`rotate(${arc.startAngle} ${donutCx} ${donutCy})`} strokeLinecap="butt" />
+                              ))}
+                              <text x={donutCx} y={donutCy - 6} textAnchor="middle" style={{ fontSize: '20px', fontWeight: 800, fill: '#0F1F35', fontFamily: 'system-ui' }}>{totalInscritos}</text>
+                              <text x={donutCx} y={donutCy + 11} textAnchor="middle" style={{ fontSize: '8px', fill: '#526070', fontWeight: 700, fontFamily: 'system-ui', letterSpacing: '0.08em' }}>ALUNOS</text>
+                            </svg>
+                            <div className="flex flex-col gap-3">
+                              {donutSegments.map((seg, i) => (
+                                <div key={i} className="flex items-center gap-2.5">
+                                  <span className="w-3 h-3 rounded-full shrink-0" style={{ background: seg.color }} />
+                                  <div>
+                                    <p className="text-[11px] font-black leading-none" style={{ color: seg.color }}>{seg.count}</p>
+                                    <p className="text-[9px] mt-0.5" style={{ color: '#526070' }}>{seg.label}</p>
+                                  </div>
+                                </div>
+                              ))}
+                              {donutTotal === 0 && <p className="text-[10px]" style={{ color: '#526070' }}>Sem dados</p>}
+                            </div>
+                          </div>
+                        </div>
+                        {/* Barras mensais */}
+                        <div>
+                          <p className="text-[10px] font-bold mb-4" style={{ color: '#1E3A5F' }}>Receita Mensal — {anoRelatorio}</p>
+                          <div className="flex items-end gap-1 h-[88px]">
+                            {dadosBarra.map((d, i) => {
+                              const h = maxBarra > 0 ? Math.max(3, (d.total / maxBarra) * 76) : 3;
+                              return (
+                                <div key={i} className="flex flex-col items-center gap-0.5 flex-1" title={`${d.mes}: ${formatCve(d.total)}`}>
+                                  <div className="w-full rounded-t-[2px] transition-all" style={{ height: `${h}px`, background: d.ativo ? '#1E3A5F' : '#93BBDC' }} />
+                                  <p className="text-[7px] font-bold uppercase" style={{ color: d.ativo ? '#1E3A5F' : '#8A9BB0' }}>{d.mes}</p>
+                                </div>
+                              );
+                            })}
+                          </div>
+                          <div className="flex justify-between mt-2 text-[8px]" style={{ color: '#8A9BB0' }}>
+                            <span>0</span>
+                            <span className="font-bold">{formatCve(maxBarra)} máx.</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Tabela de alunos */}
+                    <div className="px-12 py-7 border-b border-[#E2E8F0]">
+                      <p className="text-[9px] font-black uppercase tracking-[0.22em] mb-5" style={{ color: '#526070' }}>Detalhe por Aluno — <span style={{ color: '#1E3A5F' }}>{mesRelatorio} {anoRelatorio}</span></p>
+                      <table className="w-full text-left border-collapse">
+                        <thead>
+                          <tr style={{ borderBottom: '2px solid #1E3A5F' }}>
+                            {['#', 'Nome do Aluno', 'Plano', 'Modalidade', 'Estado', 'Vencimento', 'Cobertura'].map((h, i) => (
+                              <th key={i} className="pb-2.5 text-[8px] font-black uppercase tracking-[0.14em]" style={{ color: '#1E3A5F', paddingRight: i < 6 ? '12px' : 0 }}>{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {resumosRel.length === 0 && (
+                            <tr><td colSpan={7} className="py-10 text-center text-[11px]" style={{ color: '#526070' }}>Nenhum aluno inscrito neste período</td></tr>
+                          )}
+                          {resumosRel.map(({ aluno, resumo }, idx) => {
+                            const tone = getBillingTone(resumo.status);
+                            return (
+                              <tr key={aluno.id} style={{ background: idx % 2 === 0 ? '#FFFFFF' : '#F8FAFD', borderBottom: '1px solid #EDF0F5' }}>
+                                <td className="py-2.5 pr-3 align-middle text-[10px] font-bold" style={{ color: '#8A9BB0' }}>{String(idx + 1).padStart(2,'0')}</td>
+                                <td className="py-2.5 pr-4 align-middle" style={{ width: '30%' }}>
+                                  <p className="text-[11px] font-bold leading-tight" style={{ color: '#0F1F35' }}>{aluno.nome}</p>
+                                  <p className="text-[9px]" style={{ color: '#8A9BB0' }}>{aluno.telefone || '—'}</p>
+                                </td>
+                                <td className="py-2.5 pr-4 align-middle text-[10px] font-semibold" style={{ color: '#1E3A5F' }}>{formatCve(aluno.plano)}</td>
+                                <td className="py-2.5 pr-4 align-middle">
+                                  <span className="px-1.5 py-0.5 rounded-[2px] text-[8px] font-bold uppercase tracking-wider" style={{ background: '#EBF0F8', color: '#1E3A5F' }}>{aluno.modalidade || 'Musc.'}</span>
+                                </td>
+                                <td className="py-2.5 pr-4 align-middle">
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: tone.color }} />
+                                    <span className="text-[10px] font-bold" style={{ color: tone.color }}>{getBillingBadgeLabel(resumo.status)}</span>
+                                  </div>
+                                </td>
+                                <td className="py-2.5 pr-4 align-middle text-[10px]" style={{ color: '#526070' }}>{resumo.nextChargeDate || '—'}</td>
+                                <td className="py-2.5 align-middle">
+                                  <div className="h-1.5 w-14 overflow-hidden rounded-full mb-0.5" style={{ background: '#E2E8F0' }}>
+                                    <div className="h-full rounded-full" style={{ width: `${getTimelineMetricWidth(resumo, aluno.status)}%`, background: tone.color }} />
+                                  </div>
+                                  <p className="text-[8px]" style={{ color: '#8A9BB0' }}>{resumo.coverageEnd || '—'}</p>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* Resumo Financeiro */}
+                    <div className="px-12 py-7 border-b border-[#E2E8F0]" style={{ background: '#F8FAFD' }}>
+                      <p className="text-[9px] font-black uppercase tracking-[0.22em] mb-5" style={{ color: '#526070' }}>Resumo Financeiro — {mesRelatorio} {anoRelatorio}</p>
+                      <div className="grid grid-cols-3 gap-6 mb-5">
+                        <div className="text-center">
+                          <p className="text-[9px] font-bold uppercase tracking-wider mb-1.5" style={{ color: '#526070' }}>Receita Prevista</p>
+                          <p className="text-[20px] font-black" style={{ color: '#1E3A5F' }}>{formatCve(previsaoMes)}</p>
+                          <p className="text-[9px] mt-1" style={{ color: '#8A9BB0' }}>Base: alunos activos</p>
+                        </div>
+                        <div className="text-center" style={{ borderLeft: '1px solid #E2E8F0', borderRight: '1px solid #E2E8F0' }}>
+                          <p className="text-[9px] font-bold uppercase tracking-wider mb-1.5" style={{ color: '#526070' }}>Receita Recebida</p>
+                          <p className="text-[20px] font-black" style={{ color: '#166534' }}>{formatCve(receitaMes)}</p>
+                          <p className="text-[9px] mt-1" style={{ color: '#8A9BB0' }}>{previsaoMes > 0 ? `${Math.round((receitaMes / previsaoMes) * 100)}% realizado` : '—'}</p>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-[9px] font-bold uppercase tracking-wider mb-1.5" style={{ color: '#526070' }}>Por Cobrar</p>
+                          <p className="text-[20px] font-black" style={{ color: pendenteMes > 0 ? '#991B1B' : '#166534' }}>{formatCve(pendenteMes)}</p>
+                          <p className="text-[9px] mt-1" style={{ color: '#8A9BB0' }}>{pendenteMes === 0 ? '100% cobrado ✓' : `${atrasadosCount} em atraso`}</p>
+                        </div>
+                      </div>
+                      <div>
+                        <div className="flex justify-between text-[9px] mb-1.5" style={{ color: '#526070' }}>
+                          <span>Progresso de cobrança do mês</span>
+                          <span className="font-bold">{previsaoMes > 0 ? `${Math.round((receitaMes / previsaoMes) * 100)}%` : '—'}</span>
+                        </div>
+                        <div className="h-2 rounded-full overflow-hidden" style={{ background: '#E2E8F0' }}>
+                          <div className="h-full rounded-full transition-all" style={{ width: `${previsaoMes > 0 ? Math.min(100, (receitaMes / previsaoMes) * 100) : 0}%`, background: pendenteMes === 0 ? '#166534' : '#1E3A5F' }} />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Rodapé do documento */}
+                    <div className="px-12 py-5 flex items-center justify-between" style={{ borderTop: '1px solid #E2E8F0' }}>
+                      <div className="flex items-center gap-2">
+                        <img src={NEXT_LAB_ICON} alt="" className="w-4 h-4" style={{ opacity: 0.35 }} />
+                        <p className="text-[9px]" style={{ color: '#8A9BB0' }}>{COMPANY_NAME} · {nomeAcademia}</p>
+                      </div>
+                      <p className="text-[9px] text-center" style={{ color: '#8A9BB0' }}>Gerado em {geradoEm} · Versão do momento da exportação</p>
+                      <p className="text-[9px] font-bold" style={{ color: '#1E3A5F' }}>Pág. 1 / 1</p>
+                    </div>
+
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
         {/* Module: Alunos */}
         {aba === 'gestao' && (
           <div className="animate-slide-up h-full flex flex-col w-full overflow-hidden">
@@ -3805,7 +4200,7 @@ function App() {
                           onClick={() => setMesFinanceiro(month.label)}
                           className={`group flex min-w-[76px] flex-col items-center rounded-[5px] px-1.5 transition-all ${
                             timelineFinanceiraMinimizada ? 'gap-0 py-0.5' : 'gap-0.5 py-1'
-                          } ${month.future && !month.active ? 'opacity-45' : ''}`}
+                          }`}
                           title={`${month.label} ${anoFinanceiro} • ${month.count} aluno(s)`}
                         >
                           <span
@@ -3958,15 +4353,16 @@ function App() {
                             const paused = isPausedStatus(aluno.status);
                             const blocked = isBlockedStatus(aluno.status);
                             const isAtrasado = resumo.status === 'atrasado' || resumo.status === 'hoje';
-                            const isPago = resumo.status === 'pago' || resumo.status === 'alerta';
+                            const isPago = resumo.status === 'pago';
+                            const isDentroDoPrazo = !isAtrasado && !isPago;
 
-                            // Estado: cor única por condição, sem fundo colorido variado
                             const estadoCor = (() => {
-                              if (blocked)    return { dot: '#B91C1C', label: 'Bloqueado',              text: '#B91C1C' };
-                              if (paused)     return { dot: '#92400E', label: 'Pausado',                text: '#92400E' };
-                              if (isAtrasado) return { dot: '#DC2626', label: getBillingBadgeLabel(resumo.status), text: '#DC2626' };
-                              if (isPago)     return { dot: '#16A34A', label: 'Em dia',                 text: '#16A34A' };
-                              return          { dot: '#2563EB', label: getBillingBadgeLabel(resumo.status), text: '#2563EB' };
+                              if (blocked)       return { dot: '#B91C1C', label: 'Bloqueado', text: '#B91C1C' };
+                              if (paused)        return { dot: '#92400E', label: 'Pausado',   text: '#92400E' };
+                              if (isAtrasado)    return { dot: '#DC2626', label: resumo.status === 'hoje' ? 'Vence hoje' : 'Atrasado', text: '#DC2626' };
+                              if (isPago)        return { dot: '#16A34A', label: 'Em dia',    text: '#16A34A' };
+                              if (isDentroDoPrazo) return { dot: '#2563EB', label: 'No prazo',  text: '#2563EB' };
+                              return             { dot: '#64748b', label: 'Regular',   text: '#64748b' };
                             })();
 
                             return (
@@ -4182,15 +4578,16 @@ function App() {
                     <div className="absolute left-0 right-0 top-1/2 h-px -translate-y-1/2 bg-[#D9E2F2]" />
                     <div className="relative flex items-center justify-between gap-1">
                       {MONTH_OPTIONS.map((mes, index) => {
-                        const isFuturo = anoFinanceiro > new Date().getFullYear() || (anoFinanceiro === new Date().getFullYear() && index > new Date().getMonth());
+                        const isFuturo = isFutureMonth(index, anoFinanceiro, new Date());
                         const isMesAtual = anoFinanceiro === new Date().getFullYear() && index === new Date().getMonth();
                         const ativo = mesFinanceiro === mes;
+                        if (isFuturo) return null;
 
                         return (
                           <button
                             key={mes}
                             onClick={() => setMesFinanceiro(mes)}
-                            className={`group flex min-w-[70px] flex-col items-center transition-all ${timelineFinanceiraMinimizada ? 'gap-0 py-0.5' : 'gap-1 py-1'} ${isFuturo && !ativo ? 'opacity-45' : ''}`}
+                            className={`group flex min-w-[70px] flex-col items-center transition-all ${timelineFinanceiraMinimizada ? 'gap-0 py-0.5' : 'gap-1 py-1'}`}
                           >
                             <span className={`h-3 w-3 rounded-full border transition-all ${
                               ativo
@@ -4275,7 +4672,7 @@ function App() {
                                 <tr
                                   key={aluno.id}
                                   className={`group border-b border-[var(--border-light)] transition-colors ${
-                                    selecionado ? 'bg-[var(--color-primary-light)]' : `${tom.bg} hover:bg-[var(--color-secondary-lighter)]/70`
+                                    selecionado ? 'bg-[var(--color-primary-light)]' : `${tone.surface} hover:bg-slate-100`
                                   }`}
                                 >
                                   <td className="align-middle" style={{ padding: 'var(--list-row-py) var(--list-row-px)' }}>
@@ -4375,12 +4772,11 @@ function App() {
                       {timelineMonths.map(month => (
                         <button
                           key={month.id}
-                          onClick={() => !month.future && setMesFinanceiro(month.label)}
-                          disabled={month.future}
+                          onClick={() => setMesFinanceiro(month.label)}
                           className={`group flex min-w-[76px] flex-col items-center rounded-[5px] px-1.5 transition-all ${
                             timelineContactosMinimizada ? 'gap-0 py-0.5' : 'gap-0.5 py-1'
-                          } ${month.future ? 'opacity-30 cursor-not-allowed' : ''}`}
-                          title={`${month.label} ${anoFinanceiro} · ${month.count} inscrito(s)${month.future ? ' — mês ainda não iniciado' : ''}`}
+                          }`}
+                          title={`${month.label} ${anoFinanceiro} · ${month.count} inscrito(s)`}
                         >
                           <span className={`h-3 w-3 rounded-full border transition-all ${
                             month.active
@@ -4529,38 +4925,34 @@ function App() {
                     ) : alunosDirectorio.map((aluno) => {
                       const isSelected = alunoPerfil?.id === aluno.id;
                       const statusLabel = getStudentStatusLabel(aluno.status);
-                      const isAtivo = isOperationallyActive(aluno.status);
                       const compact = modoListaContactos === 'compacto';
-                      const isNovo = isSameMonthAndYear(parseFlexibleDate(aluno.data_matricula), mesFinanceiroIndex, anoFinanceiro);
+                      
+                      const resumo = summarizeStudentBilling(aluno, pagamentos, referenciaFinanceira);
+                      const tone = getBillingTone(resumo.status);
+                      
+                      const itemBg = isSelected 
+                        ? 'bg-[var(--color-primary-light)]' 
+                        : `${tone.surface} group-hover:opacity-100`;
+
                       return (
                         <button
                           key={aluno.id}
                           onClick={() => { setAlunoPerfil(aluno); carregarNotas(aluno.id); }}
-                          className={`w-full flex items-center gap-2.5 text-left transition-all ${compact ? 'px-3 py-2' : 'px-3 py-2.5'} ${isSelected ? 'bg-[var(--color-primary-light)]' : isNovo ? 'bg-emerald-50/50 hover:bg-emerald-50' : 'hover:bg-[var(--color-secondary-lighter)]/50'}`}
+                          className={`group w-full flex items-center gap-2.5 text-left transition-all border-l-2 ${compact ? 'px-3 py-2' : 'px-3 py-2.5'} ${itemBg} ${resumo.status === 'atrasado' || resumo.status === 'hoje' ? 'border-l-red-500' : resumo.status === 'pago' ? 'border-l-emerald-500' : 'border-l-blue-500'}`}
                         >
                           {!compact && (
-                            <div className={`relative w-8 h-8 rounded-[5px] flex items-center justify-center text-[11px] font-black shrink-0 overflow-hidden border ${isSelected ? 'bg-[var(--color-primary)] border-[var(--color-primary)] text-white' : isNovo ? 'bg-emerald-100 border-emerald-200 text-emerald-800' : 'bg-[var(--color-secondary-lighter)] border-[var(--border)] nl-text-muted'}`}>
+                            <div className={`relative w-8 h-8 rounded-[5px] flex items-center justify-center text-[11px] font-black shrink-0 overflow-hidden border ${isSelected ? 'bg-[var(--color-primary)] border-[var(--color-primary)] text-white' : tone.surface + ' ' + tone.accent}`}>
                               {aluno.foto_path ? <img src={`local-resource://${aluno.foto_path}`} className="w-full h-full object-cover" /> : aluno.nome.slice(0,2).toUpperCase()}
-                              {isNovo && !isSelected && (
-                                <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-emerald-500 border border-white" />
-                              )}
                             </div>
                           )}
                           <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-1.5">
-                              <p className={`font-semibold truncate nl-text ${compact ? 'text-[12px]' : 'text-[13px]'}`} style={{ color: isSelected ? 'var(--color-primary)' : undefined }}>{aluno.nome}</p>
-                              {isNovo && <span className="text-[8px] font-bold text-emerald-600 shrink-0">NOVO</span>}
-                            </div>
+                            <p className={`font-semibold truncate nl-text ${compact ? 'text-[12px]' : 'text-[13px]'}`} style={{ color: isSelected ? 'var(--color-primary)' : undefined }}>{aluno.nome}</p>
                             {!compact && <p className="text-[11px] nl-text-muted truncate">{aluno.telefone || '—'}</p>}
                           </div>
                           <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-[3px] shrink-0 border ${
                             isSelected
                               ? 'bg-white text-[var(--color-primary)] border-[var(--color-primary)]/20'
-                              : isAtivo
-                                ? 'bg-[var(--color-secondary-lighter)] nl-text-muted border-[var(--border)]'
-                                : isPausedStatus(aluno.status)
-                                  ? 'bg-amber-50 text-amber-700 border-amber-200'
-                                  : 'bg-red-50 text-red-700 border-red-200'
+                              : tone.surface + ' ' + tone.accent
                           }`}>
                             {statusLabel}
                           </span>
@@ -4575,43 +4967,77 @@ function App() {
             <div className="flex-1 nl-card !p-0 flex flex-col overflow-hidden !rounded-[4px]" style={{ border: '1px solid var(--border)' }}>
               {alunoPerfil ? (
                 <>
-                  <div className="px-6 py-5 border-b border-[var(--border)] flex items-center gap-5" style={{ background: 'var(--color-secondary-lighter)' }}>
-                    <div className="relative group shrink-0">
-                      <div className="w-20 h-20 rounded-[4px] border-2 border-white overflow-hidden shadow-md">
-                        {alunoPerfil.foto_path ? <img src={`local-resource://${alunoPerfil.foto_path}`} className="w-full h-full object-cover" /> : <div className="w-full h-full bg-[var(--color-primary)] flex items-center justify-center text-2xl font-black text-white">{alunoPerfil.nome.slice(0,2).toUpperCase()}</div>}
-                      </div>
-                      <label className="absolute inset-0 bg-black/40 rounded-[4px] flex items-center justify-center opacity-0 group-hover:opacity-100 cursor-pointer transition-all">
-                        <Camera className="text-white" size={20} />
-                        <input type="file" className="hidden" accept="image/*" onChange={handleUploadFoto} />
-                      </label>
-                    </div>
+                  {(() => {
+                    const resumo = summarizeStudentBilling(alunoPerfil, pagamentos, referenciaFinanceira);
+                    const tone = getBillingTone(resumo.status);
+                    const emAtraso = resumo.status === 'atrasado';
+                    
+                    return (
+                      <div className={`px-6 py-5 border-b flex items-center gap-5 transition-all duration-300 ${tone.surface}`} style={{ borderBottom: '1px solid var(--border)' }}>
+                        <div className="relative group shrink-0">
+                          <div className={`w-20 h-20 rounded-[4px] border-2 overflow-hidden shadow-md ${resumo.status === 'atrasado' ? 'border-red-200' : resumo.status === 'pago' ? 'border-emerald-200' : 'border-blue-200'}`}>
+                            {alunoPerfil.foto_path ? <img src={`local-resource://${alunoPerfil.foto_path}`} className="w-full h-full object-cover" /> : <div className={`w-full h-full flex items-center justify-center text-2xl font-black text-white ${tone.button.split(' ')[0]}`}>{alunoPerfil.nome.slice(0,2).toUpperCase()}</div>}
+                          </div>
+                          <label className="absolute inset-0 bg-black/40 rounded-[4px] flex items-center justify-center opacity-0 group-hover:opacity-100 cursor-pointer transition-all">
+                            <Camera className="text-white" size={20} />
+                            <input type="file" className="hidden" accept="image/*" onChange={handleUploadFoto} />
+                          </label>
+                        </div>
 
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-start justify-between gap-4">
-                        <div>
-                          <h2 className="text-[22px] font-extrabold nl-text tracking-tight leading-tight">{alunoPerfil.nome}</h2>
-                          <div className="flex items-center gap-2 mt-2 flex-wrap">
-                            <span className={`badge ${isBlockedStatus(alunoPerfil.status) ? 'badge-error' : isPausedStatus(alunoPerfil.status) ? 'badge-warning' : 'badge-success'}`}>
-                              {getStudentStatusLabel(alunoPerfil.status)}
-                            </span>
-                            <span className="text-[10px] font-bold nl-text-muted px-2 py-0.5 rounded-[5px] bg-[var(--color-secondary-lighter)] border border-[var(--border)] uppercase tracking-wider">{alunoPerfil.categoria || 'Geral'}</span>
-                            <span className="text-[10px] font-bold nl-text-muted px-2 py-0.5 rounded-[5px] bg-[var(--color-secondary-lighter)] border border-[var(--border)] uppercase tracking-wider">#{alunoPerfil.id.slice(-6)}</span>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-start justify-between gap-4">
+                            <div>
+                              <div className="flex items-center gap-3">
+                                <h2 className="text-[22px] font-extrabold nl-text tracking-tight leading-tight">{alunoPerfil.nome}</h2>
+                                <div className="flex items-center gap-0.5 ml-1 opacity-40 hover:opacity-100 transition-opacity" title={`Pontualidade: ${resumo.rating} estrelas`}>
+                                  {[1, 2, 3, 4, 5].map(s => (
+                                    <Star key={s} size={10} className={s <= Math.round(resumo.rating) ? "text-amber-500 fill-amber-500" : "text-slate-300"} />
+                                  ))}
+                                </div>
+                              </div>
+                              
+                              <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                                <span className={`badge ${tone.badge} !px-2 !py-0.5 !text-[9px]`}>
+                                  {resumo.status === 'atrasado' ? 'PENDENTE' : resumo.status === 'pago' ? 'REGULARIZADO' : 'DENTRO DO PRAZO'}
+                                </span>
+                                <span className="text-[9px] font-bold nl-text-muted px-2 py-0.5 rounded-[4px] bg-white/60 border border-[var(--border)] uppercase tracking-wider">{alunoPerfil.categoria || 'Geral'}</span>
+                                <span className="text-[9px] font-bold nl-text-muted px-2 py-0.5 rounded-[4px] bg-white/60 border border-[var(--border)] uppercase tracking-wider">#{alunoPerfil.id.slice(-6)}</span>
+                              </div>
+
+                              {emAtraso && (
+                                <div className="mt-2 flex flex-col gap-1">
+                                  <div className="flex items-center gap-2">
+                                    <AlertCircle size={12} className="text-red-600" />
+                                    <p className="text-[10px] font-black text-red-700 uppercase tracking-tight">Dívida acumulada:</p>
+                                  </div>
+                                  <div className="flex flex-wrap gap-1">
+                                    {resumo.monthsInDebt.map(m => (
+                                      <span key={m} className="px-1.5 py-0.5 bg-red-600 text-white text-[8px] font-black rounded-[2px] uppercase tracking-wider">{m}</span>
+                                    ))}
+                                    {resumo.monthsInDebt.length > 1 && (
+                                      <button 
+                                        onClick={() => abrirResolverPendencias(alunoPerfil)}
+                                        className="px-2 py-0.5 bg-slate-900 text-white text-[8px] font-black rounded-[2px] uppercase tracking-widest hover:bg-black transition-colors ml-1 shadow-sm"
+                                      >
+                                        Resolver Tudo
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                            <div className="flex gap-1.5 flex-wrap justify-end shrink-0">
+                              <button onClick={() => enviarMensagemWhatsApp(alunoPerfil)} className="nl-icon-btn !w-8 !h-8 !bg-green-500/10 !text-green-700 hover:!bg-green-500 hover:!text-white !border-green-200" title="WhatsApp"><Smartphone size={14} /></button>
+                              <button onClick={() => window.open(`mailto:${alunoPerfil.email}`)} className="nl-icon-btn !w-8 !h-8" title="E-mail"><Mail size={14} /></button>
+                              <button onClick={() => setAba('gestao')} className="nl-icon-btn !w-8 !h-8" title="Ver em Alunos"><ExternalLink size={14} /></button>
+                              <button onClick={() => abrirEdicao(alunoPerfil)} className="nl-btn nl-btn-secondary !h-8 !px-3 !text-[11px] font-bold"><Edit size={13} /> Editar</button>
+                              <button onClick={() => marcarComoPago(alunoPerfil.id)} className="nl-btn !bg-emerald-600 !text-white hover:!bg-emerald-700 !h-8 !px-3 !text-[11px] font-bold shadow-md transition-all"><Wallet size={13} /> Cobrar</button>
+                            </div>
                           </div>
-                          <div className="flex items-center gap-3 mt-2">
-                            {alunoPerfil.telefone && <span className="flex items-center gap-1.5 text-[12px] nl-text-muted"><Phone size={12} />{alunoPerfil.telefone}</span>}
-                            {alunoPerfil.email && <span className="flex items-center gap-1.5 text-[12px] nl-text-muted"><Mail size={12} />{alunoPerfil.email}</span>}
-                          </div>
-                        </div>
-                        <div className="flex gap-1.5 flex-wrap justify-end shrink-0">
-                          <button onClick={() => enviarMensagemWhatsApp(alunoPerfil)} className="nl-icon-btn !bg-green-500/10 !text-green-700 hover:!bg-green-500 hover:!text-white !border-green-200" title="WhatsApp"><Smartphone size={15} /></button>
-                          <button onClick={() => window.open(`mailto:${alunoPerfil.email}`)} className="nl-icon-btn" title="E-mail"><Mail size={15} /></button>
-                          <button onClick={() => setAba('gestao')} className="nl-icon-btn" title="Ver em Alunos"><ExternalLink size={15} /></button>
-                          <button onClick={() => abrirEdicao(alunoPerfil)} className="nl-btn nl-btn-secondary !h-8 !px-3 !text-[11px] font-bold"><Edit size={13} /> Editar</button>
-                          <button onClick={() => marcarComoPago(alunoPerfil.id)} className="nl-btn nl-btn-primary !h-8 !px-3 !text-[11px] font-bold"><Wallet size={13} /> Cobrar</button>
                         </div>
                       </div>
-                    </div>
-                  </div>
+                    );
+                  })()}
 
                   <div className="flex-1 p-5 bg-[var(--bg-surface)] overflow-y-auto custom-scrollbar">
                     <div className="grid grid-cols-1 xl:grid-cols-3 gap-5 h-full items-start">
@@ -4629,9 +5055,9 @@ function App() {
                               { label: 'E-mail', value: alunoPerfil.email || '—', icon: <Mail size={12} /> },
                               { label: 'Morada', value: alunoPerfil.morada || '—', icon: <MapPin size={12} /> },
                             ].map((row, i) => (
-                              <div key={row.label} className={`flex items-center justify-between px-3 py-2 hover:bg-slate-50 transition-colors ${coresPasteis[i % coresPasteis.length].bg}`}>
+                              <div key={row.label} className="flex items-center justify-between px-3 py-2.5 hover:bg-slate-50 transition-colors">
                                 <div className="flex items-center gap-2">
-                                  <span className="nl-text-muted">{row.icon}</span>
+                                  <span className="text-slate-400">{row.icon}</span>
                                   <p className="text-[10px] font-bold nl-text-muted uppercase tracking-wider">{row.label}</p>
                                 </div>
                                 <p className="text-[12px] font-semibold nl-text truncate max-w-[120px]">{row.value}</p>
@@ -4645,9 +5071,9 @@ function App() {
                               { label: 'Categ.', value: alunoPerfil.categoria || 'Geral', icon: <Tag size={12} /> },
                               { label: 'Inscrito', value: alunoPerfil.data_matricula || '-', icon: <Calendar size={12} /> },
                             ].map((row, i) => (
-                              <div key={row.label} className={`flex items-center justify-between px-3 py-2 hover:bg-slate-50 transition-colors ${coresPasteis[(i + 3) % coresPasteis.length].bg}`}>
+                              <div key={row.label} className="flex items-center justify-between px-3 py-2.5 hover:bg-slate-50 transition-colors">
                                 <div className="flex items-center gap-2">
-                                  <span className="nl-text-muted">{row.icon}</span>
+                                  <span className="text-slate-400">{row.icon}</span>
                                   <p className="text-[10px] font-bold nl-text-muted uppercase tracking-wider">{row.label}</p>
                                 </div>
                                 <p className="text-[12px] font-semibold nl-text truncate max-w-[120px]">{row.value}</p>
@@ -4837,10 +5263,10 @@ function App() {
           );
         })()}
         {aba === 'configuracoes' && sessionUser?.role === 'admin' && (
-          <div className="flex-1 overflow-hidden flex bg-white animate-fade-in custom-scrollbar overflow-y-auto p-8">
-            <div className="mx-auto flex w-full h-fit min-h-[600px] border border-slate-200 shadow-sm rounded-[4px]" style={{ maxWidth: `${larguraListas}px` }}>
+          <div className="flex-1 overflow-hidden flex bg-[var(--bg-app)] animate-fade-in custom-scrollbar overflow-y-auto p-8">
+            <div className="mx-auto flex w-full h-fit min-h-[600px] border border-[var(--border)] shadow-sm rounded-[4px]" style={{ maxWidth: `${larguraListas}px` }}>
               {/* Sidebar de Configurações */}
-              <div className="w-[240px] border-r border-slate-100 bg-slate-50/50 p-6 flex flex-col gap-1 shrink-0">
+              <div className="w-[240px] border-r border-[var(--border-light)] bg-[var(--color-secondary-lighter)]/40 p-6 flex flex-col gap-1 shrink-0">
                <div className="mb-4 px-2">
                   <p className="text-[10px] font-black nl-text-muted uppercase tracking-[0.2em] mb-1">Painel de Controlo</p>
                   <h2 className="text-[16px] font-black nl-text tracking-tight uppercase">Ajustes</h2>
@@ -4860,8 +5286,8 @@ function App() {
                    onClick={() => setConfigAba(item.id as any)}
                    className={`w-full text-left px-4 py-3 rounded-[3px] flex items-center gap-3 transition-all ${
                      configAba === item.id
-                       ? 'bg-white shadow-sm ring-1 ring-black/5 text-[var(--color-primary)] font-bold'
-                       : 'nl-text-muted hover:bg-white/60 hover:text-black'
+                       ? 'bg-[var(--bg-surface)] shadow-sm ring-1 ring-black/5 text-[var(--color-primary)] font-bold'
+                       : 'nl-text-muted hover:bg-[var(--bg-surface)]/60 hover:text-[var(--text-primary)]'
                    }`}
                  >
                    <div className={`shrink-0 ${configAba === item.id ? '' : item.color}`}>
@@ -4875,19 +5301,19 @@ function App() {
             </div>
 
             {/* Conteúdo Dinâmico */}
-            <div className="flex-1 bg-white p-10 lg:p-14 overflow-y-auto custom-scrollbar">
+            <div className="flex-1 bg-[var(--bg-surface)] p-10 lg:p-14 overflow-y-auto custom-scrollbar">
                {configAba === 'geral' && (
                  <div className="animate-slide-up space-y-10">
                     <div>
                       <h3 className="text-[28px] font-black nl-text tracking-tighter uppercase">Instituição</h3>
-                      <p className="text-slate-500 font-medium mt-1">Gira as informações públicas e de contacto da sua academia.</p>
+                      <p className="nl-text-muted font-medium mt-1">Gira as informações públicas e de contacto da sua academia.</p>
                     </div>
 
                     {/* Logo da academia */}
                     <div className="space-y-3">
                       <label className="text-[11px] font-bold nl-text-muted uppercase tracking-wider block">Logótipo da Academia</label>
-                      <div className="flex items-center gap-6 p-5 rounded-[6px] bg-slate-50 border border-slate-200">
-                        <div className="w-20 h-20 rounded-[8px] bg-white border border-slate-200 shadow-sm flex items-center justify-center overflow-hidden shrink-0">
+                      <div className="flex items-center gap-6 p-5 rounded-[6px] bg-[var(--color-secondary-lighter)]/40 border border-[var(--border)]">
+                        <div className="w-20 h-20 rounded-[8px] bg-[var(--bg-surface)] border border-[var(--border)] shadow-sm flex items-center justify-center overflow-hidden shrink-0">
                           <img src={appLogo || APP_ICON_PATH} className="w-14 h-14 object-contain" alt="Logo" />
                         </div>
                         <div className="space-y-1.5">
@@ -4916,7 +5342,7 @@ function App() {
                             <button onClick={() => document.getElementById('logo-upload-geral')?.click()} className="nl-btn nl-btn-secondary h-9 px-4 text-[12px]">
                               Alterar Logo
                             </button>
-                            <button onClick={() => { setAppLogo(APP_ICON_PATH); localStorage.removeItem('nl_app_logo'); guardarConfiguracao('app_logo', ''); }} className="text-[11px] font-semibold text-slate-400 hover:text-red-500 transition-colors">
+                            <button onClick={() => { setAppLogo(APP_ICON_PATH); localStorage.removeItem('nl_app_logo'); guardarConfiguracao('app_logo', ''); }} className="text-[11px] font-semibold nl-text-muted hover:text-red-500 transition-colors">
                               Repor padrão
                             </button>
                           </div>
@@ -4948,7 +5374,7 @@ function App() {
                     </div>
 
                     {/* ── Slideshow de Login ── */}
-                    <div className="space-y-4 pt-8 border-t border-slate-100">
+                    <div className="space-y-4 pt-8 border-t border-[var(--border)]">
                       <div>
                         <h3 className="text-[14px] font-bold nl-text">Slideshow na Tela de Login</h3>
                         <p className="text-[12px] nl-text-muted mt-0.5">Até 5 imagens que passam automaticamente no painel direito do login. Quando o app estiver inativo, entra em modo apresentação.</p>
@@ -4959,7 +5385,7 @@ function App() {
                         {Array.from({ length: 5 }).map((_, i) => {
                           const img = slideshowImages[i];
                           return (
-                            <div key={i} className="relative aspect-video rounded-[5px] overflow-hidden border border-slate-200 bg-slate-50 group">
+                            <div key={i} className="relative aspect-video rounded-[5px] overflow-hidden border border-[var(--border)] bg-[var(--color-secondary-lighter)] group">
                               {img ? (
                                 <>
                                   <img src={img} className="w-full h-full object-cover" alt={`Slide ${i + 1}`} />
@@ -4973,7 +5399,7 @@ function App() {
                                   >×</button>
                                 </>
                               ) : (
-                                <label className="w-full h-full flex flex-col items-center justify-center cursor-pointer text-slate-300 hover:text-slate-500 hover:bg-slate-100 transition-colors gap-1">
+                                <label className="w-full h-full flex flex-col items-center justify-center cursor-pointer nl-text-muted opacity-60 hover:opacity-100 hover:bg-[var(--color-secondary-lighter)] transition-colors gap-1">
                                   <Plus size={14} />
                                   <span className="text-[9px] font-bold uppercase tracking-wider">{i + 1}</span>
                                   <input type="file" accept="image/*" className="hidden" onChange={(e) => {
@@ -5028,37 +5454,94 @@ function App() {
                )}
 
                {configAba === 'tema' && (
-                 <div className=" animate-slide-up space-y-10">
+                 <div className="animate-slide-up space-y-10">
                     <div>
                       <h3 className="text-[28px] font-black nl-text tracking-tighter uppercase">Aparência & Branding</h3>
-                      <p className="text-slate-500 font-medium mt-1">Personalize a identidade visual do seu sistema NEXTLevel.</p>
+                      <p className="nl-text-muted font-medium mt-1">Personalize o tema e a identidade visual do sistema NEXTLevel.</p>
                     </div>
 
                     <div className="space-y-8">
+
+                      {/* ── Selector de Tema ── */}
+                      <div className="space-y-4">
+                        <label className="text-[11px] font-bold nl-text-muted uppercase tracking-wider block">Tema da Interface</label>
+                        <div className="grid grid-cols-3 gap-4">
+                          {([
+                            {
+                              id: 'light' as const,
+                              label: 'Claro',
+                              desc: 'Padrão profissional',
+                              preview: { bg: '#F4F5F7', surface: '#FFFFFF', header: '#FFFFFF', accent: '#0065FF', text: '#172B4D', border: '#DFE1E6' },
+                            },
+                            {
+                              id: 'dark' as const,
+                              label: 'Escuro',
+                              desc: 'Conforto nocturno',
+                              preview: { bg: '#161A1D', surface: '#22272B', header: '#1D2125', accent: '#579DFF', text: '#F1F2F4', border: '#3D474F' },
+                            },
+                            {
+                              id: 'claude' as const,
+                              label: 'Claude',
+                              desc: 'Quente & elegante',
+                              preview: { bg: '#EDE7DF', surface: '#FAF7F3', header: '#F2EDE6', accent: '#CF7C5A', text: '#1E1612', border: '#DDD4C8' },
+                            },
+                          ] as const).map((tema) => {
+                            const active = appTheme === tema.id;
+                            return (
+                              <button
+                                key={tema.id}
+                                onClick={() => { setAppTheme(tema.id); localStorage.setItem('nl_app_theme', tema.id); }}
+                                className={`relative flex flex-col rounded-[8px] overflow-hidden border-2 transition-all text-left ${active ? 'border-[var(--color-primary)] shadow-[0_0_0_3px_var(--shadow-primary)]' : 'border-[var(--border)] hover:border-[var(--color-primary)]/40'}`}
+                              >
+                                {/* Mini preview */}
+                                <div className="h-[80px] w-full relative overflow-hidden" style={{ background: tema.preview.bg }}>
+                                  {/* Mini header */}
+                                  <div className="absolute top-0 left-0 right-0 h-5 flex items-center px-2 gap-1.5" style={{ background: tema.preview.header, borderBottom: `1px solid ${tema.preview.border}` }}>
+                                    <div className="w-8 h-1.5 rounded-full" style={{ background: tema.preview.accent }} />
+                                    <div className="flex gap-1 ml-auto">
+                                      {[0,1,2].map(i => <div key={i} className="h-1.5 rounded-full" style={{ width: i === 0 ? 14 : i === 1 ? 10 : 10, background: tema.preview.border }} />)}
+                                    </div>
+                                  </div>
+                                  {/* Mini content */}
+                                  <div className="absolute top-6 left-2 right-2 bottom-2 rounded-[3px] p-2 flex flex-col gap-1" style={{ background: tema.preview.surface, border: `1px solid ${tema.preview.border}` }}>
+                                    <div className="h-1.5 rounded-full w-3/4" style={{ background: tema.preview.text, opacity: 0.7 }} />
+                                    <div className="h-1 rounded-full w-1/2" style={{ background: tema.preview.border }} />
+                                    <div className="h-4 rounded-[2px] w-16 mt-auto" style={{ background: tema.preview.accent }} />
+                                  </div>
+                                </div>
+                                {/* Label */}
+                                <div className="px-3 py-2.5 bg-[var(--bg-surface)] border-t border-[var(--border)]">
+                                  <div className="flex items-center justify-between">
+                                    <div>
+                                      <p className="text-[12px] font-bold nl-text">{tema.label}</p>
+                                      <p className="text-[10px] nl-text-muted">{tema.desc}</p>
+                                    </div>
+                                    {active && (
+                                      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[var(--color-primary)]">
+                                        <CheckCircle2 size={12} className="text-white" />
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <p className="text-[11px] nl-text-muted">O tema aplica-se imediatamente em todo o sistema sem necessidade de reiniciar.</p>
+                      </div>
+
+                      <div className="border-t border-[var(--border)]" />
+
                        <div className="grid grid-cols-2 gap-10">
                           <div className="space-y-4">
                              <label className="text-[11px] font-bold nl-text-muted uppercase tracking-wider block">Logotipo da Academia</label>
                              <div className="flex items-center gap-5">
-                                <div className="w-24 h-24 rounded-[6px] bg-slate-50 border border-slate-200 flex items-center justify-center overflow-hidden">
+                                <div className="w-24 h-24 rounded-[6px] bg-[var(--color-secondary-lighter)] border border-[var(--border)] flex items-center justify-center overflow-hidden">
                                    <img src={appLogo || APP_ICON_PATH} className="w-16 h-16 object-contain" alt="Logo" />
                                 </div>
                                 <div className="flex flex-col gap-2">
-                                  <input 
-                                    type="file" 
-                                    id="logo-upload" 
-                                    className="hidden" 
-                                    accept="image/svg+xml,image/png,image/jpeg"
-                                    onChange={(e) => {
-                                      const file = e.target.files?.[0];
-                                      if (file) {
-                                        const reader = new FileReader();
-                                        reader.onload = (ev) => {
-                                          const result = ev.target?.result as string;
-                                          setAppLogo(result);
-                                        };
-                                        reader.readAsDataURL(file);
-                                      }
-                                    }}
+                                  <input type="file" id="logo-upload" className="hidden" accept="image/svg+xml,image/png,image/jpeg"
+                                    onChange={(e) => { const file = e.target.files?.[0]; if (file) { const reader = new FileReader(); reader.onload = (ev) => { setAppLogo(ev.target?.result as string); }; reader.readAsDataURL(file); } }}
                                   />
                                   <button onClick={() => document.getElementById('logo-upload')?.click()} className="nl-btn nl-btn-secondary h-10 px-4 text-[12px]">Alterar Logo</button>
                                   <button onClick={() => { setAppLogo(APP_ICON_PATH); localStorage.removeItem('nl_app_logo'); }} className="text-[10px] font-bold text-red-500 hover:underline">Reset Padrão</button>
@@ -5068,26 +5551,12 @@ function App() {
                           <div className="space-y-4">
                              <label className="text-[11px] font-bold nl-text-muted uppercase tracking-wider block">Banner de Login (50%)</label>
                              <div className="flex items-center gap-5">
-                                <div className="w-32 h-20 rounded-[6px] bg-slate-50 border border-slate-200 flex items-center justify-center overflow-hidden">
+                                <div className="w-32 h-20 rounded-[6px] bg-[var(--color-secondary-lighter)] border border-[var(--border)] flex items-center justify-center overflow-hidden">
                                    <img src={bannerAcademia || DEFAULT_ACADEMY_BANNER} className="w-full h-full object-cover" alt="Banner" />
                                 </div>
                                 <div className="flex flex-col gap-2">
-                                  <input 
-                                    type="file" 
-                                    id="banner-upload" 
-                                    className="hidden" 
-                                    accept="image/*"
-                                    onChange={(e) => {
-                                      const file = e.target.files?.[0];
-                                      if (file) {
-                                        const reader = new FileReader();
-                                        reader.onload = (ev) => {
-                                          const result = ev.target?.result as string;
-                                          setBannerAcademia(result);
-                                        };
-                                        reader.readAsDataURL(file);
-                                      }
-                                    }}
+                                  <input type="file" id="banner-upload" className="hidden" accept="image/*"
+                                    onChange={(e) => { const file = e.target.files?.[0]; if (file) { const reader = new FileReader(); reader.onload = (ev) => { setBannerAcademia(ev.target?.result as string); }; reader.readAsDataURL(file); } }}
                                   />
                                   <button onClick={() => document.getElementById('banner-upload')?.click()} className="nl-btn nl-btn-secondary h-10 px-4 text-[12px]">Upload Imagem</button>
                                   <button onClick={() => { setBannerAcademia(DEFAULT_ACADEMY_BANNER); localStorage.removeItem('nl_banner_academia'); }} className="text-[10px] font-bold text-red-500 hover:underline">Reset Padrão</button>
@@ -5096,12 +5565,12 @@ function App() {
                           </div>
                        </div>
 
-                       <div className="p-6 bg-blue-50 border border-blue-100 rounded-[6px]">
-                          <p className="text-[13px] font-bold text-blue-900 mb-1">Dica de Design</p>
-                          <p className="text-[12px] text-blue-700 leading-relaxed">Para o banner de login, recomendamos imagens horizontais de alta resolução (Full HD) para garantir o impacto visual premium na tela de entrada.</p>
+                       <div className="p-5 bg-[var(--color-primary-light)] border border-[var(--color-primary)]/20 rounded-[6px]">
+                          <p className="text-[12px] font-bold nl-text mb-0.5">Dica de Design</p>
+                          <p className="text-[11px] nl-text-muted leading-relaxed">Para o banner de login, recomenda-se imagens horizontais Full HD para garantir impacto visual premium na tela de entrada.</p>
                        </div>
 
-                        <div className="pt-8 border-t flex justify-end">
+                        <div className="pt-4 border-t border-[var(--border)] flex justify-end">
                            <button onClick={salvarAparencia} className="nl-btn nl-btn-primary px-10 h-11 font-bold rounded-[3px]">Guardar Alterações</button>
                         </div>
                     </div>
@@ -5113,14 +5582,14 @@ function App() {
                     <div className="flex items-center justify-between">
                        <div>
                          <h3 className="text-[28px] font-black nl-text tracking-tighter uppercase">Utilizadores</h3>
-                         <p className="text-slate-500 font-medium mt-1">{listaUtilizadores.length} conta(s) · clique para editar ou ver actividade</p>
+                         <p className="nl-text-muted font-medium mt-1">{listaUtilizadores.length} conta(s) · clique para editar ou ver actividade</p>
                        </div>
                        <button onClick={() => setMostrarFormNovoUtilizador(true)} className="nl-btn nl-btn-primary px-6 h-11 flex items-center gap-2">
                           <Plus size={16} /> Novo Utilizador
                        </button>
                     </div>
 
-                    <div className="border border-[var(--border)] rounded-[6px] overflow-hidden bg-white shadow-sm divide-y divide-slate-100">
+                    <div className="border border-[var(--border)] rounded-[6px] overflow-hidden bg-[var(--bg-surface)] shadow-sm divide-y divide-[var(--border-light)]">
                        {listaUtilizadores.length === 0 && (
                          <p className="px-6 py-8 text-center text-[13px] nl-text-muted">Nenhum utilizador registado.</p>
                        )}
@@ -5137,7 +5606,7 @@ function App() {
                                setUtilizadorEdicaoForm({ name: user.name, role: user.role, isActive: user.is_active !== 0, novaSenha: '' });
                                carregarLogs();
                              }}
-                             className="w-full flex items-center gap-4 px-6 py-4 text-left hover:bg-slate-50/70 transition-colors group"
+                             className="w-full flex items-center gap-4 px-6 py-4 text-left hover:bg-[var(--color-secondary-lighter)]/40 transition-colors group"
                            >
                              {/* Avatar */}
                              <div className="relative shrink-0">
@@ -5154,7 +5623,7 @@ function App() {
                                <div className="flex items-center gap-2">
                                  <p className="text-[14px] font-semibold nl-text truncate">{user.name}</p>
                                  {isCurrent && <span className="text-[9px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-full">Eu</span>}
-                                 {user.is_active === 0 && <span className="text-[9px] font-bold text-slate-400 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded-full">Inactivo</span>}
+                                 {user.is_active === 0 && <span className="text-[9px] font-bold nl-text-muted bg-[var(--color-secondary-lighter)] border border-[var(--border)] px-1.5 py-0.5 rounded-full">Inactivo</span>}
                                </div>
                                <p className="text-[12px] nl-text-muted truncate">{user.email}</p>
                              </div>
@@ -5198,7 +5667,7 @@ function App() {
                  <div className="animate-slide-up space-y-10">
                     <div>
                       <h3 className="text-[28px] font-black nl-text tracking-tighter uppercase">Notificações</h3>
-                      <p className="text-slate-500 font-medium mt-1">Controle quais alertas e avisos recebe no sistema.</p>
+                      <p className="nl-text-muted font-medium mt-1">Controle quais alertas e avisos recebe no sistema.</p>
                     </div>
 
                     {/* Notificações Desktop */}
@@ -5209,7 +5678,7 @@ function App() {
                           { label: 'Notificações de sistema (desktop)', sub: 'Alertas via notificação nativa do sistema operativo', val: desktopNotificationsEnabled, set: setDesktopNotificationsEnabled },
                           { label: 'Alertas do sistema', sub: 'Avisos de backup, actualizações e manutenção', val: notifSistema, set: setNotifSistema },
                         ] as const).map(row => (
-                          <div key={row.label} className="flex items-center justify-between p-4 rounded-[6px] bg-slate-50 border border-slate-200">
+                          <div key={row.label} className="flex items-center justify-between p-4 rounded-[6px] bg-[var(--color-secondary-lighter)]/40 border border-[var(--border)]">
                             <div>
                               <p className="text-[13px] font-semibold nl-text">{row.label}</p>
                               <p className="text-[11px] nl-text-muted mt-0.5">{row.sub}</p>
@@ -5235,9 +5704,9 @@ function App() {
                           { label: 'Matrículas', sub: 'Novos alunos inscritos e alterações de estado', icon: <UserPlus size={16} className="text-blue-600" />, val: notifMatriculas, set: setNotifMatriculas },
                           { label: 'Relatórios mensais', sub: 'Aviso quando o relatório do mês está disponível para exportar', icon: <FileBarChart size={16} className="text-amber-600" />, val: notifRelatorios, set: setNotifRelatorios },
                         ] as const).map(row => (
-                          <div key={row.label} className="flex items-center justify-between p-4 rounded-[6px] bg-slate-50 border border-slate-200">
+                          <div key={row.label} className="flex items-center justify-between p-4 rounded-[6px] bg-[var(--color-secondary-lighter)]/40 border border-[var(--border)]">
                             <div className="flex items-center gap-3">
-                              <div className="w-8 h-8 rounded-[5px] bg-white border border-slate-200 flex items-center justify-center shrink-0 shadow-sm">
+                              <div className="w-8 h-8 rounded-[5px] bg-[var(--bg-surface)] border border-[var(--border)] flex items-center justify-center shrink-0 shadow-sm">
                                 {row.icon}
                               </div>
                               <div>
@@ -5292,7 +5761,7 @@ function App() {
                       ) : (
                         <div className="space-y-2 max-h-64 overflow-y-auto custom-scrollbar">
                           {notificacoes.slice().reverse().map(n => (
-                            <div key={n.id} className={`flex items-start gap-3 p-3 rounded-[5px] border ${n.lida ? 'bg-slate-50 border-slate-100' : 'bg-blue-50 border-blue-100'}`}>
+                            <div key={n.id} className={`flex items-start gap-3 p-3 rounded-[5px] border ${n.lida ? 'bg-[var(--color-secondary-lighter)] border-[var(--border)]' : 'bg-blue-50 border-blue-100'}`}>
                               <div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${n.tipo === 'sucesso' ? 'bg-emerald-500' : n.tipo === 'alerta' ? 'bg-amber-500' : n.tipo === 'erro' ? 'bg-red-500' : 'bg-blue-500'}`} />
                               <div className="flex-1 min-w-0">
                                 <p className="text-[12px] font-semibold nl-text">{n.titulo}</p>
@@ -5316,14 +5785,14 @@ function App() {
                  <div className=" animate-slide-up space-y-10">
                     <div>
                       <h3 className="text-[28px] font-black nl-text tracking-tighter uppercase">Operação & Segurança</h3>
-                      <p className="text-slate-500 font-medium mt-1">Ferramentas de manutenção e cópias de segurança.</p>
+                      <p className="nl-text-muted font-medium mt-1">Ferramentas de manutenção e cópias de segurança.</p>
                     </div>
 
                     <div className="grid grid-cols-1 gap-6">
-                       <div className="p-8 rounded-[6px] bg-slate-50 border border-slate-200 flex flex-col gap-6">
+                       <div className="p-8 rounded-[6px] bg-[var(--color-secondary-lighter)]/40 border border-[var(--border)] flex flex-col gap-6">
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-5">
-                               <div className="w-14 h-14 bg-white rounded-[6px] shadow-sm flex items-center justify-center text-blue-600 shrink-0">
+                               <div className="w-14 h-14 bg-[var(--bg-surface)] rounded-[6px] shadow-sm flex items-center justify-center text-blue-600 shrink-0">
                                   <Archive size={24} />
                                </div>
                                <div>
@@ -5334,14 +5803,14 @@ function App() {
                             <button onClick={gerarBackup} className="nl-btn nl-btn-primary px-8 h-12 shadow-blue-500/10 whitespace-nowrap">Exportar Agora</button>
                           </div>
                           
-                          <div className="flex items-center gap-4 bg-white p-4 rounded-md border border-slate-200 mt-2">
+                          <div className="flex items-center gap-4 bg-[var(--bg-surface)] p-4 rounded-md border border-[var(--border)] mt-2">
                              <div className="flex-1 min-w-0">
-                               <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1">Pasta de Backups (Opcional)</p>
-                               <p className="text-[13px] font-medium text-slate-700 truncate" title={diretorioBackup || 'Guardar e escolher na hora'}>
+                               <p className="text-[10px] font-bold uppercase tracking-widest nl-text-muted mb-1">Pasta de Backups (Opcional)</p>
+                               <p className="text-[13px] font-medium nl-text truncate" title={diretorioBackup || 'Guardar e escolher na hora'}>
                                  {diretorioBackup || 'O sistema perguntará onde guardar cada vez'}
                                </p>
                              </div>
-                             <button onClick={selecionarDiretorioBackup} className="px-4 py-2 text-[11px] font-black uppercase tracking-widest text-slate-500 bg-slate-50 border border-slate-200 hover:bg-slate-100 rounded-md transition-colors whitespace-nowrap">
+                             <button onClick={selecionarDiretorioBackup} className="px-4 py-2 text-[11px] font-black uppercase tracking-widest nl-text-muted bg-[var(--color-secondary-lighter)] border border-[var(--border)] hover:bg-[var(--color-secondary-lighter)]/80 rounded-md transition-colors whitespace-nowrap">
                                Escolher Pasta
                              </button>
                              {diretorioBackup && (
@@ -5355,9 +5824,9 @@ function App() {
                           </div>
                        </div>
 
-                       <div className="p-8 rounded-[6px] bg-slate-50 border border-slate-200 flex items-center justify-between opacity-50 cursor-not-allowed">
+                       <div className="p-8 rounded-[6px] bg-[var(--color-secondary-lighter)]/40 border border-[var(--border)] flex items-center justify-between opacity-50 cursor-not-allowed">
                           <div className="flex items-center gap-5">
-                             <div className="w-14 h-14 bg-white rounded-[6px] shadow-sm flex items-center justify-center text-slate-400">
+                             <div className="w-14 h-14 bg-[var(--bg-surface)] rounded-[6px] shadow-sm flex items-center justify-center nl-text-muted">
                                 <Database size={24} />
                              </div>
                              <div>
@@ -5372,39 +5841,59 @@ function App() {
                )}
 
                {configAba === 'ajuda' && (
-                 <div className=" animate-slide-up space-y-12 py-6">
-                    <div className="text-center space-y-4">
-                       <div className="w-20 h-20 bg-blue-600 rounded-[8px] flex items-center justify-center mx-auto text-white shadow-xl shadow-blue-600/20">
-                          <HelpCircle size={40} />
+                 <div className="animate-slide-up space-y-12">
+                    <div className="text-center space-y-5">
+                       <div className="w-24 h-24 rounded-2xl flex items-center justify-center mx-auto text-white shadow-2xl relative group transition-transform hover:scale-105" style={{ background: 'linear-gradient(135deg, #3B82F6 0%, #2563EB 100%)' }}>
+                          <div className="absolute inset-0 bg-white/20 rounded-2xl blur-xl opacity-50 group-hover:opacity-100 transition-opacity" />
+                          <HelpCircle size={48} className="relative z-10" />
                        </div>
-                       <h3 className="text-[32px] font-black nl-text tracking-tighter uppercase">Centro de Ajuda</h3>
-                       <p className="text-slate-500 font-medium max-w-md mx-auto">Precisa de assistência técnica ou tem dúvidas sobre o funcionamento do NEXTLevel?</p>
+                       <div>
+                          <h3 className="text-[36px] font-black nl-text tracking-tighter uppercase leading-none">Centro de Ajuda</h3>
+                          <p className="nl-text-muted font-medium max-w-sm mx-auto mt-4 leading-relaxed">Assistência técnica dedicada e esclarecimento de dúvidas sobre o ecossistema <span className="font-black nl-text">NEXTLevel</span>.</p>
+                       </div>
                     </div>
 
                     <div className="grid grid-cols-2 gap-6">
-                       <button onClick={() => electron?.ipcRenderer.invoke('open-external', `mailto:${COMPANY_EMAIL}`)} className="p-8 rounded-[8px] bg-white border border-slate-200 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all text-left">
-                          <Mail size={24} className="text-blue-600 mb-4" />
-                          <p className="text-[16px] font-black nl-text mb-1">Suporte por Email</p>
-                          <p className="text-[11px] nl-text-muted font-bold uppercase tracking-wider">Resposta em 24h</p>
+                       <button onClick={() => electron?.ipcRenderer.invoke('open-external', `mailto:${COMPANY_EMAIL}`)} className="group p-8 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] shadow-[0_4px_20px_rgba(0,0,0,0.03)] hover:shadow-[0_20px_40px_rgba(0,0,0,0.06)] hover:-translate-y-1.5 transition-all text-left relative overflow-hidden">
+                          <div className="absolute top-0 right-0 w-32 h-32 bg-[var(--color-primary-light)] rounded-full -mr-16 -mt-16 group-hover:scale-110 transition-transform" />
+                          <div className="w-12 h-12 rounded-lg bg-blue-50 flex items-center justify-center mb-6 text-blue-600">
+                             <Mail size={24} />
+                          </div>
+                          <p className="text-[18px] font-black nl-text mb-1">Suporte via E-mail</p>
+                          <p className="text-[11px] font-bold text-blue-600 uppercase tracking-[0.2em]">Resposta prioritária 24h</p>
                        </button>
-                       <button onClick={() => electron?.ipcRenderer.invoke('open-external', COMPANY_WEBSITE)} className="p-8 rounded-[8px] bg-white border border-slate-200 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all text-left">
-                          <Globe size={24} className="text-blue-600 mb-4" />
-                          <p className="text-[16px] font-black nl-text mb-1">Página Oficial</p>
-                          <p className="text-[11px] nl-text-muted font-bold uppercase tracking-wider">nextlab.com</p>
+
+                       <button onClick={() => electron?.ipcRenderer.invoke('open-external', COMPANY_WEBSITE)} className="group p-8 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] shadow-[0_4px_20px_rgba(0,0,0,0.03)] hover:shadow-[0_20px_40px_rgba(0,0,0,0.06)] hover:-translate-y-1.5 transition-all text-left relative overflow-hidden">
+                          <div className="absolute top-0 right-0 w-32 h-32 bg-[var(--color-secondary-lighter)] rounded-full -mr-16 -mt-16 group-hover:scale-110 transition-transform" />
+                          <div className="w-12 h-12 rounded-lg bg-[var(--color-secondary-lighter)] flex items-center justify-center mb-6 nl-text-muted">
+                             <Globe size={24} />
+                          </div>
+                          <p className="text-[18px] font-black nl-text mb-1">Portal do Cliente</p>
+                          <p className="text-[11px] font-bold nl-text-muted uppercase tracking-[0.2em]">nextlab.com/suporte</p>
                        </button>
                     </div>
 
-                    <div className="p-8 rounded-[8px] bg-slate-900 text-white flex items-center justify-between">
-                       <div className="flex items-center gap-5">
-                          <div className="w-12 h-12 bg-white/10 rounded-[6px] flex items-center justify-center">
-                             <Phone size={20} className="text-blue-400" />
+                    <div className="relative p-10 rounded-2xl overflow-hidden shadow-2xl group transition-all duration-500 hover:shadow-blue-900/20" style={{ background: 'linear-gradient(135deg, #0F172A 0%, #1E293B 100%)' }}>
+                       <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500/10 rounded-full -mr-32 -mt-32 blur-3xl" />
+                       <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-8">
+                          <div className="flex items-center gap-6">
+                             <div className="w-16 h-16 bg-white/5 rounded-xl border border-white/10 flex items-center justify-center relative shadow-inner">
+                                <Phone size={28} className="text-blue-400" />
+                                <span className="absolute -top-1 -right-1 w-4 h-4 bg-emerald-500 border-2 border-[#0F172A] rounded-full animate-pulse" />
+                             </div>
+                             <div>
+                                <div className="flex items-center gap-3">
+                                   <p className="text-[18px] font-black text-white">Suporte Directo</p>
+                                   <span className="text-[9px] font-black bg-blue-500/20 text-blue-400 border border-blue-500/30 px-2 py-0.5 rounded-full uppercase tracking-widest">Online</span>
+                                </div>
+                                <p className="text-white/60 text-[14px] mt-1 font-medium tracking-wide">{COMPANY_PHONE}</p>
+                             </div>
                           </div>
-                          <div>
-                             <p className="text-[15px] font-bold">Suporte Direto</p>
-                             <p className="text-white/50 text-[13px]">{COMPANY_PHONE}</p>
+                          <div className="text-right">
+                             <p className="text-[10px] font-black text-blue-400 uppercase tracking-[0.3em] mb-1">Atendimento Comercial</p>
+                             <p className="text-white/40 text-[11px] font-medium italic">Disponível em dias úteis, 09h — 18h</p>
                           </div>
                        </div>
-                       <p className="text-[11px] font-black text-blue-400 uppercase tracking-widest">Atendimento Comercial</p>
                     </div>
                  </div>
                )}
@@ -5697,6 +6186,63 @@ function App() {
     )}
 
 
+    {/* Modal: Resolver Tudo (Pendências) */}
+    {mostrarResolverPendencias && alunoParaResolver && (
+      <div className="fixed inset-0 nl-modal-overlay flex items-center justify-center z-[150] p-4 animate-in fade-in duration-200">
+        <div className="bg-[var(--bg-surface)] w-full max-w-[450px] shadow-[0_20px_70px_rgba(0,0,0,0.3)] rounded-[8px] border border-[var(--border)] overflow-hidden flex flex-col animate-scale-in" onClick={e => e.stopPropagation()}>
+          <div className="bg-slate-900 h-14 flex items-center shrink-0 px-6">
+            <div className="flex-1 flex items-center gap-3">
+              <div className="h-8 w-8 rounded-full bg-amber-500/20 flex items-center justify-center border border-amber-500/30">
+                <AlertCircle size={18} className="text-amber-500" />
+              </div>
+              <div>
+                <p className="text-[10px] font-black text-amber-500 uppercase tracking-[0.2em] leading-none">Regularização</p>
+                <h2 className="text-[14px] font-bold text-white tracking-tight">Resolver Pendências</h2>
+              </div>
+            </div>
+            <button onClick={() => setMostrarResolverPendencias(false)} className="h-8 w-8 flex items-center justify-center rounded-lg text-white/40 hover:bg-white/10 hover:text-white transition-all">
+              <X size={18} />
+            </button>
+          </div>
+
+          <div className="p-6 space-y-6">
+            <div className="text-center">
+              <p className="text-[13px] nl-text-muted">Estás a regularizar a conta de</p>
+              <p className="text-[18px] font-black nl-text mt-1">{alunoParaResolver.nome}</p>
+            </div>
+
+            <div className="space-y-3">
+              <p className="text-[11px] font-black text-slate-400 uppercase tracking-widest text-center">Meses Selecionados</p>
+              <div className="grid grid-cols-2 gap-2">
+                {mesesParaResolver.map(mes => (
+                  <div key={mes} className="flex items-center gap-2 px-3 py-2 rounded-[6px] bg-emerald-50 border border-emerald-100 text-emerald-700 text-[11px] font-bold">
+                    <CheckCircle2 size={12} /> {mes}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="p-4 rounded-[8px] bg-slate-50 border border-slate-200 flex items-center justify-between">
+              <div>
+                <p className="text-[10px] font-bold text-slate-400 uppercase">Total a Liquidar</p>
+                <p className="text-[20px] font-black nl-text">{formatCve(normalizeAmount(alunoParaResolver.plano) * mesesParaResolver.length)}</p>
+              </div>
+              <div className="text-right">
+                <p className="text-[10px] font-bold text-slate-400 uppercase">Método</p>
+                <p className="text-[11px] font-bold text-slate-700">Dinheiro</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="p-4 bg-slate-50 border-t border-slate-200 flex gap-3">
+            <button onClick={() => setMostrarResolverPendencias(false)} className="flex-1 nl-btn nl-btn-secondary !h-11 !text-[12px] font-bold uppercase tracking-widest">Cancelar</button>
+            <button onClick={resolverPendencias} className="flex-[2] nl-btn !bg-slate-900 !text-white hover:!bg-black !h-11 !text-[12px] font-black uppercase tracking-widest shadow-lg">
+               Resolver {mesesParaResolver.length} Mensalidades
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
 
     {/* Modal: Editar Registo */}
     {mostrarFormEdicao && alunoEdicao && (
@@ -6228,6 +6774,12 @@ function App() {
                />
                <span className="w-8 text-right opacity-80">{zoomLista}%</span>
             </div>
+            {relatorioMensalDisponivel && (
+               <button onClick={() => setAba('relatorios_detalhado')} className="flex items-center gap-2 bg-white/10 px-3 py-1 rounded-full hover:bg-white/20 transition-all border border-white/10">
+                  <Star size={10} className="text-amber-300 fill-amber-300" />
+                  <span className="text-[9px] font-black uppercase tracking-[0.15em]">Relatório de {relatorioMensalDisponivel}</span>
+               </button>
+            )}
             <span className="opacity-80 uppercase tracking-widest text-[10px]">{new Date().toLocaleDateString('pt-PT')}</span>
             <div className="opacity-40 font-bold uppercase tracking-[0.2em] text-[9px]">NEXT LEVEL PRO</div>
          </div>
@@ -6237,19 +6789,22 @@ function App() {
       {mostrarRelatorioMensal && (
         <div className="fixed inset-0 nl-modal-overlay flex items-center justify-center z-[120] p-4 animate-in fade-in duration-200">
            <div className="bg-[var(--bg-surface)] w-full max-w-[850px] shadow-[0_20px_70px_rgba(0,0,0,0.3)] rounded-[6px] border border-[var(--border)] overflow-hidden flex flex-col animate-scale-in" style={{ maxHeight: 'calc(100vh - 40px)' }} onClick={e => e.stopPropagation()}>
-              <div className="bg-[#F1F4F9] border-b border-[#DDE2EB] h-12 flex items-center shrink-0">
-                <div className="flex-1 flex items-center gap-2.5 px-4">
-                  <div className="h-6 w-6 rounded-md bg-white/50 backdrop-blur-sm p-1 border border-white/40 shadow-sm flex items-center justify-center">
-                    <img src={appLogo || APP_ICON_PATH} alt="Logo" className="w-full h-full object-contain" />
+              <div className="bg-[#1E293B] border-b border-white/5 h-14 flex items-center shrink-0 shadow-xl">
+                <div className="flex-1 flex items-center gap-2.5 px-6">
+                  <div className="h-7 w-7 rounded-lg bg-blue-500/20 border border-blue-400/30 flex items-center justify-center">
+                    <Star size={16} className="text-amber-400 fill-amber-400" />
                   </div>
-                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] leading-none">NextLevel</span>
+                  <div>
+                    <p className="text-[10px] font-black text-blue-400 uppercase tracking-[0.2em] leading-none">Intelligence Hub</p>
+                    <p className="text-[12px] font-bold text-white/50 tracking-tight">Relatório Consolidado</p>
+                  </div>
                 </div>
                 <div className="flex-1 text-center whitespace-nowrap">
-                  <h2 className="text-[12px] font-black text-slate-700 uppercase tracking-wider leading-none">Relatório Mensal: {mesFinanceiro.toUpperCase()} {anoFinanceiro}</h2>
+                  <h2 className="text-[14px] font-black text-white uppercase tracking-[0.2em] leading-none">{mesFinanceiro} {anoFinanceiro}</h2>
                 </div>
-                <div className="flex-1 flex justify-end px-3">
-                  <button onClick={() => setMostrarRelatorioMensal(false)} className="h-8 w-8 flex items-center justify-center rounded-md text-slate-400 hover:bg-red-50 hover:text-red-500 transition-all" title="Fechar">
-                    <X size={16} />
+                <div className="flex-1 flex justify-end px-4">
+                  <button onClick={() => setMostrarRelatorioMensal(false)} className="h-10 w-10 flex items-center justify-center rounded-xl text-white/40 hover:bg-white/10 hover:text-white transition-all">
+                    <X size={20} />
                   </button>
                 </div>
               </div>

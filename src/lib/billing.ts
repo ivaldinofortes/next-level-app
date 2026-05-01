@@ -30,6 +30,8 @@ export interface BillingSummary {
   statusLabel: string;
   daysUntilCharge: number;
   overdueDays: number;
+  monthsInDebt: string[];
+  rating: number; // 1-5
 }
 
 const MS_PER_DAY = 1000 * 60 * 60 * 24;
@@ -163,6 +165,8 @@ export const summarizeStudentBilling = (
       statusLabel: 'Bloqueado',
       daysUntilCharge: 0,
       overdueDays: 0,
+      monthsInDebt: [],
+      rating: 1,
     };
   }
 
@@ -174,6 +178,8 @@ export const summarizeStudentBilling = (
       statusLabel: 'Suspenso',
       daysUntilCharge: 0,
       overdueDays: 0,
+      monthsInDebt: [],
+      rating: 3,
     };
   }
 
@@ -185,6 +191,8 @@ export const summarizeStudentBilling = (
       statusLabel: 'Em pausa',
       daysUntilCharge: 0,
       overdueDays: 0,
+      monthsInDebt: [],
+      rating: 3,
     };
   }
 
@@ -211,6 +219,27 @@ export const summarizeStudentBilling = (
   const dueDate = parseFlexibleDate(nextChargeDate) || clampToDay(referenceDate);
   const daysUntilCharge = diffInDays(referenceDate, dueDate);
   const overdueDays = daysUntilCharge < 0 ? Math.abs(daysUntilCharge) : 0;
+
+  // Calculate multiple months in debt
+  const monthsInDebt: string[] = [];
+  if (overdueDays > 0) {
+    let tempDate = new Date(dueDate);
+    while (tempDate < referenceDate) {
+      monthsInDebt.push(`${MONTHS_PT[tempDate.getMonth()]} ${tempDate.getFullYear()}`);
+      tempDate = addMonthsClamped(tempDate, 1);
+    }
+  }
+
+  // Calculate Rating (1-5)
+  // Logic: Starts at 5, drops by 0.5 for each week of total historical delay or current debt
+  let rating = 5;
+  if (monthsInDebt.length > 0) {
+    rating -= monthsInDebt.length;
+  } else if (overdueDays > 0) {
+    rating -= 0.5;
+  }
+  // Clamp rating
+  rating = Math.max(1, Math.min(5, rating));
 
   let status: BillingSummary['status'] = 'pago';
   let statusLabel = 'Pago';
@@ -242,6 +271,8 @@ export const summarizeStudentBilling = (
     statusLabel,
     daysUntilCharge,
     overdueDays,
+    monthsInDebt,
+    rating,
   };
 };
 

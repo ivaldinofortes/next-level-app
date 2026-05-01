@@ -81,6 +81,20 @@ app.whenReady().then(() => {
   const isDev = !app.isPackaged;
   const dbName = isDev ? 'nextlevel-dev.db' : 'nextlevel.db';
   dbPath = path.join(app.getPath('userData'), dbName);
+
+  // Na primeira instalação, copiar seed.db pré-configurado se não existir DB
+  if (!isDev && !fs.existsSync(dbPath)) {
+    const seedPath = path.join(process.resourcesPath, 'seed.db');
+    if (fs.existsSync(seedPath)) {
+      try {
+        fs.copyFileSync(seedPath, dbPath);
+        console.log('seed.db copiado para userData:', dbPath);
+      } catch (e) {
+        console.error('Erro ao copiar seed.db:', e.message);
+      }
+    }
+  }
+
   db = new Database(dbPath);
 
   const normalizeEmail = (email = '') => String(email).trim().toLowerCase();

@@ -2,7 +2,7 @@
   "name": "next-level-app",
   "productName": "Next Level Academia",
   "private": true,
-  "version": "1.0.0-beta.1",
+  "version": "1.0.0-beta.1.1",
   "description": "Sistema de gestão da Next Level Academia desenvolvido pela NEXT LAB.",
   "main": "main.cjs",
   "author": {
@@ -40,6 +40,12 @@
       "package.json",
       "public/**/*",
       "build/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "resources/seed.db",
+        "to": "seed.db"
+      }
     ],
     "directories": {
       "buildResources": "build"
