@@ -793,6 +793,67 @@ app.whenReady().then(() => {
     }
   });
 
+  ipcMain.handle('import-alunos', async (event, alunosToImport) => {
+    console.log('[import-alunos] Recebidos:', Array.isArray(alunosToImport) ? alunosToImport.length : typeof alunosToImport, 'alunos');
+
+    if (!Array.isArray(alunosToImport) || alunosToImport.length === 0) {
+      return { success: false, message: 'Nenhum dado para importar.' };
+    }
+
+    const stmt = db.prepare(`
+      INSERT INTO alunos (
+        id, nome, telefone, email, morada,
+        plano, vencimento, progresso, data_matricula, status, categoria
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    let inseridos = 0;
+    let erros = 0;
+    const detalhesErro = [];
+    const hoje = new Date().toISOString().split('T')[0];
+
+    // Cada aluno é inserido de forma independente para que falhas individuais
+    // (ex: ID duplicado) não comprometam os restantes
+    for (let i = 0; i < alunosToImport.length; i++) {
+      const aluno = alunosToImport[i];
+      try {
+        stmt.run(
+          aluno.id,
+          aluno.nome,
+          aluno.telefone || '',
+          aluno.email || '',
+          aluno.morada || '',
+          aluno.plano || '0',
+          aluno.vencimento || '',
+          100,
+          aluno.data_matricula || hoje,
+          aluno.status || 'ativo',
+          aluno.categoria || 'Geral'
+        );
+        inseridos++;
+      } catch (e) {
+        console.error(`[import-alunos] Erro no aluno ${i + 1} (${aluno.nome}):`, e.message);
+        detalhesErro.push(`${aluno.nome}: ${e.message}`);
+        erros++;
+      }
+    }
+
+    console.log(`[import-alunos] Concluído: ${inseridos} inseridos, ${erros} erros`);
+    try { registrarLog('Importação', `${inseridos} alunos importados (${erros} erros).`); } catch(e) {}
+    return { success: true, result: { inseridos, erros, detalhesErro } };
+  });
+
+  ipcMain.handle('finalizar-importados', async () => {
+    try {
+      const result = db.prepare("UPDATE alunos SET status = 'ativo' WHERE status = 'importado'").run();
+      registrarLog('Finalização', `${result.changes} alunos importados confirmados como ativos.`);
+      return { success: true, changes: result.changes };
+    } catch (err) {
+      console.error('[finalizar-importados] Erro:', err.message);
+      return { success: false, message: err.message };
+    }
+  });
+
   ipcMain.handle('refresh-app', async () => {
     const targetWindow = BrowserWindow.getFocusedWindow() || mainWindow || BrowserWindow.getAllWindows()[0];
     if (!targetWindow) {

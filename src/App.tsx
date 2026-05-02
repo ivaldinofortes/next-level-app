@@ -1,6 +1,7 @@
 // @ts-nocheck
 import { useState, useEffect, useRef, type CSSProperties } from 'react';
 import RootPanel from './RootPanel';
+import ImportarDadosModal from './ImportarDadosModal';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { 
@@ -16,7 +17,7 @@ import {
   BarChart2, BookUser, PieChart, UserPlus, Info, Bell, Sun, Moon, Sparkles,
   Archive, Database, HelpCircle, Globe,
   Menu, ChevronDown, ChevronUp, Clock, ShieldOff, UserCheck, Wallet, Landmark, LayoutList,
-  Star, FileBarChart, Zap, Activity, Printer, ArrowLeft
+  Star, FileBarChart, Zap, Activity, Printer, ArrowLeft, Hash
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import {
@@ -73,6 +74,7 @@ const MONTH_OPTIONS = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho
 
 const isPausedStatus = (status?: string) => status === 'pausado' || status === 'suspenso';
 const isBlockedStatus = (status?: string) => status === 'bloqueado';
+const isImportedStatus = (status?: string) => status === 'importado';
 const isOperationallyActive = (status?: string) => !isPausedStatus(status) && !isBlockedStatus(status);
 
 const getStudentStatusLabel = (status?: string) => {
@@ -292,6 +294,12 @@ const themeVars = {
     '--spacing-lg':              '16px',
     '--spacing-xl':              '20px',
     '--spacing-2xl':             '24px',
+    '--rp0': '#EEF3FF', '--rp0h': '#DDE8FF',
+    '--rp1': '#F2EEFF', '--rp1h': '#E6DCFF',
+    '--rp2': '#EDFFF5', '--rp2h': '#D7FFE9',
+    '--rp3': '#FFF7EE', '--rp3h': '#FFEEDD',
+    '--rp4': '#FFF0F3', '--rp4h': '#FFE0E6',
+    '--rp5': '#EDFFFE', '--rp5h': '#D6FFFB',
   },
   dark: {
     '--color-primary':           '#579DFF',
@@ -343,6 +351,12 @@ const themeVars = {
     '--spacing-lg':              '16px',
     '--spacing-xl':              '20px',
     '--spacing-2xl':             '24px',
+    '--rp0': '#1C2340', '--rp0h': '#222A4A',
+    '--rp1': '#211B38', '--rp1h': '#2A2244',
+    '--rp2': '#172822', '--rp2h': '#1D302A',
+    '--rp3': '#2A2115', '--rp3h': '#32281B',
+    '--rp4': '#2A1A1D', '--rp4h': '#342025',
+    '--rp5': '#162828', '--rp5h': '#1C3131',
   },
 
   // ── Tema Claude — inspirado no design do claude.ai ───────────────
@@ -396,6 +410,12 @@ const themeVars = {
     '--spacing-lg':              '16px',
     '--spacing-xl':              '20px',
     '--spacing-2xl':             '24px',
+    '--rp0': '#EBF0FA', '--rp0h': '#DBEAFF',
+    '--rp1': '#EFE9F6', '--rp1h': '#E3D9F0',
+    '--rp2': '#EAF7EF', '--rp2h': '#D8F0E4',
+    '--rp3': '#FAF2E8', '--rp3h': '#F5EAD8',
+    '--rp4': '#F7E9EE', '--rp4h': '#F0D9E5',
+    '--rp5': '#E9F5F3', '--rp5h': '#D8EEEA',
   },
 };
 
@@ -626,6 +646,28 @@ const GlobalStyles = ({ theme }: { theme: 'light' | 'dark' | 'claude' }) => {
       .nl-table tbody tr { transition: background-color var(--transition-fast); }
       .nl-table tbody tr:hover { background: color-mix(in srgb, var(--color-secondary-lighter) 72%, transparent); }
 
+      /* ── Unified alert / notification component ── */
+      .nl-alert { display:flex; align-items:flex-start; gap:12px; padding:11px 14px; border-radius:6px; border:1px solid; }
+      .nl-alert-icon { width:30px; height:30px; min-width:30px; border-radius:6px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+      .nl-alert-success  { background:#F0FDF4; border-color:#BBF7D0; color:#166534; }
+      .nl-alert-success  .nl-alert-icon { background:#DCFCE7; color:#16A34A; }
+      .nl-alert-warning  { background:#FFFBEB; border-color:#FDE68A; color:#92400E; }
+      .nl-alert-warning  .nl-alert-icon { background:#FEF3C7; color:#D97706; }
+      .nl-alert-error    { background:#FEF2F2; border-color:#FECACA; color:#991B1B; }
+      .nl-alert-error    .nl-alert-icon { background:#FEE2E2; color:#DC2626; }
+      .nl-alert-info     { background:#EFF6FF; border-color:#BFDBFE; color:#1E40AF; }
+      .nl-alert-info     .nl-alert-icon { background:#DBEAFE; color:#2563EB; }
+      .nl-alert-title    { font-size:12px; font-weight:700; line-height:1.3; }
+      .nl-alert-body     { font-size:11px; opacity:.75; margin-top:1px; line-height:1.4; }
+
+      /* ── Row palette — pastel alternating rows ── */
+      tr.rp-0 { background-color: var(--rp0); } tr.rp-0:hover { background-color: var(--rp0h); }
+      tr.rp-1 { background-color: var(--rp1); } tr.rp-1:hover { background-color: var(--rp1h); }
+      tr.rp-2 { background-color: var(--rp2); } tr.rp-2:hover { background-color: var(--rp2h); }
+      tr.rp-3 { background-color: var(--rp3); } tr.rp-3:hover { background-color: var(--rp3h); }
+      tr.rp-4 { background-color: var(--rp4); } tr.rp-4:hover { background-color: var(--rp4h); }
+      tr.rp-5 { background-color: var(--rp5); } tr.rp-5:hover { background-color: var(--rp5h); }
+
       /* ── Divider chip (timeline month) ── */
       .nl-chip {
         display: inline-flex;
@@ -755,13 +797,15 @@ function App() {
   const [alunos, setAlunos] = useState<Aluno[]>([]);
   const [alunoSelecionado, setAlunoSelecionado] = useState<Aluno | null>(null);
   const [mostrarForm, setMostrarForm] = useState(false);
+  const [mostrarImportar, setMostrarImportar] = useState(false);
   const [expandirExtras, setExpandirExtras] = useState(false);
   const [mostrarFormEdicao, setMostrarFormEdicao] = useState(false);
   const [alunoEdicao, setAlunoEdicao] = useState<Aluno | null>(null);
-  const [filtroStatus, setFiltroStatus] = useState<'todos' | 'divida' | 'cobertos'>('todos');
+  const [filtroStatus, setFiltroStatus] = useState<'todos' | 'divida' | 'cobertos' | 'importados'>('todos');
   const [menuAlunoAberto, setMenuAlunoAberto] = useState<string | null>(null);
   const [pesquisa, setPesquisa] = useState('');
   const [pesquisaDirectorio, setPesquisaDirectorio] = useState('');
+  const [modoListaContactos, setModoListaContactos] = useState<'normal' | 'compacto'>('normal');
   const [ordenacaoDirectorio, setOrdenacaoDirectorio] = useState<StudentSortMode>('alfabetica');
   const [filtroDirectorioStatus, setFiltroDirectorioStatus] = useState<DirectoryFilterStatus>('todos');
   const [bannerAcademia, setBannerAcademia] = useState(localStorage.getItem('nl_banner_academia') || DEFAULT_ACADEMY_BANNER);
@@ -793,7 +837,7 @@ function App() {
   });
   const [historicoPagamentos, setHistoricoPagamentos] = useState<Pagamento[]>([]);
   const [alunoParaPagamento, setAlunoParaPagamento] = useState<Aluno | null>(null);
-  const [timelineFinanceiraMinimizada, setTimelineFinanceiraMinimizada] = useState(false);
+  const [timelineFinanceiraMinimizada, setTimelineFinanceiraMinimizada] = useState(true);
 
   // Estados para Central de Contactos Profissional
   const [alunoPerfil, setAlunoPerfil] = useState<Aluno | null>(null);
@@ -805,7 +849,11 @@ function App() {
   const [timelineContactosMinimizada, setTimelineContactosMinimizada] = useState(false);
   const [contactosDesconto, setContactosDesconto] = useState('');
   const [contactosMostrarDesconto, setContactosMostrarDesconto] = useState(false);
-  const [modoListaContactos, setModoListaContactos] = useState<'normal' | 'compacto'>('normal');
+  const [sugestoesNome, setSugestoesNome] = useState<Aluno[]>([]);
+  const [mostrarModalDuplicados, setMostrarModalDuplicados] = useState(false);
+  const [duplicadosEncontrados, setDuplicadosEncontrados] = useState<Aluno[][]>([]);
+  const [mostrarMenuAcoes, setMostrarMenuAcoes] = useState(false);
+  const menuAcoesRef = useRef<HTMLDivElement>(null);
 
   // Estados para gestão de utilizadores
   const [listaUtilizadores, setListaUtilizadores] = useState<any[]>([]);
@@ -1245,6 +1293,7 @@ function App() {
 
   const alunosPausados = resumosFinanceiros.filter(({ aluno }) => isPausedStatus(aluno.status));
   const alunosBloqueados = resumosFinanceiros.filter(({ aluno }) => isBlockedStatus(aluno.status));
+  const alunosImportados = alunos.filter((a) => isImportedStatus(a.status));
   const alunosAtivos = resumosFinanceiros.filter(({ aluno }) => isOperationallyActive(aluno.status));
   const alunosEmDivida = alunosAtivos.filter(({ resumo }) => resumo.status === 'atrasado' || resumo.status === 'hoje');
   const alunosComPagamentoEmDia = alunosAtivos.filter(({ resumo }) => ['pago', 'alerta', 'pendente', 'critico'].includes(resumo.status));
@@ -1305,11 +1354,15 @@ function App() {
   ];
   const novosInscritosRecentes = [...alunos]
     .sort((left, right) => {
-      const leftDate = parseFlexibleDate(left.data_matricula)?.getTime() || 0;
-      const rightDate = parseFlexibleDate(right.data_matricula)?.getTime() || 0;
+      const leftDate = parseFlexibleDate(left.data_matricula)?.getTime();
+      const rightDate = parseFlexibleDate(right.data_matricula)?.getTime();
+      // sem data = recém adicionado → aparece primeiro
+      if (!leftDate && !rightDate) return 0;
+      if (!leftDate) return -1;
+      if (!rightDate) return 1;
       return rightDate - leftDate;
     })
-    .slice(0, 6);
+    .slice(0, 5);
   const generoStats = alunos.reduce(
     (acc, aluno) => {
       const bucket = getGenderBucket(aluno.sexo);
@@ -1417,7 +1470,8 @@ function App() {
     .filter(({ aluno, resumo }) => {
       const statusMatch = filtroStatus === 'todos'
         || (filtroStatus === 'divida' && (resumo.status === 'atrasado' || resumo.status === 'hoje'))
-        || (filtroStatus === 'cobertos' && (resumo.status === 'pago' || resumo.status === 'em_dia' || resumo.status === 'vence_em_breve'));
+        || (filtroStatus === 'cobertos' && (resumo.status === 'pago' || resumo.status === 'em_dia' || resumo.status === 'vence_em_breve'))
+        || (filtroStatus === 'importados' && isImportedStatus(aluno.status));
       const termo = pesquisa.trim().toLowerCase();
       const pesquisaMatch =
         !termo ||
@@ -1590,6 +1644,9 @@ function App() {
         setMostrarModalExport(false);
         fecharConfirmacao();
       }
+      const mod = e.metaKey || e.ctrlKey;
+      if (mod && e.key === 'r') { e.preventDefault(); setAba('relatorios_detalhado'); }
+      if (mod && e.key === ',') { e.preventDefault(); setAba('configuracoes'); }
     };
     window.addEventListener('keydown', handleKeyDown);
 
@@ -1599,6 +1656,20 @@ function App() {
       window.removeEventListener('keydown', handleKeyDown);
     };
   }, []);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (menuAcoesRef.current && !menuAcoesRef.current.contains(event.target as Node)) {
+        setMostrarMenuAcoes(false);
+      }
+    };
+    if (mostrarMenuAcoes) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [mostrarMenuAcoes]);
 
   // Recarregar dados apenas quando a ligação é restaurada (não no arranque)
   const isFirstOnlineRef = useRef(true);
@@ -2141,6 +2212,21 @@ function App() {
   };
 
   // Funções da Central de Contactos
+
+  const handleNomeChange = (nome: string) => {
+    setNovoAluno({ ...novoAluno, nome });
+    if (nome.trim().length > 1) {
+      const termo = nome.toLowerCase().trim();
+      const filtrados = alunos.filter(a => 
+        a.nome.toLowerCase().includes(termo) || 
+        (a.telefone && a.telefone.includes(termo))
+      ).slice(0, 5);
+      setSugestoesNome(filtrados);
+    } else {
+      setSugestoesNome([]);
+    }
+  };
+
   const carregarNotas = async (alunoId: string) => {
     if (electron) {
       const notas = await electron.ipcRenderer.invoke('get-notas', alunoId);
@@ -2265,6 +2351,73 @@ function App() {
     }
   };
 
+  const buscarDuplicados = () => {
+    const grupos: Aluno[][] = [];
+    const visitados = new Set<string>();
+    for (const aluno of alunos) {
+      if (visitados.has(aluno.id)) continue;
+      const nomeNorm = aluno.nome.trim().toLowerCase();
+      const tel = (aluno.telefone || '').replace(/\D/g, '');
+      const grupo = alunos.filter(a => {
+        if (a.id === aluno.id) return false;
+        const aNome = a.nome.trim().toLowerCase();
+        const aTel = (a.telefone || '').replace(/\D/g, '');
+        return aNome === nomeNorm || (tel && aTel && tel === aTel);
+      });
+      if (grupo.length > 0) {
+        const todos = [aluno, ...grupo];
+        todos.forEach(a => visitados.add(a.id));
+        grupos.push(todos);
+      }
+    }
+    setDuplicadosEncontrados(grupos);
+    setMostrarModalDuplicados(true);
+  };
+
+  const finalizarTodosImportados = async () => {
+    if (!electron) return;
+    try {
+      const result = await electron.ipcRenderer.invoke('finalizar-importados');
+      if (result.success) {
+        await carregarConfiguracoes();
+        showToast(`✅ ${result.changes} alunos ativados com sucesso!`);
+      }
+    } catch {
+      showToast('❌ Erro ao finalizar importados.');
+    }
+  };
+
+  const ativarImportado = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!alunoEdicao || !electron) return;
+    try {
+      await electron.ipcRenderer.invoke('update-aluno-dados', {
+        id: alunoEdicao.id,
+        nome: novoAluno.nome,
+        telefone: novoAluno.telefone,
+        email: novoAluno.email,
+        sexo: novoAluno.sexo,
+        data_nascimento: novoAluno.data_nascimento,
+        morada: novoAluno.morada,
+        alergias: novoAluno.alergias,
+        objetivos: novoAluno.objetivos,
+        horario_preferido: novoAluno.horario_preferido,
+        plano: novoAluno.plano,
+        vencimento: novoAluno.vencimento,
+        data_matricula: novoAluno.data_matricula,
+        categoria: novoAluno.categoria,
+        modo_cobranca: novoAluno.modo_cobranca,
+      });
+      await electron.ipcRenderer.invoke('update-aluno-status', alunoEdicao.id, 'ativo');
+      setMostrarFormEdicao(false);
+      setAlunoEdicao(null);
+      await carregarConfiguracoes();
+      showToast(`✅ ${novoAluno.nome} ativado com sucesso!`);
+    } catch {
+      showToast('❌ Erro ao ativar aluno.');
+    }
+  };
+
   // Função unificada de ordenação inteligente (Termométrica)
   const ordenacaoInteligente = (a: any, b: any) => {
     const statusA = calcularStatusVencimento((a.vencimento || ''));
@@ -2317,7 +2470,8 @@ function App() {
     .filter(({ aluno, resumo }) => {
       const statusMatch = filtroStatus === 'todos'
         || (filtroStatus === 'divida' && (resumo.status === 'atrasado' || resumo.status === 'hoje'))
-        || (filtroStatus === 'cobertos' && (resumo.status === 'pago' || resumo.status === 'em_dia' || resumo.status === 'vence_em_breve'));
+        || (filtroStatus === 'cobertos' && (resumo.status === 'pago' || resumo.status === 'em_dia' || resumo.status === 'vence_em_breve'))
+        || (filtroStatus === 'importados' && isImportedStatus(aluno.status));
       const termo = pesquisa.trim().toLowerCase();
       const pesquisaMatch =
         !termo ||
@@ -2355,7 +2509,7 @@ function App() {
         || aluno.nome.toLowerCase().includes(termo)
         || (aluno.telefone || '').toLowerCase().includes(termo)
         || (aluno.email || '').toLowerCase().includes(termo)
-        || aluno.id.toLowerCase().includes(termo);
+        || String(aluno.id).toLowerCase().includes(termo);
 
       return statusMatch && pesquisaMatch;
     }),
@@ -3490,24 +3644,20 @@ function App() {
           </div>
         </div>
 
-        {/* Center: Navigation */}
+        {/* Center: Navigation — 3 primary tabs only */}
         <div className="flex-1 flex items-center justify-center">
-          <nav className="flex items-center gap-1.5 p-1 rounded-[5px] bg-[var(--color-secondary-lighter)] border border-[var(--border-light)] w-[660px]">
+          <nav className="flex items-center gap-1 p-1 rounded-[5px] bg-[var(--color-secondary-lighter)] border border-[var(--border-light)]">
             {[
-              { id: 'home',                 label: 'Painel',     icon: <Layout size={15} /> },
-              { id: 'gestao',               label: 'Alunos',     icon: <Users size={15} /> },
-              { id: 'contactos',            label: 'Contactos',  icon: <BookUser size={15} /> },
-              ...(sessionUser?.role === 'admin' ? [
-                { id: 'relatorios_detalhado', label: 'Relatório', icon: <FileBarChart size={15} /> },
-                { id: 'configuracoes',        label: 'Ajustes',   icon: <Settings size={15} /> },
-              ] : [])
+              { id: 'home',      label: 'Painel',    icon: <Layout size={14} /> },
+              { id: 'gestao',    label: 'Alunos',    icon: <Users size={14} /> },
+              { id: 'contactos', label: 'Contactos', icon: <BookUser size={14} /> },
             ].map((nav) => (
               <button
                 key={nav.id}
                 onClick={() => setAba(nav.id as any)}
-                className={`flex-1 flex items-center justify-center gap-2 px-3 py-1.5 rounded-[4px] text-[12px] font-semibold transition-all ${
+                className={`flex items-center justify-center gap-2 px-5 py-1.5 rounded-[3px] text-[12px] font-semibold transition-all ${
                   aba === nav.id
-                    ? 'bg-[var(--color-primary)] text-white shadow-sm'
+                    ? 'bg-[var(--color-primary)] text-white shadow-[0_1px_4px_rgba(0,101,255,0.3)]'
                     : 'nl-text-muted hover:bg-[var(--bg-surface)] hover:text-[var(--text-primary)]'
                 }`}
               >
@@ -3520,6 +3670,26 @@ function App() {
 
         {/* Right: Context actions + Profile */}
         <div className="flex items-center gap-1.5 min-w-[220px] justify-end">
+          {/* Page chip for secondary pages */}
+          {(aba === 'relatorios_detalhado' || aba === 'configuracoes') && (
+            <div className="flex items-center gap-2 mr-1">
+              <button
+                onClick={() => setAba('home')}
+                className="flex items-center gap-1 text-[11px] font-semibold nl-text-muted hover:text-[var(--color-primary)] transition-colors"
+                title="Voltar ao Painel"
+              >
+                <ChevronLeft size={13} />
+              </button>
+              <span className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11px] font-bold ${
+                aba === 'relatorios_detalhado'
+                  ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                  : 'bg-slate-100 border-slate-200 text-slate-600'
+              }`}>
+                {aba === 'relatorios_detalhado' ? <FileBarChart size={11} /> : <Settings size={11} />}
+                {aba === 'relatorios_detalhado' ? 'Relatório' : 'Ajustes'}
+              </span>
+            </div>
+          )}
           {aba === 'gestao' && (
             <div className="flex items-center gap-1.5 mr-1">
               <button 
@@ -3534,18 +3704,11 @@ function App() {
                 {relatorioMensalDisponivel ? <Star size={14} className="text-amber-300 fill-amber-300 animate-pulse" /> : <FileText size={14} />}
                 Relatório
               </button>
+              <button onClick={() => setMostrarImportar(true)} className="nl-icon-btn !w-8 !h-8 shadow-sm" title="Importar Dados (Excel)">
+                <FileSpreadsheet size={15} className="text-emerald-600" />
+              </button>
               <button onClick={() => { setNovoAluno(novoAlunoDefault); setMostrarForm(true); }} className="nl-btn nl-btn-primary !h-8 !px-3 !text-[12px]">
                 <Plus size={14} /> Matricular
-              </button>
-            </div>
-          )}
-          {aba === 'contactos' && alunoPerfil && (
-            <div className="flex items-center gap-1.5 mr-1">
-              <button onClick={() => marcarComoPago(alunoPerfil.id)} className="nl-btn nl-btn-primary !h-8 !px-3 !text-[11px]">
-                <Wallet size={13} /> Cobrar
-              </button>
-              <button onClick={() => abrirEdicao(alunoPerfil)} className="nl-btn nl-btn-secondary !h-8 !px-3 !text-[11px]">
-                <Edit size={13} /> Editar
               </button>
             </div>
           )}
@@ -3566,8 +3729,13 @@ function App() {
           <div className="relative">
             <button
               onClick={() => setMostrarUserMenu(!mostrarUserMenu)}
-              className="w-9 h-9 rounded-full flex items-center justify-center text-white font-black text-[13px] border-2 border-[var(--bg-app)] shadow-sm hover:scale-105 transition-all ring-1 ring-[var(--border)]"
+              className={`w-9 h-9 rounded-full flex items-center justify-center text-white font-black text-[13px] border-2 border-[var(--bg-app)] shadow-sm hover:scale-105 transition-all ${
+                aba === 'relatorios_detalhado' ? 'ring-2 ring-emerald-400' :
+                aba === 'configuracoes' ? 'ring-2 ring-slate-400' :
+                'ring-1 ring-[var(--border)]'
+              }`}
               style={{ background: 'linear-gradient(135deg, var(--color-primary) 0%, #0747A6 100%)' }}
+              title={aba === 'relatorios_detalhado' ? 'Relatório activo' : aba === 'configuracoes' ? 'Ajustes activos' : 'Menu'}
             >
               {(sessionUser?.name || 'U').charAt(0).toUpperCase()}
             </button>
@@ -3584,18 +3752,24 @@ function App() {
                   <div className="px-1.5 space-y-0.5">
                     {sessionUser?.role === 'admin' && (
                       <>
-                        <button
-                          onClick={() => { setAba('configuracoes'); setMostrarUserMenu(false); }}
-                          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-[4px] hover:bg-[#F4F5F7] text-[13px] font-medium nl-text transition-colors"
-                        >
-                          <Settings size={15} className="text-slate-400" /> Definições do Sistema
-                        </button>
+                        <p className="px-3 pt-1.5 pb-0.5 text-[9px] font-black uppercase tracking-[0.18em] text-slate-400">Ferramentas</p>
                         <button
                           onClick={() => { setAba('relatorios_detalhado'); setMostrarUserMenu(false); }}
-                          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-[4px] hover:bg-emerald-50 text-[13px] font-bold text-emerald-700 transition-colors"
+                          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-[4px] hover:bg-emerald-50 text-[13px] font-semibold text-emerald-700 transition-colors group"
                         >
-                          <FileBarChart size={15} className="text-emerald-500" /> Dossier de Desempenho
+                          <FileBarChart size={15} className="text-emerald-500 shrink-0" />
+                          <span className="flex-1 text-left">Relatório</span>
+                          <kbd className="text-[9px] font-mono text-slate-300 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200 group-hover:bg-emerald-100 group-hover:text-emerald-500 group-hover:border-emerald-200 transition-colors">⌘R</kbd>
                         </button>
+                        <button
+                          onClick={() => { setAba('configuracoes'); setMostrarUserMenu(false); }}
+                          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-[4px] hover:bg-[#F4F5F7] text-[13px] font-semibold nl-text transition-colors group"
+                        >
+                          <Settings size={15} className="text-slate-400 shrink-0" />
+                          <span className="flex-1 text-left">Ajustes do Sistema</span>
+                          <kbd className="text-[9px] font-mono text-slate-300 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200 group-hover:bg-slate-200 group-hover:text-slate-500 transition-colors">⌘,</kbd>
+                        </button>
+                        <div className="h-px bg-[#F4F5F7] my-1 mx-2" />
                       </>
                     )}
 
@@ -3696,148 +3870,219 @@ function App() {
               </div>
 
               {/* ── 4 stat cards ────────────────────────────────────────── */}
-              <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-                {[
+              {(() => {
+                const pctRecebido = receitaPrevista > 0 ? Math.min(100, Math.round((totalRecebidoPeriodo / receitaPrevista) * 100)) : 0;
+                const cards = [
                   {
-                    title: 'Alunos activos', value: String(alunosAtivos.length), sub: 'em operação normal',
+                    title: 'Alunos Activos',
+                    value: String(alunosAtivos.length),
+                    sub: alunosNovosNoPeriodo.length > 0 ? `+${alunosNovosNoPeriodo.length} novos em ${mesFinanceiro}` : 'Sem novas entradas',
                     action: () => setAba('gestao'),
-                    color: '#1B6ABF',
-                    bgColor: '#F2F8FF',
-                    borderColor: '#E1EFFF',
-                    icon: <Users size={18} />,
+                    color: '#1B6ABF', bgColor: '#F2F8FF', borderColor: '#E1EFFF',
+                    icon: <Users size={15} />,
+                    extra: null as React.ReactNode,
                   },
                   {
-                    title: 'Vencem hoje', value: String(cobrancasParaHoje), sub: cobrancasParaHoje > 0 ? 'ações imediatas' : 'sem urgências',
+                    title: 'Em Dívida',
+                    value: String(alunosEmDivida.length),
+                    sub: alunosEmDivida.length > 0 ? formatCve(previsaoRecuperacao) + ' em atraso' : 'Tudo regularizado',
                     action: () => { setAba('gestao'); setFiltroStatus('divida'); },
-                    color: '#C26B00',
-                    bgColor: '#FFF9EB',
-                    borderColor: '#FFEDC2',
-                    icon: <Clock size={18} />,
+                    color: alunosEmDivida.length > 0 ? '#C0392B' : '#1A7A48',
+                    bgColor: alunosEmDivida.length > 0 ? '#FFF5F5' : '#F2FDF5',
+                    borderColor: alunosEmDivida.length > 0 ? '#FFEBEB' : '#E1F7E9',
+                    icon: <AlertCircle size={15} />,
+                    extra: null as React.ReactNode,
                   },
                   {
-                    title: 'Em cobrança', value: String(alunosEmDivida.length), sub: alunosEmDivida.length > 0 ? 'pedem atenção' : 'tudo regularizado',
+                    title: 'Vencem Hoje',
+                    value: String(cobrancasParaHoje),
+                    sub: cobrancasCriticas > 0 ? `${cobrancasCriticas} em estado crítico` : 'Sem urgências imediatas',
                     action: () => { setAba('gestao'); setFiltroStatus('divida'); },
-                    color: '#C0392B',
-                    bgColor: '#FFF5F5',
-                    borderColor: '#FFEBEB',
-                    icon: <AlertCircle size={18} />,
+                    color: cobrancasParaHoje > 0 ? '#C26B00' : '#1A7A48',
+                    bgColor: cobrancasParaHoje > 0 ? '#FFF9EB' : '#F2FDF5',
+                    borderColor: cobrancasParaHoje > 0 ? '#FFEDC2' : '#E1F7E9',
+                    icon: <Clock size={15} />,
+                    extra: null as React.ReactNode,
                   },
                   {
-                    title: 'Receita prevista', value: formatCve(receitaPrevista), sub: 'alunos operacionais',
-                    action: () => setAba('gestao'),
-                    color: '#1A7A48',
-                    bgColor: '#F2FDF5',
-                    borderColor: '#E1F7E9',
-                    icon: <Wallet size={18} />,
-                  },
-                ].map(card => (
-                  <button key={card.title} type="button" onClick={card.action}
-                    style={{ backgroundColor: card.bgColor, borderColor: card.borderColor }}
-                    className="group text-left rounded-[6px] border p-4 hover:shadow-[0_4px_12px_rgba(0,0,0,0.06)] transition-all duration-200 shadow-[0_1px_4px_rgba(0,0,0,0.03)]">
-                    <div className="flex items-center gap-2.5 mb-3">
-                      <div className="shrink-0" style={{ color: card.color }}>
-                        {card.icon}
+                    title: 'Receita do Mês',
+                    value: formatCve(totalRecebidoPeriodo),
+                    sub: `de ${formatCve(receitaPrevista)} previstos`,
+                    action: () => setAba('relatorios_detalhado'),
+                    color: '#1A7A48', bgColor: '#F2FDF5', borderColor: '#E1F7E9',
+                    icon: <Wallet size={15} />,
+                    extra: (
+                      <div className="mt-2.5">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-[9px] font-bold uppercase tracking-wider" style={{ color: '#1A7A48', opacity: 0.7 }}>Arrecadado</span>
+                          <span className="text-[10px] font-black" style={{ color: '#1A7A48' }}>{pctRecebido}%</span>
+                        </div>
+                        <div className="h-1 w-full rounded-full bg-emerald-100 overflow-hidden">
+                          <div className="h-full rounded-full bg-emerald-500 transition-all duration-700" style={{ width: `${pctRecebido}%` }} />
+                        </div>
                       </div>
-                      <p className="text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider leading-tight">{card.title}</p>
-                    </div>
-                    <p className="text-[20px] font-black nl-text leading-tight">{card.value}</p>
-                    <p className="text-[10px] text-[var(--text-secondary)] mt-1 font-medium">{card.sub}</p>
-                  </button>
-                ))}
-              </div>
+                    ),
+                  },
+                ];
+                return (
+                  <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                    {cards.map(card => (
+                      <button key={card.title} type="button" onClick={card.action}
+                        style={{ backgroundColor: card.bgColor, borderColor: card.borderColor }}
+                        className="group text-left rounded-[6px] border p-4 hover:shadow-[0_4px_12px_rgba(0,0,0,0.08)] transition-all duration-200 shadow-[0_1px_4px_rgba(0,0,0,0.04)] relative overflow-hidden">
+                        <div className="absolute top-0 left-0 right-0 h-[3px] rounded-t-[6px]" style={{ background: card.color }} />
+                        <div className="flex items-start justify-between mt-1 mb-2">
+                          <p className="text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider leading-tight pr-1">{card.title}</p>
+                          <div className="w-7 h-7 rounded-full flex items-center justify-center shrink-0" style={{ background: `${card.color}18`, color: card.color }}>
+                            {card.icon}
+                          </div>
+                        </div>
+                        <p className="text-[22px] font-black nl-text leading-none">{card.value}</p>
+                        <p className="text-[10px] text-[var(--text-secondary)] mt-1.5 font-medium leading-tight">{card.sub}</p>
+                        {card.extra}
+                      </button>
+                    ))}
+                  </div>
+                );
+              })()}
 
-              {/* ── Radar + Inscrições recentes ─────────────────────────── */}
+              {/* ── Alert strip — avisos contextuais padronizados ─── */}
+              {(relatorioMensalDisponivel || alunosImportados.length > 0 || (alunosEmDivida.length > 3)) && (
+                <div className="space-y-2">
+                  {relatorioMensalDisponivel && (
+                    <div className="nl-alert nl-alert-info">
+                      <div className="nl-alert-icon"><FileBarChart size={15} /></div>
+                      <div className="flex-1 min-w-0">
+                        <p className="nl-alert-title">Relatório de {relatorioMensalDisponivel} disponível</p>
+                        <p className="nl-alert-body">Aceda ao dossier de desempenho para exportar em PDF ou Excel.</p>
+                      </div>
+                      <button onClick={() => setAba('relatorios_detalhado')} className="shrink-0 text-[10px] font-black uppercase tracking-wider text-blue-700 bg-blue-100 hover:bg-blue-200 border border-blue-200 px-2.5 py-1 rounded-[4px] transition-colors self-start mt-0.5">
+                        Ver →
+                      </button>
+                    </div>
+                  )}
+                  {alunosImportados.length > 0 && (
+                    <div className="nl-alert nl-alert-warning">
+                      <div className="nl-alert-icon"><FileSpreadsheet size={15} /></div>
+                      <div className="flex-1 min-w-0">
+                        <p className="nl-alert-title">{alunosImportados.length} {alunosImportados.length === 1 ? 'aluno importado aguarda' : 'alunos importados aguardam'} revisão</p>
+                        <p className="nl-alert-body">Confirme os dados antes de activar as cobranças automáticas.</p>
+                      </div>
+                      <button onClick={() => { setAba('gestao'); setFiltroStatus('importados'); }} className="shrink-0 text-[10px] font-black uppercase tracking-wider text-amber-800 bg-amber-100 hover:bg-amber-200 border border-amber-200 px-2.5 py-1 rounded-[4px] transition-colors self-start mt-0.5">
+                        Rever →
+                      </button>
+                    </div>
+                  )}
+                  {alunosEmDivida.length > 3 && !alunosImportados.length && (
+                    <div className="nl-alert nl-alert-error">
+                      <div className="nl-alert-icon"><AlertCircle size={15} /></div>
+                      <div className="flex-1 min-w-0">
+                        <p className="nl-alert-title">{alunosEmDivida.length} alunos com cobrança em atraso</p>
+                        <p className="nl-alert-body">{formatCve(previsaoRecuperacao)} em montante por recuperar este mês.</p>
+                      </div>
+                      <button onClick={() => { setAba('gestao'); setFiltroStatus('divida'); }} className="shrink-0 text-[10px] font-black uppercase tracking-wider text-red-800 bg-red-100 hover:bg-red-200 border border-red-200 px-2.5 py-1 rounded-[4px] transition-colors self-start mt-0.5">
+                        Ver →
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ── Acesso Rápido + Inscrições recentes ─────────────────── */}
               <div className="grid gap-4 lg:grid-cols-2">
 
-                {/* Centro de Operações */}
-                <div className="rounded-[8px] border border-[var(--border)] bg-[var(--bg-surface)] p-6 shadow-[0_2px_8px_rgba(9,30,66,0.06)]">
-                  <div className="flex items-center justify-between mb-8">
+                {/* Acesso Rápido — ícones flutuantes inteligentes */}
+                <div className="rounded-[6px] border border-[var(--border)] bg-[var(--bg-surface)] p-5 shadow-[0_2px_8px_rgba(9,30,66,0.06)]">
+                  <div className="flex items-center justify-between mb-5">
                     <div>
                       <p className="text-[10px] font-bold uppercase tracking-[0.25em] text-[var(--color-primary)]/50 mb-0.5">Acesso rápido</p>
-                      <h3 className="text-[16px] font-bold nl-text">Centro de Operações</h3>
+                      <h3 className="text-[15px] font-bold nl-text">Centro de Operações</h3>
                     </div>
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 bg-emerald-50 border border-emerald-200 rounded-full px-2.5 py-1">
                       <div className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                      <span className="text-[10px] font-medium nl-text-muted">Sistema activo</span>
+                      <span className="text-[10px] font-semibold text-emerald-700">Online</span>
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-5 gap-2">
+                  <div className="grid grid-cols-5 gap-1">
                     {([
                       {
                         id: 'alunos',
                         label: 'Alunos',
                         sublabel: `${alunosAtivos.length} activos`,
-                        icon: <Users size={26} />,
-                        gradient: 'from-blue-500 to-blue-600',
-                        glow: 'rgba(59,130,246,0.18)',
-                        badge: null as number | null,
+                        icon: <Users size={30} />,
+                        color: '#2563EB',
+                        badge: null as string | number | null,
+                        pulse: false,
                         action: () => setAba('gestao'),
                       },
                       {
                         id: 'cobrancas',
                         label: 'Cobranças',
-                        sublabel: cobrancasParaHoje > 0 ? `${cobrancasParaHoje} hoje` : 'Em dia',
-                        icon: <Wallet size={26} />,
-                        gradient: cobrancasParaHoje > 0 ? 'from-red-500 to-rose-600' : 'from-emerald-500 to-emerald-600',
-                        glow: cobrancasParaHoje > 0 ? 'rgba(239,68,68,0.18)' : 'rgba(16,185,129,0.18)',
+                        sublabel: alunosEmDivida.length > 0 ? `${alunosEmDivida.length} em dívida` : 'Em dia',
+                        icon: <Wallet size={30} />,
+                        color: alunosEmDivida.length > 0 ? '#DC2626' : '#16A34A',
                         badge: cobrancasParaHoje > 0 ? cobrancasParaHoje : null,
+                        pulse: cobrancasParaHoje > 0,
                         action: () => { setAba('gestao'); setFiltroStatus('divida'); },
                       },
                       {
                         id: 'contactos',
                         label: 'Contactos',
-                        sublabel: `${alunos.length} parceiros`,
-                        icon: <BookUser size={26} />,
-                        gradient: 'from-indigo-500 to-violet-600',
-                        glow: 'rgba(99,102,241,0.18)',
-                        badge: null,
+                        sublabel: alunosImportados.length > 0 ? `${alunosImportados.length} p/ rever` : `${alunos.length} inscritos`,
+                        icon: <BookUser size={30} />,
+                        color: alunosImportados.length > 0 ? '#D97706' : '#7C3AED',
+                        badge: alunosImportados.length > 0 ? alunosImportados.length : null,
+                        pulse: alunosImportados.length > 0,
                         action: () => setAba('contactos'),
                       },
                       {
                         id: 'relatorio',
                         label: 'Relatório',
-                        sublabel: relatorioMensalDisponivel ? 'Disponível' : 'Dossier Mensal',
-                        icon: <FileBarChart size={26} />,
-                        gradient: relatorioMensalDisponivel ? 'from-emerald-500 to-teal-600' : 'from-slate-500 to-slate-600',
-                        glow: relatorioMensalDisponivel ? 'rgba(16,185,129,0.20)' : 'rgba(100,116,139,0.15)',
-                        badge: relatorioMensalDisponivel ? '★' : null,
+                        sublabel: relatorioMensalDisponivel ? `${relatorioMensalDisponivel} pronto` : 'Dossier',
+                        icon: <FileBarChart size={30} />,
+                        color: relatorioMensalDisponivel ? '#0D9488' : '#64748B',
+                        badge: relatorioMensalDisponivel ? '!' : null,
+                        pulse: !!relatorioMensalDisponivel,
                         action: () => setAba('relatorios_detalhado'),
                       },
                       {
                         id: 'config',
                         label: 'Ajustes',
                         sublabel: 'Configurações',
-                        icon: <Settings size={26} />,
-                        gradient: 'from-slate-600 to-slate-700',
-                        glow: 'rgba(71,85,105,0.15)',
+                        icon: <Settings size={30} />,
+                        color: '#64748B',
                         badge: null,
-                        action: () => setAba('config'),
+                        pulse: false,
+                        action: () => setAba('configuracoes'),
                       },
                     ] as const).map((item) => (
                       <button
                         key={item.id}
                         type="button"
                         onClick={item.action}
-                        className="group flex flex-col items-center gap-3 py-5 px-2 rounded-[8px] transition-all active:scale-95 hover:bg-[var(--color-secondary-lighter)]/40"
-                        style={{ '--glow': item.glow } as React.CSSProperties}
+                        className="group flex flex-col items-center gap-2 py-4 px-1 rounded-[6px] transition-all active:scale-95 hover:bg-[var(--color-secondary-lighter)]/50"
                       >
-                        <div className="relative">
+                        <div className="relative flex items-center justify-center">
+                          {/* anel de pulso para alertas */}
+                          {item.pulse && (
+                            <span className="absolute inset-0 rounded-full animate-ping opacity-20" style={{ background: item.color }} />
+                          )}
                           <div
-                            className={`w-14 h-14 rounded-[12px] bg-gradient-to-br ${item.gradient} flex items-center justify-center text-white shadow-md transition-all group-hover:scale-110 group-hover:shadow-lg`}
-                            style={{ boxShadow: `0 4px 14px var(--glow, rgba(0,0,0,0.12))` }}
+                            className="transition-all group-hover:scale-110"
+                            style={{ color: item.color }}
                           >
                             {item.icon}
                           </div>
                           {item.badge !== null && (
-                            <span className="absolute -top-1 -right-1 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-black text-white shadow border-2 border-[var(--bg-surface)]">
+                            <span className="absolute -top-2 -right-2.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-red-500 px-1 text-[8px] font-black text-white shadow border border-[var(--bg-surface)]">
                               {item.badge}
                             </span>
                           )}
                         </div>
                         <div className="text-center">
-                          <p className="text-[12px] font-semibold nl-text leading-tight">{item.label}</p>
-                          <p className="text-[10px] nl-text-muted mt-0.5">{item.sublabel}</p>
+                          <p className="text-[11px] font-semibold nl-text leading-tight">{item.label}</p>
+                          <p className="text-[9px] nl-text-muted mt-0.5 leading-tight">{item.sublabel}</p>
                         </div>
                       </button>
                     ))}
@@ -3845,44 +4090,88 @@ function App() {
                 </div>
 
                 {/* Inscrições recentes */}
-                <div className="rounded-[8px] border border-[var(--border)] bg-[var(--bg-surface)] p-4 shadow-[0_2px_8px_rgba(9,30,66,0.05)]">
-                  <div className="flex items-center justify-between mb-3">
+                <div className="rounded-[6px] border border-[var(--border)] bg-[var(--bg-surface)] shadow-[0_2px_8px_rgba(9,30,66,0.05)] flex flex-col overflow-hidden">
+                  <div className="flex items-center justify-between px-4 pt-4 pb-3 border-b border-[var(--border-light)]">
                     <div>
-                      <p className="text-[9px] font-bold uppercase tracking-[0.22em] text-[var(--text-secondary)] mb-1">Alunos recentes</p>
+                      <p className="text-[9px] font-bold uppercase tracking-[0.22em] text-[var(--text-secondary)] mb-0.5">Actualização em tempo real</p>
                       <h3 className="text-[14px] font-bold nl-text">Últimas inscrições</h3>
                     </div>
                     <button type="button" onClick={() => setAba('gestao')}
-                      className="text-[11px] font-semibold text-[var(--color-primary)] hover:underline underline-offset-2 transition-all">
-                      Ver todos
+                      className="text-[11px] font-semibold text-[var(--color-primary)] hover:underline underline-offset-2 transition-all shrink-0">
+                      Ver todos →
                     </button>
                   </div>
-                  <div className="space-y-0.5">
+                  <div className="flex-1 overflow-y-auto custom-scrollbar">
                     {novosInscritosRecentes.length === 0 ? (
-                      <p className="text-center text-[12px] text-[var(--text-secondary)] py-8 font-medium">Sem alunos registados</p>
-                    ) : novosInscritosRecentes.slice(0, 5).map((aluno, idx) => (
-                      <button key={aluno.id} type="button"
-                        onClick={() => { setAlunoPerfil(aluno); carregarNotas(aluno.id); setAba('contactos'); }}
-                        className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-[5px] transition-colors text-left border-b border-[var(--border-light)] last:border-0 ${idx === 0 ? 'bg-amber-50/60 hover:bg-amber-50' : 'hover:bg-[var(--color-secondary-lighter)]/40'}`}>
-                        <div className={`relative w-8 h-8 rounded-[4px] flex items-center justify-center text-[11px] font-black nl-text shrink-0 border ${idx === 0 ? 'bg-amber-100 border-amber-200 text-amber-800' : 'bg-slate-100 border-slate-200'}`}>
-                          {aluno.nome.charAt(0).toUpperCase()}
-                          {idx === 0 && (
-                            <span className="absolute -top-1.5 -right-1.5 flex items-center justify-center w-4 h-4 rounded-full bg-amber-400 shadow-sm">
-                              <Star size={8} className="text-white fill-white" />
-                            </span>
-                          )}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-1.5">
-                            <p className="text-[12px] font-semibold nl-text truncate">{aluno.nome}</p>
-                            {idx === 0 && <span className="text-[9px] font-bold text-amber-600 bg-amber-100 px-1.5 py-0.5 rounded-full whitespace-nowrap shrink-0">Novo parceiro</span>}
+                      <div className="flex flex-col items-center justify-center py-10 gap-2 opacity-40">
+                        <Users size={24} className="nl-text-muted" />
+                        <p className="text-[12px] font-medium nl-text-muted">Sem alunos registados</p>
+                      </div>
+                    ) : novosInscritosRecentes.map((aluno, idx) => {
+                      const dataMatricula = parseFlexibleDate(aluno.data_matricula);
+                      const hoje = new Date(); hoje.setHours(0,0,0,0);
+                      const isHoje = dataMatricula && dataMatricula.getTime() === hoje.getTime();
+                      const avatarColors = ['bg-blue-500','bg-violet-500','bg-emerald-500','bg-rose-500','bg-amber-500','bg-teal-500','bg-indigo-500'];
+                      const avatarBg = avatarColors[aluno.nome.charCodeAt(0) % avatarColors.length];
+                      const isLatest = idx === 0;
+                      if (isLatest) {
+                        return (
+                          <button key={aluno.id} type="button"
+                            onClick={() => { setAlunoPerfil(aluno); carregarNotas(aluno.id); setAba('contactos'); }}
+                            className="w-full text-left px-4 py-3.5 border-b border-[var(--border-light)] transition-colors hover:brightness-[0.97]"
+                            style={{ background: 'linear-gradient(135deg, #EEF4FF 0%, #E8F5E9 100%)' }}>
+                            <div className="flex items-center gap-3">
+                              <div className="relative shrink-0">
+                                <div className={`w-10 h-10 rounded-full flex items-center justify-center text-[13px] font-black text-white overflow-hidden shadow-md ${avatarBg}`}>
+                                  {aluno.foto_path
+                                    ? <img src={`local-resource://${aluno.foto_path}`} className="w-full h-full object-cover" />
+                                    : aluno.nome.slice(0,2).toUpperCase()}
+                                </div>
+                                <span className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full bg-amber-400 border-2 border-white flex items-center justify-center shadow-sm">
+                                  <Star size={7} className="text-white fill-white" />
+                                </span>
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-1.5 mb-0.5">
+                                  <p className="text-[13px] font-black text-slate-800 truncate leading-tight">{aluno.nome}</p>
+                                  {isHoje && <span className="text-[8px] font-bold text-emerald-700 bg-emerald-100 border border-emerald-200 px-1.5 py-0.5 rounded-[3px] shrink-0">Hoje</span>}
+                                  {isImportedStatus(aluno.status) && <span className="text-[8px] font-bold text-amber-700 bg-amber-100 border border-amber-200 px-1.5 py-0.5 rounded-[3px] shrink-0">Importado</span>}
+                                </div>
+                                <p className="text-[10px] text-slate-500 font-medium">{aluno.categoria || 'Geral'}</p>
+                              </div>
+                              <div className="text-right shrink-0">
+                                <span className="text-[9px] font-black text-blue-600 bg-blue-100 border border-blue-200 px-2 py-0.5 rounded-[3px] uppercase tracking-wide block mb-1">Último</span>
+                                <span className="text-[10px] font-medium text-slate-500 tabular-nums">
+                                  {dataMatricula ? formatPtDate(dataMatricula) : '—'}
+                                </span>
+                              </div>
+                            </div>
+                          </button>
+                        );
+                      }
+                      return (
+                        <button key={aluno.id} type="button"
+                          onClick={() => { setAlunoPerfil(aluno); carregarNotas(aluno.id); setAba('contactos'); }}
+                          className="w-full flex items-center gap-3 px-4 py-2.5 transition-colors text-left border-b border-[var(--border-light)] last:border-0 hover:bg-[var(--color-secondary-lighter)]/40">
+                          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-black text-white shrink-0 overflow-hidden ${avatarBg}`}>
+                            {aluno.foto_path
+                              ? <img src={`local-resource://${aluno.foto_path}`} className="w-full h-full object-cover" />
+                              : aluno.nome.slice(0,2).toUpperCase()}
                           </div>
-                          <p className="text-[10px] text-[var(--text-secondary)] uppercase tracking-wider font-medium">{aluno.categoria || 'Geral'}</p>
-                        </div>
-                        <span className="text-[10px] font-medium nl-text-muted shrink-0 tabular-nums">
-                          {(() => { const d = parseFlexibleDate(aluno.data_matricula); return d ? formatPtDate(d) : '—'; })()}
-                        </span>
-                      </button>
-                    ))}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              <p className="text-[12px] font-semibold nl-text truncate leading-tight">{aluno.nome}</p>
+                              {isHoje && <span className="text-[8px] font-bold text-emerald-700 bg-emerald-100 border border-emerald-200 px-1.5 py-0.5 rounded-[3px] shrink-0">Hoje</span>}
+                              {isImportedStatus(aluno.status) && <span className="text-[8px] font-bold text-amber-700 bg-amber-100 border border-amber-200 px-1.5 py-0.5 rounded-[3px] shrink-0">Importado</span>}
+                            </div>
+                            <p className="text-[10px] nl-text-muted">{aluno.categoria || 'Geral'}</p>
+                          </div>
+                          <span className="text-[10px] font-medium nl-text-muted shrink-0 tabular-nums">
+                            {dataMatricula ? formatPtDate(dataMatricula) : <span className="text-amber-600">—</span>}
+                          </span>
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
 
@@ -3931,9 +4220,9 @@ function App() {
 
           return (
             <div className="animate-slide-up h-full w-full flex flex-col overflow-hidden">
-              {/* Timeline — idêntica às outras páginas */}
-              <div className="shrink-0 border-b border-[var(--border)] bg-[var(--color-secondary-lighter)]/12">
-                <div className="overflow-x-auto py-1.5">
+              {/* ── Barra de período ── */}
+              <div className="sticky top-0 z-20 shrink-0 border-b border-blue-100 bg-[#EEF4FF]">
+                <div className={`overflow-x-auto transition-all ${timelineFinanceiraMinimizada ? 'py-1' : 'py-1.5'}`}>
                   <div className="flex min-w-[1100px] items-center gap-4 px-6">
                     <span className="text-[11px] font-extrabold nl-text tracking-tight whitespace-nowrap shrink-0">Período</span>
                     <div className="flex items-center gap-2 shrink-0">
@@ -3949,25 +4238,35 @@ function App() {
                           const ativo = mesRelatorio === mes;
                           const atual = anoRelatorio === new Date().getFullYear() && index === new Date().getMonth();
                           return (
-                            <button key={mes} onClick={() => setMesRelatorio(mes)} className="group flex min-w-[70px] flex-col items-center gap-0.5 py-1 transition-all">
+                            <button key={mes} onClick={() => setMesRelatorio(mes)}
+                              className={`group flex min-w-[70px] flex-col items-center rounded-[5px] px-1.5 transition-all ${timelineFinanceiraMinimizada ? 'gap-0 py-0.5' : 'gap-0.5 py-1'}`}
+                              title={`${mes} ${anoRelatorio}`}>
                               <span className={`h-3 w-3 rounded-full border transition-all ${ativo ? 'border-[var(--color-primary)] bg-[var(--color-primary)] shadow-[0_0_0_3px_rgba(37,99,235,0.12)]' : atual ? 'border-[#2563EB] bg-white' : 'border-[var(--border)] bg-[var(--bg-surface)] group-hover:border-[var(--color-primary)]/45'}`} />
-                              <div className={`text-[10px] font-bold uppercase tracking-[0.12em] transition-all ${ativo ? 'text-[var(--color-primary)]' : 'text-[var(--text-secondary)]'}`}>{mes.slice(0,3)}</div>
+                              <div className={`transition-all ${timelineFinanceiraMinimizada ? 'h-0 overflow-hidden opacity-0' : 'opacity-100'}`}>
+                                <p className={`text-[9px] font-bold uppercase tracking-[0.12em] ${ativo ? 'text-[var(--color-primary)]' : 'text-[var(--text-secondary)]'}`}>{mes.slice(0,3)}</p>
+                              </div>
                             </button>
                           );
                         })}
                       </div>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
-                      <button onClick={() => window.print()} className="inline-flex h-7 items-center gap-1.5 rounded-full border border-[var(--border-light)] px-3 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--text-secondary)] hover:bg-[var(--color-secondary-lighter)]/45 transition-colors"><Printer size={12} /> Imprimir</button>
+                      <button onClick={() => window.print()} className="inline-flex h-7 items-center gap-1.5 rounded-full border border-[var(--border-light)] px-3 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--text-secondary)] hover:bg-white/60 transition-colors"><Printer size={12} /> Imprimir</button>
                       <button onClick={() => exportarRelatorioExcel()} className="inline-flex h-7 items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 text-[10px] font-bold uppercase tracking-[0.12em] text-emerald-700 hover:bg-emerald-100 transition-colors"><Download size={12} /> Excel</button>
+                      <button type="button" onClick={() => setTimelineFinanceiraMinimizada(prev => !prev)}
+                        className="inline-flex h-7 items-center gap-1.5 rounded-full border border-[var(--border-light)] px-3 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--text-secondary)] transition-colors hover:bg-white/60"
+                        title={timelineFinanceiraMinimizada ? 'Expandir' : 'Minimizar'}>
+                        <ChevronDown size={13} className={`transition-transform ${timelineFinanceiraMinimizada ? '-rotate-90' : 'rotate-0'}`} />
+                        {timelineFinanceiraMinimizada ? 'Expandir' : 'Minimizar'}
+                      </button>
                     </div>
                   </div>
                 </div>
               </div>
 
-              {/* Corpo — folha de relatório */}
+              {/* ── Corpo — folha de relatório ── */}
               <div className="flex-1 overflow-y-auto custom-scrollbar bg-[var(--bg-app)] px-8 py-8">
-                <div className="mx-auto max-w-[860px]">
+                <div className="mx-auto" style={{ maxWidth: `${larguraListas}px` }}>
                   <div className="bg-white rounded-[3px] shadow-[0_6px_40px_rgba(15,23,42,0.13),0_1px_4px_rgba(15,23,42,0.07)]">
 
                     {/* Cabeçalho do documento */}
@@ -4163,8 +4462,8 @@ function App() {
         {/* Module: Alunos */}
         {aba === 'gestao' && (
           <div className="animate-slide-up h-full flex flex-col w-full overflow-hidden">
-            <div className="sticky top-0 z-20 overflow-hidden border-b border-[var(--border)] bg-[var(--bg-surface)]">
-              <div className="overflow-x-auto bg-[var(--color-secondary-lighter)]/12 transition-all py-1.5">
+            <div className="sticky top-0 z-20 overflow-hidden border-b border-blue-100 bg-[#EEF4FF]">
+              <div className="overflow-x-auto transition-all py-1.5">
                 <div className="flex min-w-[1180px] items-center gap-4 px-6">
                   <div className="flex items-center gap-3 shrink-0">
                     <span className="text-[11px] font-extrabold nl-text tracking-tight whitespace-nowrap">
@@ -4240,25 +4539,31 @@ function App() {
             <div className="flex-1 overflow-hidden px-6 py-6">
               <div className="mx-auto h-full w-full" style={{ maxWidth: `${larguraListas}px` }}>
                 <div className="nl-card flex h-full overflow-hidden flex-col !rounded-[5px] !p-0 border border-[var(--border)] bg-[var(--bg-surface)] shadow-[0_20px_38px_rgba(15,23,42,0.08)]">
-                  <div className="border-b border-[var(--border-light)] bg-[var(--color-secondary-lighter)]/18 px-4 py-2.5">
+                  {/* Tabela — toolbar lives INSIDE the scroll container so backdrop-blur sees content scroll behind it */}
+                  <div className="overflow-y-auto flex-1 custom-scrollbar nl-font-list" style={estiloTabelaAlunos}>
+                  <div className="border-b border-[var(--border-light)] px-4 py-2.5 sticky top-0 z-20" style={{ background: 'color-mix(in srgb, var(--bg-surface) 88%, transparent)', WebkitBackdropFilter: 'blur(8px)', backdropFilter: 'blur(8px)' }}>
                     <div className="flex items-center gap-3 whitespace-nowrap">
                       <div className="flex items-center rounded-[3px] border border-[var(--border-light)] bg-[var(--bg-surface)] p-0.5 shrink-0">
                         {[
-                          { id: 'todos',    label: 'Todos' },
-                          { id: 'divida',   label: 'Em dívida' },
-                          { id: 'cobertos', label: 'Cobertos' },
+                          { id: 'todos',      label: 'Todos' },
+                          { id: 'divida',     label: 'Em dívida' },
+                          { id: 'cobertos',   label: 'Cobertos' },
+                          { id: 'importados', label: 'Importados', count: alunosImportados.length },
                         ].map(f => (
                           <button
                             key={f.id}
                             type="button"
                             onClick={() => setFiltroStatus(f.id as any)}
-                            className={`rounded-[2px] px-3 py-1 text-[10px] font-bold uppercase tracking-[0.1em] transition-all ${
+                            className={`rounded-[2px] px-3 py-1 text-[10px] font-bold uppercase tracking-[0.1em] transition-all flex items-center gap-1.5 ${
                               filtroStatus === f.id
-                                ? 'bg-[var(--color-primary)] text-white shadow-sm'
+                                ? f.id === 'importados' ? 'bg-amber-500 text-white shadow-sm' : 'bg-[var(--color-primary)] text-white shadow-sm'
                                 : 'text-[var(--text-secondary)] hover:bg-slate-100'
                             }`}
                           >
                             {f.label}
+                            {f.count !== undefined && f.count > 0 && (
+                              <span className={`inline-flex items-center justify-center w-4 h-4 rounded-full text-[9px] font-black ${filtroStatus === f.id ? 'bg-white/25' : 'bg-amber-100 text-amber-700'}`}>{f.count}</span>
+                            )}
                           </button>
                         ))}
                       </div>
@@ -4305,7 +4610,7 @@ function App() {
                         ].map((pill) => (
                           <span
                             key={pill.label}
-                            className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[10px] font-bold uppercase tracking-[0.12em] ${pill.tone}`}
+                            className={`inline-flex items-center gap-2 rounded-[4px] border px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.1em] ${pill.tone}`}
                           >
                             <span className="opacity-80">{pill.label}</span>
                             {pill.value ? <span className="font-black tracking-tight normal-case">{pill.value}</span> : null}
@@ -4315,8 +4620,30 @@ function App() {
                     </div>
                   </div>
 
-                  {/* Tabela */}
-                  <div className="overflow-y-auto flex-1 custom-scrollbar nl-font-list" style={estiloTabelaAlunos}>
+                  {/* Banner: dados importados aguardando revisão */}
+                  {alunosImportados.length > 0 && filtroStatus !== 'importados' && (
+                    <div className="flex items-center gap-3 px-4 py-2.5 bg-amber-50 border-b border-amber-200 shrink-0">
+                      <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse shrink-0" />
+                      <p className="text-[11px] font-bold text-amber-800 flex-1">
+                        {alunosImportados.length} {alunosImportados.length === 1 ? 'aluno importado aguarda' : 'alunos importados aguardam'} revisão
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setFiltroStatus('importados')}
+                        className="text-[10px] font-black uppercase tracking-wider text-amber-700 hover:text-amber-900 px-2 py-1 rounded bg-amber-100 hover:bg-amber-200 transition-colors border border-amber-300"
+                      >
+                        Ver
+                      </button>
+                      <button
+                        type="button"
+                        onClick={finalizarTodosImportados}
+                        className="text-[10px] font-black uppercase tracking-wider text-white bg-amber-500 hover:bg-amber-600 px-2 py-1 rounded transition-colors border border-amber-600 shadow-sm"
+                      >
+                        Finalizar todos
+                      </button>
+                    </div>
+                  )}
+
                     {periodoSelecionadoFuturo ? (
                       <div className="h-full flex flex-col items-center justify-center gap-3 opacity-50">
                         <Calendar size={28} />
@@ -4335,7 +4662,7 @@ function App() {
                       </div>
                     ) : (
                       <table className="w-full text-left border-collapse">
-                        <thead className="bg-[var(--color-secondary-lighter)]/60 text-[10px] font-semibold nl-text-muted uppercase tracking-[0.06em] sticky top-0 z-10 border-b border-[var(--border-light)]">
+                        <thead className="bg-[var(--color-secondary-lighter)] text-[10px] font-semibold nl-text-muted uppercase tracking-[0.06em] sticky top-[56px] z-10 border-b border-[var(--border-light)]">
                           <tr>
                             <th style={{ padding: 'var(--list-row-py) var(--list-row-px)', width: '3%', textAlign: 'center' }}>#</th>
                             <th style={{ padding: 'var(--list-row-py) var(--list-row-px)', width: '20%' }}>Aluno</th>
@@ -4349,6 +4676,7 @@ function App() {
                         </thead>
                         <tbody>
                           {historicoMensalFiltrado.map(({ aluno, resumo, entrouNesteMes }, index) => {
+                            const isImported = isImportedStatus(aluno.status);
                             const progressoDias = getTimelineMetricWidth(resumo, aluno.status);
                             const paused = isPausedStatus(aluno.status);
                             const blocked = isBlockedStatus(aluno.status);
@@ -4357,20 +4685,21 @@ function App() {
                             const isDentroDoPrazo = !isAtrasado && !isPago;
 
                             const estadoCor = (() => {
-                              if (blocked)       return { dot: '#B91C1C', label: 'Bloqueado', text: '#B91C1C' };
-                              if (paused)        return { dot: '#92400E', label: 'Pausado',   text: '#92400E' };
-                              if (isAtrasado)    return { dot: '#DC2626', label: resumo.status === 'hoje' ? 'Vence hoje' : 'Atrasado', text: '#DC2626' };
-                              if (isPago)        return { dot: '#16A34A', label: 'Em dia',    text: '#16A34A' };
-                              if (isDentroDoPrazo) return { dot: '#2563EB', label: 'No prazo',  text: '#2563EB' };
-                              return             { dot: '#64748b', label: 'Regular',   text: '#64748b' };
+                              if (isImported)    return { dot: '#D97706', label: 'Importado', text: '#92400E', bg: '#FFFBEB', border: '#FDE68A' };
+                              if (blocked)       return { dot: '#B91C1C', label: 'Bloqueado', text: '#991B1B', bg: '#FEF2F2', border: '#FECACA' };
+                              if (paused)        return { dot: '#78350F', label: 'Pausado',   text: '#78350F', bg: '#FFF7ED', border: '#FED7AA' };
+                              if (isAtrasado)    return { dot: '#DC2626', label: resumo.status === 'hoje' ? 'Vence hoje' : 'Atrasado', text: '#B91C1C', bg: '#FEF2F2', border: '#FECACA' };
+                              if (isPago)        return { dot: '#16A34A', label: 'Em dia',    text: '#15803D', bg: '#F0FDF4', border: '#BBF7D0' };
+                              if (isDentroDoPrazo) return { dot: '#2563EB', label: 'No prazo',  text: '#1D4ED8', bg: '#EFF6FF', border: '#BFDBFE' };
+                              return             { dot: '#64748b', label: 'Regular',   text: '#475569', bg: '#F8FAFC', border: '#E2E8F0' };
                             })();
 
                             return (
                               <tr
                                 key={`${periodoSelecionadoKey}-${aluno.id}`}
-                                className="group border-b border-[var(--border-light)] transition-colors hover:bg-[var(--color-secondary-lighter)]/40 cursor-pointer"
-                                onClick={() => marcarComoPago(aluno.id)}
-                                title="Clique para abrir painel de cobrança"
+                                className={`group border-b border-[var(--border-light)] transition-colors cursor-pointer ${isImported ? 'bg-amber-50 hover:bg-amber-100' : `rp-${index % 6}`}`}
+                                onClick={() => isImported ? abrirEdicao(aluno) : marcarComoPago(aluno.id)}
+                                title={isImported ? 'Clique para editar e confirmar dados' : 'Clique para abrir painel de cobrança'}
                               >
                                 {/* Nº */}
                                 <td className="align-middle text-center" style={{ padding: 'var(--list-row-py) var(--list-row-px)' }}>
@@ -4379,13 +4708,14 @@ function App() {
                                 {/* Aluno */}
                                 <td className="align-middle" style={{ padding: 'var(--list-row-py) var(--list-row-px)' }}>
                                   <div className="flex items-center gap-2">
-                                    <div className="rounded-[5px] bg-[var(--color-secondary-lighter)] flex items-center justify-center font-semibold nl-text-muted border border-[var(--border)] overflow-hidden shrink-0" style={{ width: 'var(--list-avatar-size)', height: 'var(--list-avatar-size)', fontSize: 'var(--list-font-secondary)' }}>
+                                    <div className="rounded-full bg-[var(--color-secondary-lighter)] flex items-center justify-center font-semibold nl-text-muted border border-[var(--border)] overflow-hidden shrink-0" style={{ width: 'var(--list-avatar-size)', height: 'var(--list-avatar-size)', fontSize: 'var(--list-font-secondary)' }}>
                                       {aluno.foto_path ? <img src={`local-resource://${aluno.foto_path}`} className="w-full h-full object-cover" /> : aluno.nome.slice(0,2).toUpperCase()}
                                     </div>
                                     <div className="flex min-w-0 flex-col">
                                       <div className="flex items-center gap-1.5">
                                         <p className="font-medium nl-text group-hover:text-[var(--color-primary)] transition-colors truncate" style={{ fontSize: 'var(--list-font-primary)' }}>{aluno.nome}</p>
-                                        {entrouNesteMes && <span className="text-[8px] font-bold uppercase tracking-wider text-[var(--color-primary)] bg-[var(--color-primary-light)] px-1.5 py-0.5 rounded-[3px] shrink-0">novo</span>}
+                                        {isImported && <span className="text-[8px] font-bold uppercase tracking-wider text-amber-700 bg-amber-100 border border-amber-300 px-1.5 py-0.5 rounded-[3px] shrink-0">importado</span>}
+                                        {!isImported && entrouNesteMes && <span className="text-[8px] font-bold uppercase tracking-wider text-[var(--color-primary)] bg-[var(--color-primary-light)] px-1.5 py-0.5 rounded-[3px] shrink-0">novo</span>}
                                       </div>
                                     </div>
                                   </div>
@@ -4405,14 +4735,17 @@ function App() {
                                 <td className="align-middle" style={{ padding: 'var(--list-row-py) var(--list-row-px)' }}>
                                   <span className="nl-text-muted" style={{ fontSize: 'var(--list-font-secondary)' }}>{resumo.nextChargeDate || '—'}</span>
                                 </td>
-                                {/* Estado — alinhado com dot + barra */}
+                                {/* Estado — pill badge + barra */}
                                 <td className="align-middle" style={{ padding: 'var(--list-row-py) var(--list-row-px)' }}>
                                   <div className="flex items-center gap-2 min-w-0">
-                                    <span className="inline-flex items-center gap-1.5 shrink-0" style={{ minWidth: '76px' }}>
+                                    <span
+                                      className="inline-flex items-center gap-1.5 text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap shrink-0"
+                                      style={{ background: estadoCor.bg, color: estadoCor.text, border: `1px solid ${estadoCor.border}` }}
+                                    >
                                       <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: estadoCor.dot }} />
-                                      <span className="text-[10px] font-medium" style={{ color: estadoCor.text }}>{estadoCor.label}</span>
+                                      {estadoCor.label}
                                     </span>
-                                    {!paused && !blocked && (
+                                    {!paused && !blocked && !isImported && (
                                       <div className="flex-1 min-w-0 flex flex-col gap-0.5">
                                         <div className="h-1 w-full overflow-hidden rounded-full bg-[var(--color-secondary-lighter)]">
                                           <div className={`h-full rounded-full transition-all duration-500 ${getTimelineMetricBarClass(resumo.status)}`} style={{ width: `${progressoDias}%` }} />
@@ -4735,530 +5068,410 @@ function App() {
 
         {/* Module: CRM / Contactos */}
         {aba === 'contactos' && (() => {
-          // Uses shared mesFinanceiro/anoFinanceiro — same period as Alunos page
-          // alunosDirectorio is already filtered by period (alunosNoPeriodo base)
-          const novosNoMes = alunosDirectorio.filter(a =>
-            isSameMonthAndYear(parseFlexibleDate(a.data_matricula), mesFinanceiroIndex, anoFinanceiro)
-          );
-          return (
-          <div className="flex flex-col h-full animate-slide-up w-full overflow-hidden">
-            {/* Timeline Bar — shared with Alunos */}
-            <div className="sticky top-0 z-20 overflow-hidden border-b border-[var(--border)] bg-[var(--bg-surface)]">
-              <div className="overflow-x-auto bg-[var(--color-secondary-lighter)]/12 transition-all py-1.5">
-                <div className="flex min-w-[1100px] items-center gap-4 px-6">
+          const resumoContacto = alunoPerfil ? summarizeStudentBilling(alunoPerfil, pagamentos, referenciaFinanceira) : null;
+          const pagamentosAluno = alunoPerfil ? pagamentos.filter(p => (p.alunoId || p.aluno_id) === alunoPerfil.id).sort((a, b) => (b.id || 0) - (a.id || 0)) : [];
 
-                  {/* Esquerda: Label + Ano */}
+          return (
+          <div className="flex flex-col h-full animate-slide-up w-full overflow-hidden bg-[var(--bg-surface)]">
+
+            {/* ── Barra de navegação por mês ── */}
+            <div className="sticky top-0 z-20 overflow-hidden border-b border-blue-100 bg-[#EEF4FF] shrink-0">
+              <div className="overflow-x-auto transition-all py-1.5">
+                <div className="flex min-w-[1180px] items-center gap-4 px-6">
                   <div className="flex items-center gap-3 shrink-0">
-                    <span className="text-[11px] font-extrabold nl-text tracking-tight whitespace-nowrap">Directório</span>
+                    <span className="text-[11px] font-extrabold nl-text tracking-tight whitespace-nowrap">Arquivo por mês</span>
                     <div className="flex items-center gap-2 shrink-0">
-                      <button onClick={() => setAnoFinanceiro(prev => prev - 1)}
-                        className="flex h-7 w-7 items-center justify-center rounded-full border border-[var(--border-light)] text-[var(--text-secondary)] transition-colors hover:border-[var(--color-primary)]/30 hover:text-[var(--color-primary)]">
-                        <ChevronLeft size={14} />
-                      </button>
-                      <div className="rounded-full border border-[var(--border-light)] bg-[var(--bg-surface)] px-3 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--text-secondary)]">
-                        {anoFinanceiro}
-                      </div>
-                      <button onClick={() => setAnoFinanceiro(prev => prev + 1)}
-                        className="flex h-7 w-7 items-center justify-center rounded-full border border-[var(--border-light)] text-[var(--text-secondary)] transition-colors hover:border-[var(--color-primary)]/30 hover:text-[var(--color-primary)]">
-                        <ChevronRight size={14} />
-                      </button>
+                      <button onClick={() => setAnoFinanceiro((prev) => prev - 1)} className="flex h-7 w-7 items-center justify-center rounded-full border border-[var(--border-light)] text-[var(--text-secondary)] transition-colors hover:border-[var(--color-primary)]/30 hover:text-[var(--color-primary)]" title="Ano anterior"><ChevronLeft size={14} /></button>
+                      <div className="rounded-full border border-[var(--border-light)] bg-[var(--bg-surface)] px-3 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--text-secondary)]">{anoFinanceiro}</div>
+                      <button onClick={() => setAnoFinanceiro((prev) => prev + 1)} className="flex h-7 w-7 items-center justify-center rounded-full border border-[var(--border-light)] text-[var(--text-secondary)] transition-colors hover:border-[var(--color-primary)]/30 hover:text-[var(--color-primary)]" title="Próximo ano"><ChevronRight size={14} /></button>
                     </div>
                   </div>
-
-                  {/* Centro: Timeline de meses (partilhada) */}
                   <div className="relative flex-1 min-w-[520px]">
                     <div className="absolute left-0 right-0 top-1/2 h-px -translate-y-1/2 bg-[#D9E2F2]" />
                     <div className="relative flex items-center justify-between gap-1">
-                      {timelineMonths.map(month => (
-                        <button
-                          key={month.id}
-                          onClick={() => setMesFinanceiro(month.label)}
-                          className={`group flex min-w-[76px] flex-col items-center rounded-[5px] px-1.5 transition-all ${
-                            timelineContactosMinimizada ? 'gap-0 py-0.5' : 'gap-0.5 py-1'
-                          }`}
-                          title={`${month.label} ${anoFinanceiro} · ${month.count} inscrito(s)`}
-                        >
-                          <span className={`h-3 w-3 rounded-full border transition-all ${
-                            month.active
-                              ? 'border-[var(--color-primary)] bg-[var(--color-primary)] shadow-[0_0_0_3px_rgba(37,99,235,0.12)]'
-                              : month.isCurrent
-                                ? 'border-[var(--color-primary)] bg-white'
-                                : 'border-[var(--border)] bg-[var(--bg-surface)] group-hover:border-[var(--color-primary)]/45'
-                          }`} />
-                          <div className={`transition-all ${timelineContactosMinimizada ? 'h-0 overflow-hidden opacity-0' : 'opacity-100'}`}>
-                            <p className={`text-[9px] font-bold uppercase tracking-[0.12em] ${month.active ? 'text-[var(--color-primary)]' : 'text-[var(--text-secondary)]'}`}>
-                              {month.shortLabel}
-                            </p>
-                            {!month.future && month.count > 0 && (
-                              <p className={`text-[8px] font-bold ${month.active ? 'text-[var(--color-primary)]' : 'nl-text-muted'}`}>{month.count}</p>
-                            )}
+                      {timelineMonths.map((month) => (
+                        <button key={month.id} onClick={() => setMesFinanceiro(month.label)}
+                          className={`group flex min-w-[76px] flex-col items-center rounded-[5px] px-1.5 transition-all ${timelineFinanceiraMinimizada ? 'gap-0 py-0.5' : 'gap-0.5 py-1'}`}
+                          title={`${month.label} ${anoFinanceiro} • ${month.count} aluno(s)`}>
+                          <span className={`h-3 w-3 rounded-full border transition-all ${month.active ? 'border-[var(--color-primary)] bg-[var(--color-primary)] shadow-[0_0_0_3px_rgba(37,99,235,0.12)]' : month.isCurrent ? 'border-[#2563EB] bg-white' : 'border-[var(--border)] bg-[var(--bg-surface)] group-hover:border-[var(--color-primary)]/45'}`} />
+                          <div className={`transition-all ${timelineFinanceiraMinimizada ? 'h-0 overflow-hidden opacity-0' : 'opacity-100'}`}>
+                            <p className={`text-[9px] font-bold uppercase tracking-[0.12em] ${month.active ? 'text-[var(--color-primary)]' : 'text-[var(--text-secondary)]'}`}>{month.shortLabel}</p>
                           </div>
                         </button>
                       ))}
                     </div>
                   </div>
-
-                  {/* Direita: Stats + Toggle */}
-                  <div className="flex shrink-0 items-center gap-3">
-                    <div className="flex flex-col items-end gap-0.5">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-[11px] font-black nl-text leading-none">{alunosDirectorio.length}</span>
-                        <span className="text-[9px] nl-text-muted uppercase tracking-tighter">parceiros</span>
-                      </div>
-                      {novosNoMes.length > 0 && (
-                        <span className="text-[9px] font-bold text-emerald-600">+{novosNoMes.length} novos</span>
-                      )}
-                    </div>
-                    {periodoSelecionadoFuturo && (
-                      <span className="text-[9px] font-bold text-amber-600 bg-amber-50 border border-amber-200 px-2 py-1 rounded-full">Mês futuro</span>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => setTimelineContactosMinimizada(prev => !prev)}
+                  <div className="flex shrink-0 items-center gap-2">
+                    <button type="button" onClick={() => setTimelineFinanceiraMinimizada((prev) => !prev)}
                       className="inline-flex h-7 items-center gap-2 rounded-full border border-[var(--border-light)] px-3 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--text-secondary)] transition-colors hover:bg-[var(--color-secondary-lighter)]/45"
-                    >
-                      <ChevronDown size={13} className={`transition-transform ${timelineContactosMinimizada ? '-rotate-90' : 'rotate-0'}`} />
-                      {timelineContactosMinimizada ? 'Expandir' : 'Minimizar'}
+                      title={timelineFinanceiraMinimizada ? 'Expandir linha do tempo' : 'Minimizar linha do tempo'}>
+                      <ChevronDown size={13} className={`transition-transform ${timelineFinanceiraMinimizada ? '-rotate-90' : 'rotate-0'}`} />
+                      {timelineFinanceiraMinimizada ? 'Expandir' : 'Minimizar'}
                     </button>
                   </div>
-
                 </div>
               </div>
             </div>
 
-            <div className="flex gap-5 flex-1 overflow-hidden px-6 py-4" style={{ maxWidth: `${larguraListas}px`, margin: '0 auto', width: '100%' }}>
-            {/* Left: Directory Sidebar */}
-            <div className="flex flex-col shrink-0 gap-3" style={{ width: `${larguraSidebarContactos}px` }}>
-                {/* Header row */}
-                <div className="flex items-center justify-between px-1">
+          <div className="flex flex-1 overflow-hidden justify-center">
+          <div className="flex h-full w-full overflow-hidden" style={{ maxWidth: `${larguraListas}px` }}>
+
+            {/* ── Coluna esquerda: lista de contactos ── */}
+            <div className="flex flex-col border-r border-[var(--border)] bg-white shrink-0" style={{ width: `${larguraSidebarContactos}px` }}>
+
+              {/* Cabeçalho da lista */}
+              <div className="px-4 pt-5 pb-3 border-b border-[var(--border-light)]">
+                <div className="flex items-center justify-between mb-3">
                   <div>
-                    <h3 className="text-[16px] font-extrabold nl-text tracking-tight">Directório</h3>
-                    <p className="text-[11px] nl-text-muted mt-0.5">
-                      {periodoSelecionadoFuturo ? '—' : `${alunosDirectorio.length} ${alunosDirectorio.length === 1 ? 'parceiro' : 'parceiros'}`}
-                      {!periodoSelecionadoFuturo && novosNoMes.length > 0 && <span className="text-emerald-600 font-semibold ml-1">· +{novosNoMes.length} novos</span>}
-                    </p>
+                    <h2 className="text-[15px] font-bold nl-text tracking-tight">Contactos</h2>
+                    <p className="text-[11px] nl-text-muted mt-0.5">{alunosDirectorio.length} parceiros</p>
                   </div>
-                  <div className="flex gap-1.5">
-                    {[
-                      { id: 'todos',      label: 'Todos' },
-                      { id: 'ativos',     label: 'Ativos' },
-                      { id: 'pausados',   label: 'Pausados' },
-                      { id: 'bloqueados', label: 'Bloq.' },
-                    ].map((item) => (
-                      <button
-                        key={item.id}
-                        onClick={() => setFiltroDirectorioStatus(item.id as DirectoryFilterStatus)}
-                        className={`px-2 py-1 rounded-[5px] text-[10px] font-bold uppercase tracking-[0.1em] border transition-all ${
-                          filtroDirectorioStatus === item.id
-                            ? 'border-[var(--color-primary)] bg-[var(--color-primary)] text-white'
-                            : 'border-[var(--border)] bg-[var(--bg-surface)] nl-text-muted hover:border-[var(--color-primary)]/40'
-                        }`}
-                      >{item.label}</button>
-                    ))}
-                  </div>
+                  <button onClick={buscarDuplicados} title="Verificar duplicados" className="w-7 h-7 rounded-full flex items-center justify-center text-slate-400 hover:text-[var(--color-primary)] hover:bg-[var(--color-primary-light)] transition-all">
+                    <Sparkles size={13} />
+                  </button>
                 </div>
 
-                {/* Stats + Modos de visualização */}
-                <div className="flex items-center gap-2">
-                  <div className="flex-1 flex items-center gap-3 px-3 py-2 rounded-[5px] border border-[var(--border)] bg-[var(--bg-surface)]">
-                    {(() => {
-                      const masc = alunosDirectorio.filter(a => getGenderBucket(a.sexo) === 'masculino').length;
-                      const fem  = alunosDirectorio.filter(a => getGenderBucket(a.sexo) === 'feminino').length;
-                      const total = Math.max(1, masc + fem);
-                      return (
-                        <>
-                          <span className="text-[11px] font-bold nl-text-muted">M <span className="nl-text font-black">{masc}</span></span>
-                          <div className="flex-1 h-1.5 rounded-full overflow-hidden bg-[var(--color-secondary-lighter)]">
-                            <div className="h-full bg-[var(--color-primary)] rounded-full transition-all" style={{ width: `${Math.round((masc / total) * 100)}%` }} />
-                          </div>
-                          <span className="text-[11px] font-bold nl-text-muted">F <span className="nl-text font-black">{fem}</span></span>
-                        </>
-                      );
-                    })()}
-                  </div>
-                  <div className="flex items-center border border-[var(--border)] rounded-[4px] overflow-hidden shrink-0">
-                    <button onClick={() => setModoListaContactos('normal')} title="Vista normal"
-                      className={`flex h-8 w-8 items-center justify-center transition-all ${modoListaContactos === 'normal' ? 'bg-[var(--color-primary)] text-white' : 'nl-text-muted hover:bg-[var(--color-secondary-lighter)]'}`}>
-                      <Users size={13} />
-                    </button>
-                    <button onClick={() => setModoListaContactos('compacto')} title="Vista compacta"
-                      className={`flex h-8 w-8 items-center justify-center transition-all border-l border-[var(--border)] ${modoListaContactos === 'compacto' ? 'bg-[var(--color-primary)] text-white' : 'nl-text-muted hover:bg-[var(--color-secondary-lighter)]'}`}>
-                      <LayoutList size={13} />
-                    </button>
-                  </div>
+                {/* Pesquisa */}
+                <div className="relative mb-3">
+                  <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                  <input
+                    type="text"
+                    placeholder="Pesquisar..."
+                    value={pesquisaDirectorio}
+                    onChange={(e) => setPesquisaDirectorio(e.target.value)}
+                    className="w-full h-8 pl-8 pr-3 text-[12px] rounded-[6px] border border-[var(--border-light)] bg-[var(--color-secondary-lighter)]/40 outline-none focus:border-[var(--color-primary)]/50 focus:bg-white transition-all placeholder:text-slate-400 nl-text"
+                  />
                 </div>
 
-                {/* Pesquisa + Ordenação */}
-                <div className="flex gap-2">
-                  <div className="relative flex-1">
-                    <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 nl-text-muted" />
-                    <input
-                      type="text"
-                      placeholder="Pesquisar nome ou tel..."
-                      value={pesquisaDirectorio}
-                      onChange={(e) => setPesquisaDirectorio(e.target.value)}
-                      className="nl-input !pl-8 !h-8 !text-[12px]"
-                    />
-                  </div>
-                  <select value={ordenacaoDirectorio} onChange={(e) => setOrdenacaoDirectorio(e.target.value as StudentSortMode)} className="nl-input !w-auto !h-8 !text-[11px] shrink-0 pr-6">
-                    <option value="alfabetica">A–Z</option>
-                    <option value="inscricao_recente">Recente</option>
-                    <option value="inscricao_antiga">Antigo</option>
-                    <option value="inteligente">Smart</option>
-                  </select>
+                {/* Filtros de status */}
+                <div className="flex gap-1">
+                  {[
+                    { id: 'todos',      label: 'Todos' },
+                    { id: 'ativos',     label: 'Ativos' },
+                    { id: 'pausados',   label: 'Paus.' },
+                    { id: 'bloqueados', label: 'Bloq.' },
+                  ].map(item => (
+                    <button
+                      key={item.id}
+                      onClick={() => setFiltroDirectorioStatus(item.id as DirectoryFilterStatus)}
+                      className={`flex-1 py-1 rounded-[4px] text-[9px] font-bold uppercase tracking-wide transition-all ${
+                        filtroDirectorioStatus === item.id
+                          ? 'bg-[var(--color-primary)] text-white'
+                          : 'text-slate-500 hover:bg-slate-100'
+                      }`}
+                    >{item.label}</button>
+                  ))}
                 </div>
+              </div>
 
-                {/* Lista de contactos */}
-                <div className="nl-card !p-0 flex flex-col overflow-hidden flex-1 !rounded-[4px]" style={{ border: '1px solid var(--border)' }}>
-                  <div className="overflow-y-auto flex-1 custom-scrollbar divide-y divide-[var(--border-light)]">
-                    {periodoSelecionadoFuturo ? (
-                      <div className="p-8 text-center space-y-2">
-                        <Clock size={24} className="mx-auto nl-text-muted opacity-40" />
-                        <p className="text-[12px] font-semibold nl-text-muted">{mesFinanceiro.charAt(0).toUpperCase() + mesFinanceiro.slice(1)} {anoFinanceiro}</p>
-                        <p className="text-[11px] nl-text-muted opacity-60">Este mês ainda não chegou.<br/>O directório será populado quando o mês iniciar.</p>
+              {/* Lista */}
+              <div className="flex-1 overflow-y-auto custom-scrollbar">
+                {alunosDirectorio.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center h-full gap-2 opacity-40">
+                    <Users size={22} className="nl-text-muted" />
+                    <p className="text-[11px] font-semibold nl-text-muted">Sem resultados</p>
+                  </div>
+                ) : alunosDirectorio.map((aluno) => {
+                  const isSelected = alunoPerfil?.id === aluno.id;
+                  const resumoItem = summarizeStudentBilling(aluno, pagamentos, referenciaFinanceira);
+                  const dotColor = resumoItem.status === 'atrasado' || resumoItem.status === 'hoje'
+                    ? 'bg-red-500'
+                    : resumoItem.status === 'pago'
+                      ? 'bg-emerald-500'
+                      : isImportedStatus(aluno.status)
+                        ? 'bg-amber-400'
+                        : isPausedStatus(aluno.status)
+                          ? 'bg-slate-400'
+                          : isBlockedStatus(aluno.status)
+                            ? 'bg-red-800'
+                            : 'bg-blue-400';
+
+                  const iniciais = (aluno.nome || '?').trim().slice(0, 2).toUpperCase();
+                  const avatarColors = [
+                    'bg-blue-500', 'bg-violet-500', 'bg-emerald-500',
+                    'bg-rose-500', 'bg-amber-500', 'bg-teal-500', 'bg-indigo-500',
+                  ];
+                  const avatarColor = avatarColors[aluno.nome.charCodeAt(0) % avatarColors.length];
+
+                  return (
+                    <button
+                      key={aluno.id}
+                      onClick={() => { setAlunoPerfil(aluno); carregarNotas(aluno.id); }}
+                      className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors border-b border-[var(--border-light)]/60 ${
+                        isSelected
+                          ? 'bg-[var(--color-primary-light)] border-l-2 border-l-[var(--color-primary)]'
+                          : 'hover:bg-slate-50 border-l-2 border-l-transparent'
+                      }`}
+                    >
+                      {/* Avatar circular */}
+                      <div className={`w-9 h-9 rounded-full flex items-center justify-center text-[12px] font-bold text-white shrink-0 overflow-hidden ${isSelected ? 'bg-[var(--color-primary)]' : avatarColor}`}>
+                        {aluno.foto_path
+                          ? <img src={`local-resource://${aluno.foto_path}`} className="w-full h-full object-cover" />
+                          : iniciais}
                       </div>
-                    ) : alunosDirectorio.length === 0 ? (
-                      <div className="p-8 text-center nl-text-muted opacity-40">
-                        <Users size={24} className="mx-auto mb-2" />
-                        <p className="text-[11px] font-bold uppercase tracking-widest">Sem resultados</p>
-                      </div>
-                    ) : alunosDirectorio.map((aluno) => {
-                      const isSelected = alunoPerfil?.id === aluno.id;
-                      const statusLabel = getStudentStatusLabel(aluno.status);
-                      const compact = modoListaContactos === 'compacto';
-                      
-                      const resumo = summarizeStudentBilling(aluno, pagamentos, referenciaFinanceira);
-                      const tone = getBillingTone(resumo.status);
-                      
-                      const itemBg = isSelected 
-                        ? 'bg-[var(--color-primary-light)]' 
-                        : `${tone.surface} group-hover:opacity-100`;
 
-                      return (
-                        <button
-                          key={aluno.id}
-                          onClick={() => { setAlunoPerfil(aluno); carregarNotas(aluno.id); }}
-                          className={`group w-full flex items-center gap-2.5 text-left transition-all border-l-2 ${compact ? 'px-3 py-2' : 'px-3 py-2.5'} ${itemBg} ${resumo.status === 'atrasado' || resumo.status === 'hoje' ? 'border-l-red-500' : resumo.status === 'pago' ? 'border-l-emerald-500' : 'border-l-blue-500'}`}
-                        >
-                          {!compact && (
-                            <div className={`relative w-8 h-8 rounded-[5px] flex items-center justify-center text-[11px] font-black shrink-0 overflow-hidden border ${isSelected ? 'bg-[var(--color-primary)] border-[var(--color-primary)] text-white' : tone.surface + ' ' + tone.accent}`}>
-                              {aluno.foto_path ? <img src={`local-resource://${aluno.foto_path}`} className="w-full h-full object-cover" /> : aluno.nome.slice(0,2).toUpperCase()}
-                            </div>
-                          )}
-                          <div className="flex-1 min-w-0">
-                            <p className={`font-semibold truncate nl-text ${compact ? 'text-[12px]' : 'text-[13px]'}`} style={{ color: isSelected ? 'var(--color-primary)' : undefined }}>{aluno.nome}</p>
-                            {!compact && <p className="text-[11px] nl-text-muted truncate">{aluno.telefone || '—'}</p>}
-                          </div>
-                          <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-[3px] shrink-0 border ${
-                            isSelected
-                              ? 'bg-white text-[var(--color-primary)] border-[var(--color-primary)]/20'
-                              : tone.surface + ' ' + tone.accent
-                          }`}>
-                            {statusLabel}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
+                      {/* Nome + telefone */}
+                      <div className="flex-1 min-w-0">
+                        <p className={`text-[13px] font-semibold truncate leading-tight ${isSelected ? 'text-[var(--color-primary)]' : 'nl-text'}`}>
+                          {aluno.nome}
+                        </p>
+                        <p className="text-[11px] nl-text-muted truncate leading-tight mt-0.5">
+                          {aluno.telefone || '—'}
+                        </p>
+                      </div>
+
+                      {/* Indicador de estado */}
+                      <span className={`w-2 h-2 rounded-full shrink-0 ${dotColor}`} />
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
-            {/* Right: Detailed Profile */}
-            <div className="flex-1 nl-card !p-0 flex flex-col overflow-hidden !rounded-[4px]" style={{ border: '1px solid var(--border)' }}>
-              {alunoPerfil ? (
-                <>
-                  {(() => {
-                    const resumo = summarizeStudentBilling(alunoPerfil, pagamentos, referenciaFinanceira);
-                    const tone = getBillingTone(resumo.status);
-                    const emAtraso = resumo.status === 'atrasado';
-                    
-                    return (
-                      <div className={`px-6 py-5 border-b flex items-center gap-5 transition-all duration-300 ${tone.surface}`} style={{ borderBottom: '1px solid var(--border)' }}>
-                        <div className="relative group shrink-0">
-                          <div className={`w-20 h-20 rounded-[4px] border-2 overflow-hidden shadow-md ${resumo.status === 'atrasado' ? 'border-red-200' : resumo.status === 'pago' ? 'border-emerald-200' : 'border-blue-200'}`}>
-                            {alunoPerfil.foto_path ? <img src={`local-resource://${alunoPerfil.foto_path}`} className="w-full h-full object-cover" /> : <div className={`w-full h-full flex items-center justify-center text-2xl font-black text-white ${tone.button.split(' ')[0]}`}>{alunoPerfil.nome.slice(0,2).toUpperCase()}</div>}
-                          </div>
-                          <label className="absolute inset-0 bg-black/40 rounded-[4px] flex items-center justify-center opacity-0 group-hover:opacity-100 cursor-pointer transition-all">
-                            <Camera className="text-white" size={20} />
-                            <input type="file" className="hidden" accept="image/*" onChange={handleUploadFoto} />
-                          </label>
+            {/* ── Coluna direita: detalhe do contacto ── */}
+            <div className="flex-1 flex flex-col overflow-hidden">
+              {alunoPerfil && resumoContacto ? (() => {
+                const emAtraso = resumoContacto.status === 'atrasado';
+                const statusColor = emAtraso || resumoContacto.status === 'hoje'
+                  ? 'text-red-600 bg-red-50 border-red-200'
+                  : resumoContacto.status === 'pago'
+                    ? 'text-emerald-600 bg-emerald-50 border-emerald-200'
+                    : isImportedStatus(alunoPerfil.status)
+                      ? 'text-amber-600 bg-amber-50 border-amber-200'
+                      : 'text-blue-600 bg-blue-50 border-blue-200';
+
+                const iniciais = (alunoPerfil.nome || '?').trim().slice(0, 2).toUpperCase();
+                const avatarColors = ['bg-blue-500','bg-violet-500','bg-emerald-500','bg-rose-500','bg-amber-500','bg-teal-500','bg-indigo-500'];
+                const avatarColor = avatarColors[alunoPerfil.nome.charCodeAt(0) % avatarColors.length];
+
+                return (
+                  <>
+                    {/* ── Header do perfil ── */}
+                    <div className="px-8 py-5 border-b border-[var(--border-light)] bg-white flex items-center gap-5 shrink-0">
+                      {/* Avatar grande com upload */}
+                      <div className="relative group shrink-0">
+                        <div className={`w-14 h-14 rounded-full overflow-hidden flex items-center justify-center text-[18px] font-bold text-white ${avatarColor}`}>
+                          {alunoPerfil.foto_path
+                            ? <img src={`local-resource://${alunoPerfil.foto_path}`} className="w-full h-full object-cover" />
+                            : iniciais}
                         </div>
+                        <label className="absolute inset-0 rounded-full bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 cursor-pointer transition-all">
+                          <Camera className="text-white" size={14} />
+                          <input type="file" className="hidden" accept="image/*" onChange={handleUploadFoto} />
+                        </label>
+                      </div>
 
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-start justify-between gap-4">
-                            <div>
-                              <div className="flex items-center gap-3">
-                                <h2 className="text-[22px] font-extrabold nl-text tracking-tight leading-tight">{alunoPerfil.nome}</h2>
-                                <div className="flex items-center gap-0.5 ml-1 opacity-40 hover:opacity-100 transition-opacity" title={`Pontualidade: ${resumo.rating} estrelas`}>
-                                  {[1, 2, 3, 4, 5].map(s => (
-                                    <Star key={s} size={10} className={s <= Math.round(resumo.rating) ? "text-amber-500 fill-amber-500" : "text-slate-300"} />
-                                  ))}
-                                </div>
-                              </div>
-                              
-                              <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                                <span className={`badge ${tone.badge} !px-2 !py-0.5 !text-[9px]`}>
-                                  {resumo.status === 'atrasado' ? 'PENDENTE' : resumo.status === 'pago' ? 'REGULARIZADO' : 'DENTRO DO PRAZO'}
-                                </span>
-                                <span className="text-[9px] font-bold nl-text-muted px-2 py-0.5 rounded-[4px] bg-white/60 border border-[var(--border)] uppercase tracking-wider">{alunoPerfil.categoria || 'Geral'}</span>
-                                <span className="text-[9px] font-bold nl-text-muted px-2 py-0.5 rounded-[4px] bg-white/60 border border-[var(--border)] uppercase tracking-wider">#{alunoPerfil.id.slice(-6)}</span>
-                              </div>
-
-                              {emAtraso && (
-                                <div className="mt-2 flex flex-col gap-1">
-                                  <div className="flex items-center gap-2">
-                                    <AlertCircle size={12} className="text-red-600" />
-                                    <p className="text-[10px] font-black text-red-700 uppercase tracking-tight">Dívida acumulada:</p>
-                                  </div>
-                                  <div className="flex flex-wrap gap-1">
-                                    {resumo.monthsInDebt.map(m => (
-                                      <span key={m} className="px-1.5 py-0.5 bg-red-600 text-white text-[8px] font-black rounded-[2px] uppercase tracking-wider">{m}</span>
-                                    ))}
-                                    {resumo.monthsInDebt.length > 1 && (
-                                      <button 
-                                        onClick={() => abrirResolverPendencias(alunoPerfil)}
-                                        className="px-2 py-0.5 bg-slate-900 text-white text-[8px] font-black rounded-[2px] uppercase tracking-widest hover:bg-black transition-colors ml-1 shadow-sm"
-                                      >
-                                        Resolver Tudo
-                                      </button>
-                                    )}
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                            <div className="flex gap-1.5 flex-wrap justify-end shrink-0">
-                              <button onClick={() => enviarMensagemWhatsApp(alunoPerfil)} className="nl-icon-btn !w-8 !h-8 !bg-green-500/10 !text-green-700 hover:!bg-green-500 hover:!text-white !border-green-200" title="WhatsApp"><Smartphone size={14} /></button>
-                              <button onClick={() => window.open(`mailto:${alunoPerfil.email}`)} className="nl-icon-btn !w-8 !h-8" title="E-mail"><Mail size={14} /></button>
-                              <button onClick={() => setAba('gestao')} className="nl-icon-btn !w-8 !h-8" title="Ver em Alunos"><ExternalLink size={14} /></button>
-                              <button onClick={() => abrirEdicao(alunoPerfil)} className="nl-btn nl-btn-secondary !h-8 !px-3 !text-[11px] font-bold"><Edit size={13} /> Editar</button>
-                              <button onClick={() => marcarComoPago(alunoPerfil.id)} className="nl-btn !bg-emerald-600 !text-white hover:!bg-emerald-700 !h-8 !px-3 !text-[11px] font-bold shadow-md transition-all"><Wallet size={13} /> Cobrar</button>
-                            </div>
+                      {/* Nome + meta */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2.5 mb-1">
+                          <h2 className="text-[18px] font-bold nl-text tracking-tight leading-none truncate">{alunoPerfil.nome}</h2>
+                          <span className={`text-[9px] font-bold px-2 py-0.5 rounded-[4px] border uppercase tracking-wider shrink-0 ${statusColor}`}>
+                            {resumoContacto.statusLabel}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-3 text-[11px] nl-text-muted">
+                          <span className="flex items-center gap-1"><Phone size={11} className="opacity-50" />{alunoPerfil.telefone || '—'}</span>
+                          {alunoPerfil.email && <><span className="opacity-30">·</span><span className="flex items-center gap-1"><Mail size={11} className="opacity-50" />{alunoPerfil.email}</span></>}
+                          <span className="opacity-30">·</span>
+                          <span className="flex items-center gap-1"><Tag size={11} className="opacity-50" />{alunoPerfil.categoria || 'Geral'}</span>
+                        </div>
+                        {emAtraso && resumoContacto.monthsInDebt.length > 0 && (
+                          <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                            <span className="text-[9px] font-bold text-red-600 uppercase tracking-wide">Em dívida:</span>
+                            {resumoContacto.monthsInDebt.map(m => (
+                              <span key={m} className="text-[8px] font-bold bg-red-100 text-red-700 px-1.5 py-0.5 rounded uppercase">{m}</span>
+                            ))}
+                            {resumoContacto.monthsInDebt.length > 1 && (
+                              <button onClick={() => abrirResolverPendencias(alunoPerfil)} className="text-[8px] font-bold text-white bg-red-600 hover:bg-red-700 px-2 py-0.5 rounded uppercase transition-colors">Resolver tudo</button>
+                            )}
                           </div>
+                        )}
+                      </div>
+
+                      {/* Acções */}
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <button onClick={() => enviarMensagemWhatsApp(alunoPerfil)} title="WhatsApp" className="w-8 h-8 rounded-full flex items-center justify-center text-emerald-600 hover:bg-emerald-50 border border-transparent hover:border-emerald-200 transition-all"><Smartphone size={14} /></button>
+                        <button onClick={() => window.open(`mailto:${alunoPerfil.email}`)} title="E-mail" className="w-8 h-8 rounded-full flex items-center justify-center nl-text-muted hover:bg-slate-100 border border-transparent hover:border-slate-200 transition-all"><Mail size={14} /></button>
+                        <div className="w-px h-5 bg-slate-200 mx-1" />
+                        <button onClick={() => abrirEdicao(alunoPerfil)} className="h-8 px-3 rounded-[6px] text-[11px] font-semibold nl-text border border-[var(--border)] bg-white hover:bg-slate-50 transition-colors flex items-center gap-1.5"><Edit size={12} /> Editar</button>
+                        <button onClick={() => marcarComoPago(alunoPerfil.id)} className="h-8 px-3 rounded-[6px] text-[11px] font-semibold text-white bg-emerald-600 hover:bg-emerald-700 transition-colors flex items-center gap-1.5 shadow-sm"><Wallet size={12} /> Cobrar</button>
+                        <div className="relative" ref={menuAcoesRef}>
+                          <button onClick={() => setMostrarMenuAcoes(!mostrarMenuAcoes)} title="Mais opções" className={`w-8 h-8 rounded-full flex items-center justify-center nl-text-muted hover:bg-slate-100 border border-transparent hover:border-slate-200 transition-all ${mostrarMenuAcoes ? 'bg-slate-100' : ''}`}><MoreVertical size={14} /></button>
+                          {mostrarMenuAcoes && (
+                            <div className="absolute right-0 top-full mt-1 w-48 bg-white border border-[var(--border)] rounded-[8px] shadow-lg z-[110] overflow-hidden py-1">
+                              <button onClick={() => { setMostrarMenuAcoes(false); alterarStatus(alunoPerfil.id, isPausedStatus(alunoPerfil.status) ? 'ativo' : 'pausado'); }} className="w-full px-4 py-2.5 text-left text-[12px] font-medium nl-text hover:bg-slate-50 flex items-center gap-2.5 transition-colors">
+                                {isPausedStatus(alunoPerfil.status) ? <><RotateCw size={13} className="text-blue-500" /> Retomar</> : <><Pause size={13} className="text-amber-500" /> Pausar</>}
+                              </button>
+                              <button onClick={() => { setMostrarMenuAcoes(false); alterarStatus(alunoPerfil.id, isBlockedStatus(alunoPerfil.status) ? 'ativo' : 'bloqueado'); }} className="w-full px-4 py-2.5 text-left text-[12px] font-medium nl-text hover:bg-slate-50 flex items-center gap-2.5 transition-colors">
+                                {isBlockedStatus(alunoPerfil.status) ? <><Shield size={13} className="text-blue-500" /> Desbloquear</> : <><Ban size={13} className="text-red-500" /> Bloquear</>}
+                              </button>
+                              <div className="h-px bg-slate-100 my-1" />
+                              <button onClick={() => { setMostrarMenuAcoes(false); eliminarAluno(alunoPerfil.id); }} className="w-full px-4 py-2.5 text-left text-[12px] font-medium text-red-600 hover:bg-red-50 flex items-center gap-2.5 transition-colors">
+                                <Trash2 size={13} /> Eliminar
+                              </button>
+                            </div>
+                          )}
                         </div>
                       </div>
-                    );
-                  })()}
+                    </div>
 
-                  <div className="flex-1 p-5 bg-[var(--bg-surface)] overflow-y-auto custom-scrollbar">
-                    <div className="grid grid-cols-1 xl:grid-cols-3 gap-5 h-full items-start">
-                      {/* Coluna 1: Perfil & Perigo */}
-                      <div className="flex flex-col gap-5">
-                        <section className="animate-slide-up">
-                          <div className="flex items-center gap-1.5 mb-3">
-                            <User size={15} className="text-blue-600" />
-                            <h3 className="text-[12px] font-black uppercase tracking-widest text-slate-800">Perfil</h3>
-                          </div>
-                          
-                          <div className="rounded-[6px] border border-[var(--border)] overflow-hidden divide-y divide-[var(--border-light)] shadow-sm bg-white mb-4">
-                            {[
-                              { label: 'Telemóvel', value: alunoPerfil.telefone, icon: <Phone size={12} /> },
-                              { label: 'E-mail', value: alunoPerfil.email || '—', icon: <Mail size={12} /> },
-                              { label: 'Morada', value: alunoPerfil.morada || '—', icon: <MapPin size={12} /> },
-                            ].map((row, i) => (
-                              <div key={row.label} className="flex items-center justify-between px-3 py-2.5 hover:bg-slate-50 transition-colors">
-                                <div className="flex items-center gap-2">
-                                  <span className="text-slate-400">{row.icon}</span>
-                                  <p className="text-[10px] font-bold nl-text-muted uppercase tracking-wider">{row.label}</p>
+                    {/* ── Corpo: info + finanças + notas ── */}
+                    <div className="flex-1 overflow-y-auto custom-scrollbar">
+                      <div className="grid grid-cols-[280px_1fr_260px] gap-0 h-full divide-x divide-[var(--border-light)]">
+
+                        {/* Coluna A: Dados pessoais */}
+                        <div className="p-6 flex flex-col gap-6 overflow-y-auto custom-scrollbar">
+                          <div>
+                            <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-3">Contacto</p>
+                            <div className="space-y-0 divide-y divide-[var(--border-light)]">
+                              {[
+                                { icon: <Phone size={12} />, label: 'Telemóvel', value: alunoPerfil.telefone || '—' },
+                                { icon: <Mail size={12} />, label: 'E-mail', value: alunoPerfil.email || '—' },
+                                { icon: <MapPin size={12} />, label: 'Morada', value: alunoPerfil.morada || '—' },
+                              ].map(row => (
+                                <div key={row.label} className="flex items-start gap-3 py-2.5">
+                                  <span className="text-slate-400 mt-0.5 shrink-0">{row.icon}</span>
+                                  <div className="min-w-0">
+                                    <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400 leading-none mb-0.5">{row.label}</p>
+                                    <p className="text-[12px] nl-text leading-tight break-words">{row.value}</p>
+                                  </div>
                                 </div>
-                                <p className="text-[12px] font-semibold nl-text truncate max-w-[120px]">{row.value}</p>
-                              </div>
-                            ))}
+                              ))}
+                            </div>
                           </div>
 
-                          <div className="rounded-[6px] border border-[var(--border)] overflow-hidden divide-y divide-[var(--border-light)] shadow-sm bg-white">
-                            {[
-                              { label: 'Plano', value: formatCve(alunoPerfil.plano), icon: <Wallet size={12} /> },
-                              { label: 'Categ.', value: alunoPerfil.categoria || 'Geral', icon: <Tag size={12} /> },
-                              { label: 'Inscrito', value: alunoPerfil.data_matricula || '-', icon: <Calendar size={12} /> },
-                            ].map((row, i) => (
-                              <div key={row.label} className="flex items-center justify-between px-3 py-2.5 hover:bg-slate-50 transition-colors">
-                                <div className="flex items-center gap-2">
-                                  <span className="text-slate-400">{row.icon}</span>
-                                  <p className="text-[10px] font-bold nl-text-muted uppercase tracking-wider">{row.label}</p>
+                          <div>
+                            <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-3">Plano & Inscrição</p>
+                            <div className="space-y-0 divide-y divide-[var(--border-light)]">
+                              {[
+                                { icon: <Wallet size={12} />, label: 'Mensalidade', value: formatCve(alunoPerfil.plano) },
+                                { icon: <Tag size={12} />, label: 'Categoria', value: alunoPerfil.categoria || 'Geral' },
+                                { icon: <Calendar size={12} />, label: 'Inscrito em', value: alunoPerfil.data_matricula || '—' },
+                                { icon: <Hash size={12} />, label: 'Referência', value: `#${String(alunoPerfil.id).slice(-6)}` },
+                              ].map(row => (
+                                <div key={row.label} className="flex items-start gap-3 py-2.5">
+                                  <span className="text-slate-400 mt-0.5 shrink-0">{row.icon}</span>
+                                  <div className="min-w-0">
+                                    <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400 leading-none mb-0.5">{row.label}</p>
+                                    <p className="text-[12px] nl-text leading-tight">{row.value}</p>
+                                  </div>
                                 </div>
-                                <p className="text-[12px] font-semibold nl-text truncate max-w-[120px]">{row.value}</p>
-                              </div>
-                            ))}
+                              ))}
+                            </div>
                           </div>
 
                           {(alunoPerfil.objetivos || alunoPerfil.alergias) && (
-                            <div className="mt-4 space-y-2">
+                            <div className="space-y-2">
                               {alunoPerfil.objetivos && (
-                                <div className="rounded-[6px] border border-[var(--border)] px-3 py-2 bg-[var(--color-secondary-lighter)]/30 shadow-sm">
-                                  <p className="text-[9px] font-bold nl-text-muted uppercase tracking-wider mb-1">Objectivos</p>
-                                  <p className="text-[11px] nl-text leading-tight">{alunoPerfil.objetivos}</p>
+                                <div>
+                                  <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-1.5">Objectivos</p>
+                                  <p className="text-[12px] nl-text leading-relaxed">{alunoPerfil.objetivos}</p>
                                 </div>
                               )}
                               {alunoPerfil.alergias && (
-                                <div className="rounded-[6px] border border-amber-200 px-3 py-2 bg-amber-50 shadow-sm">
-                                  <p className="text-[9px] font-bold text-amber-700 uppercase tracking-wider mb-1">Alergias</p>
-                                  <p className="text-[11px] leading-tight text-amber-900">{alunoPerfil.alergias}</p>
+                                <div className="mt-3 px-3 py-2.5 rounded-[6px] bg-amber-50 border border-amber-200">
+                                  <p className="text-[9px] font-bold uppercase tracking-widest text-amber-600 mb-1">Alergias</p>
+                                  <p className="text-[12px] text-amber-900 leading-tight">{alunoPerfil.alergias}</p>
                                 </div>
                               )}
                             </div>
                           )}
-                        </section>
+                        </div>
 
-                        <section className="animate-slide-up" style={{ animationDelay: '0.3s' }}>
-                          <div className="flex items-center gap-1.5 mb-3">
-                            <Shield size={15} className="text-red-600" />
-                            <h3 className="text-[12px] font-black uppercase tracking-widest text-slate-800">Segurança</h3>
+                        {/* Coluna B: Histórico financeiro */}
+                        <div className="flex flex-col overflow-hidden">
+                          <div className="px-6 py-4 border-b border-[var(--border-light)] flex items-center justify-between shrink-0">
+                            <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Cobranças</p>
                           </div>
 
-                          <div className="rounded-[6px] border border-red-100 bg-red-50/30 p-3 shadow-sm flex flex-col gap-2">
-                            {isBlockedStatus(alunoPerfil.status) ? (
-                              <button onClick={() => alterarStatus(alunoPerfil.id, 'ativo')} className="w-full nl-btn !bg-white !text-blue-700 border border-blue-200 hover:!bg-blue-50 !h-8 !text-[10px] font-black uppercase tracking-widest shadow-sm"><CheckCircle2 size={12} className="mr-1"/> Reativar</button>
-                            ) : isPausedStatus(alunoPerfil.status) ? (
-                              <button onClick={() => alterarStatus(alunoPerfil.id, 'ativo')} className="w-full nl-btn !bg-white !text-blue-700 border border-blue-200 hover:!bg-blue-50 !h-8 !text-[10px] font-black uppercase tracking-widest shadow-sm"><CheckCircle2 size={12} className="mr-1"/> Retomar</button>
-                            ) : (
-                              <div className="flex gap-2">
-                                <button onClick={() => abrirConfirmacao({ title: 'Pausar', message: 'O aluno deixa de contar nas mensalidades.', confirmLabel: 'Pausar', tone: 'warning', onConfirm: async () => alterarStatus(alunoPerfil.id, 'pausado') })} className="flex-1 nl-btn !bg-amber-100 !text-amber-800 border border-amber-300 hover:!bg-amber-200 !h-8 !text-[10px] font-black uppercase tracking-widest shadow-sm transition-colors">
-                                  <Pause size={12} className="mr-1"/> Pausar
-                                </button>
-                                <button onClick={() => abrirConfirmacao({ title: 'Bloquear', message: 'O acesso ficará suspenso.', confirmLabel: 'Bloquear', tone: 'warning', onConfirm: async () => alterarStatus(alunoPerfil.id, 'bloqueado') })} className="flex-1 nl-btn !bg-red-100 !text-red-800 border border-red-300 hover:!bg-red-200 !h-8 !text-[10px] font-black uppercase tracking-widest shadow-sm transition-colors">
-                                  <Ban size={12} className="mr-1"/> Bloquear
+                          {/* Resumo de billing */}
+                          <div className="px-6 py-4 grid grid-cols-2 gap-3 border-b border-[var(--border-light)] shrink-0">
+                            {[
+                              { label: 'Estado', value: resumoContacto.statusLabel },
+                              { label: 'Mensalidade', value: formatCve(alunoPerfil.plano) },
+                              { label: 'Próx. cobrança', value: resumoContacto.nextChargeDate || '—' },
+                              { label: 'Cobertura até', value: resumoContacto.coverageEnd || '—' },
+                            ].map(card => (
+                              <div key={card.label}>
+                                <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400 mb-0.5">{card.label}</p>
+                                <p className="text-[13px] font-bold nl-text leading-tight">{card.value}</p>
+                              </div>
+                            ))}
+                          </div>
+
+                          {/* Lista de pagamentos */}
+                          <div className="flex-1 overflow-y-auto custom-scrollbar">
+                            {pagamentosAluno.length === 0 ? (
+                              <div className="flex flex-col items-center justify-center h-40 gap-2 opacity-40">
+                                <CreditCard size={20} className="nl-text-muted" />
+                                <p className="text-[11px] font-semibold nl-text-muted">Sem pagamentos</p>
+                              </div>
+                            ) : pagamentosAluno.map((p, i) => (
+                              <div key={`${p.id}-${i}`} className="flex items-center justify-between px-6 py-3 border-b border-[var(--border-light)] hover:bg-slate-50 transition-colors">
+                                <div>
+                                  <p className="text-[12px] font-semibold nl-text leading-tight">{p?.data_pagamento || '—'}</p>
+                                  <p className="text-[10px] text-slate-400 mt-0.5">{p?.metodo_pagamento || '—'}</p>
+                                </div>
+                                <span className="text-[13px] font-bold text-emerald-700">{formatCve(p?.valor)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Coluna C: Notas */}
+                        <div className="flex flex-col overflow-hidden">
+                          <div className="px-5 py-4 border-b border-[var(--border-light)] shrink-0">
+                            <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-3">Notas</p>
+                            <div className="flex gap-1.5">
+                              <input
+                                type="text"
+                                placeholder="Adicionar nota..."
+                                value={novaNota}
+                                onChange={(e) => setNovaNota(e.target.value)}
+                                onKeyDown={(e) => e.key === 'Enter' && adicionarNota()}
+                                className="flex-1 h-8 px-3 text-[11px] rounded-[6px] border border-[var(--border-light)] bg-[var(--color-secondary-lighter)]/40 outline-none focus:border-[var(--color-primary)]/50 focus:bg-white transition-all placeholder:text-slate-400 nl-text"
+                              />
+                              <button onClick={adicionarNota} className="w-8 h-8 rounded-[6px] bg-[var(--color-primary)] text-white flex items-center justify-center hover:opacity-90 transition-opacity shrink-0">
+                                <Plus size={13} />
+                              </button>
+                            </div>
+                          </div>
+
+                          <div className="flex-1 overflow-y-auto custom-scrollbar p-5 space-y-2">
+                            {notasContacto.length === 0 ? (
+                              <div className="flex flex-col items-center justify-center h-32 gap-2 opacity-40">
+                                <MessageSquare size={18} className="nl-text-muted" />
+                                <p className="text-[11px] font-semibold nl-text-muted">Nenhuma nota</p>
+                              </div>
+                            ) : notasContacto.map((nota, i) => (
+                              <div key={nota.id} className="group relative rounded-[6px] border border-[var(--border-light)] bg-white p-3 hover:shadow-sm transition-shadow">
+                                <p className="text-[12px] nl-text leading-relaxed pr-5">{nota.texto}</p>
+                                <p className="text-[9px] text-slate-400 mt-2">{nota.data_criacao}</p>
+                                <button onClick={() => eliminarNota(nota.id)} className="absolute top-2 right-2 w-5 h-5 rounded flex items-center justify-center text-slate-300 hover:text-red-500 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-all">
+                                  <Trash2 size={10} />
                                 </button>
                               </div>
-                            )}
-                            <button onClick={() => eliminarAluno(alunoPerfil.id)} className="w-full nl-btn !bg-red-600 !text-white border border-red-700 hover:!bg-red-700 !h-8 !text-[10px] font-black uppercase tracking-widest shadow-sm transition-colors">
-                              <Trash2 size={12} className="mr-1" /> Eliminar Registo
-                            </button>
+                            ))}
                           </div>
-                        </section>
-                      </div>
+                        </div>
 
-                      {/* Coluna 2: Financeiro */}
-                      <div className="flex flex-col h-[calc(100vh-280px)] xl:h-full">
-                        <section className="animate-slide-up flex flex-col h-full" style={{ animationDelay: '0.1s' }}>
-                          <div className="flex items-center justify-between mb-3 shrink-0">
-                            <div className="flex items-center gap-1.5">
-                              <CreditCard size={15} className="text-green-600" />
-                              <h3 className="text-[12px] font-black uppercase tracking-widest text-slate-800">Cobranças</h3>
-                            </div>
-                            <button onClick={() => marcarComoPago(alunoPerfil.id)} className="nl-btn !bg-green-600 !text-white hover:!bg-green-700 !h-7 !px-3 !text-[9px] font-black uppercase tracking-wider shadow-sm">
-                              <Wallet size={12} className="mr-1" /> Novo
-                            </button>
-                          </div>
-
-                          {(() => {
-                            const resumoPerfil = summarizeStudentBilling(alunoPerfil, pagamentos);
-                            const pagamentosAluno = pagamentos.filter(p => (p.alunoId || p.aluno_id) === alunoPerfil.id).sort((a, b) => (b.id || 0) - (a.id || 0));
-                            const tonePerfil = getBillingTone(resumoPerfil.status);
-                            
-                            return (
-                              <div className="flex flex-col flex-1 min-h-0 gap-4">
-                                <div className="grid grid-cols-2 gap-2 shrink-0">
-                                  {[
-                                    { label: 'Estado', value: getBillingBadgeLabel(resumoPerfil.status), cls: tonePerfil.badge },
-                                    { label: 'Valor', value: formatCve(alunoPerfil.plano), cls: 'pastel-blue' },
-                                    { label: 'Próxima', value: resumoPerfil.nextChargeDate || '-', cls: 'pastel-amber' },
-                                    { label: 'Cobertura', value: resumoPerfil.coverageEnd || '—', cls: 'pastel-green' },
-                                  ].map(card => (
-                                    <div key={card.label} className={`rounded-[6px] border p-2.5 shadow-sm ${card.cls}`}>
-                                      <p className="text-[9px] font-bold uppercase tracking-wider opacity-70 mb-0.5">{card.label}</p>
-                                      <p className="text-[13px] font-extrabold tracking-tight truncate">{card.value}</p>
-                                    </div>
-                                  ))}
-                                </div>
-
-                                <div className="rounded-[6px] border border-[var(--border)] bg-white shadow-sm flex flex-col flex-1 min-h-0">
-                                  <div className="px-3 py-2 border-b border-[var(--border-light)] bg-slate-50 flex items-center justify-between shrink-0">
-                                    <span className="text-[10px] font-black uppercase tracking-widest nl-text-muted">Histórico</span>
-                                    <span className="text-[9px] font-bold nl-text-muted bg-white px-1.5 py-0.5 rounded-full border border-[var(--border)]">{pagamentosAluno.length} reg.</span>
-                                  </div>
-                                  
-                                  <div className="flex-1 overflow-y-auto custom-scrollbar bg-white">
-                                    {pagamentosAluno.length === 0 ? (
-                                      <div className="p-6 text-center nl-text-muted opacity-40">
-                                        <CreditCard size={20} className="mx-auto mb-2 text-slate-300" />
-                                        <p className="text-[9px] font-bold uppercase tracking-widest">Vazio</p>
-                                      </div>
-                                    ) : (
-                                      <div className="divide-y divide-[var(--border-light)]">
-                                        {pagamentosAluno.map((p, i) => (
-                                          <div key={`${p.id}-${i}`} className="px-3 py-2 flex items-center justify-between hover:bg-slate-50 transition-colors">
-                                            <div>
-                                              <p className="text-[12px] font-bold nl-text leading-tight mb-0.5">{p?.data_pagamento || '-'}</p>
-                                              <p className="text-[9px] font-bold uppercase tracking-wider text-green-600 bg-green-50 px-1.5 py-0.5 rounded-sm inline-block">{p?.metodo_pagamento || '-'}</p>
-                                            </div>
-                                            <span className="text-[13px] font-black text-green-700 bg-green-50 px-2 py-0.5 rounded border border-green-100">{formatCve(p?.valor)}</span>
-                                          </div>
-                                        ))}
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                              </div>
-                            );
-                          })()}
-                        </section>
-                      </div>
-
-                      {/* Coluna 3: Notas */}
-                      <div className="flex flex-col h-[calc(100vh-280px)] xl:h-full">
-                        <section className="animate-slide-up flex flex-col h-full" style={{ animationDelay: '0.2s' }}>
-                          <div className="flex items-center gap-1.5 mb-3 shrink-0">
-                            <MessageSquare size={15} className="text-slate-600" />
-                            <h3 className="text-[12px] font-black uppercase tracking-widest text-slate-800">Notas</h3>
-                          </div>
-
-                          <div className="flex flex-col flex-1 min-h-0 gap-3">
-                            <div className="flex gap-1 p-1 bg-slate-50 border border-slate-200 rounded-[6px] shrink-0">
-                              <input type="text" placeholder="Escrever nota..." value={novaNota} onChange={(e) => setNovaNota(e.target.value)} className="flex-1 bg-transparent border-none outline-none px-3 text-[11px] text-slate-700 placeholder-slate-400" onKeyDown={(e) => e.key === 'Enter' && adicionarNota()} />
-                              <button onClick={adicionarNota} className="nl-btn nl-btn-primary !h-7 !px-3 !text-[10px] shadow-sm"><Plus size={12} /></button>
-                            </div>
-                            
-                            <div className="flex-1 overflow-y-auto custom-scrollbar pr-1">
-                              {notasContacto.length > 0 ? (
-                                <div className="space-y-2">
-                                  {notasContacto.map((nota, i) => (
-                                    <div key={nota.id} className={`group relative flex flex-col p-3 rounded-[6px] border shadow-sm transition-all ${coresPasteis[i % coresPasteis.length].bg}`} style={{ borderColor: 'var(--border-light)' }}>
-                                      <p className="text-[11px] nl-text leading-relaxed pr-5">{nota.texto}</p>
-                                      <div className="mt-2 pt-2 border-t border-black/5 flex justify-between items-center">
-                                        <p className="text-[9px] font-bold nl-text-muted uppercase tracking-wider">{nota.data_criacao}</p>
-                                      </div>
-                                      <button onClick={() => eliminarNota(nota.id)} className="absolute top-2 right-2 nl-icon-btn !w-6 !h-6 opacity-0 group-hover:opacity-100 !text-red-500 hover:!bg-red-50 transition-opacity bg-white/80 backdrop-blur border border-red-100 shadow-sm"><Trash2 size={11} /></button>
-                                    </div>
-                                  ))}
-                                </div>
-                              ) : (
-                                <div className="p-8 text-center nl-text-muted opacity-40 border border-dashed border-slate-300 rounded-[6px] h-full flex flex-col items-center justify-center">
-                                  <MessageSquare size={20} className="mb-2 text-slate-300" />
-                                  <p className="text-[9px] font-bold uppercase tracking-widest">Nenhuma nota</p>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        </section>
                       </div>
                     </div>
-                  </div>
-                </>
-              ) : (
-                <div className="flex-1 flex flex-col items-center justify-center text-center p-12 bg-[var(--bg-surface)]">
-                  <div className="w-14 h-14 rounded-[6px] flex items-center justify-center nl-text-muted mb-4" style={{ background: 'var(--color-secondary-lighter)', border: '1px solid var(--border)' }}>
-                    <BookUser size={28} />
-                  </div>
-                  <h3 className="text-[16px] font-bold nl-text tracking-tight">Selecione um perfil</h3>
-                  <p className="text-[12px] nl-text-muted max-w-[280px] mt-1.5 leading-relaxed">Escolha um aluno na lista lateral para ver dados, histórico de pagamentos e notas.</p>
-                  <div className="mt-5 flex gap-2">
-                    <button
-                      onClick={() => setAba('gestao')}
-                      className="nl-btn nl-btn-primary !h-8 !px-4 !text-[12px]"
-                    >
-                      <Users size={13} /> Ver Alunos
-                    </button>
-                    <button
-                      onClick={() => { setNovoAluno(novoAlunoDefault); setMostrarForm(true); }}
-                      className="nl-btn nl-btn-secondary !h-8 !px-4 !text-[12px]"
-                    >
-                      <Plus size={13} /> Novo Aluno
-                    </button>
+                  </>
+                );
+              })() : (
+                <div className="flex-1 flex flex-col items-center justify-center gap-3 opacity-40">
+                  <BookUser size={32} className="nl-text-muted" />
+                  <div className="text-center">
+                    <p className="text-[14px] font-semibold nl-text">Selecione um contacto</p>
+                    <p className="text-[12px] nl-text-muted mt-1">Escolha um parceiro na lista para ver o perfil</p>
                   </div>
                 </div>
               )}
             </div>
-            </div>
+
+          </div>
+          </div>
           </div>
           );
         })()}
@@ -5728,22 +5941,15 @@ function App() {
 
                     {/* Relatório mensal disponível */}
                     {relatorioMensalDisponivel && (
-                      <div className="p-5 rounded-[8px] bg-amber-50 border border-amber-200 flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-[6px] bg-amber-100 flex items-center justify-center shrink-0">
-                            <FileBarChart size={20} className="text-amber-700" />
-                          </div>
-                          <div>
-                            <p className="text-[13px] font-bold text-amber-900">Relatório de {relatorioMensalDisponivel} disponível</p>
-                            <p className="text-[11px] text-amber-700 mt-0.5">Aceda à página Alunos e exporte em PDF ou Excel.</p>
-                          </div>
+                      <div className="nl-alert nl-alert-info">
+                        <div className="nl-alert-icon"><FileBarChart size={15} /></div>
+                        <div className="flex-1 min-w-0">
+                          <p className="nl-alert-title">Relatório de {relatorioMensalDisponivel} disponível</p>
+                          <p className="nl-alert-body">Aceda ao dossier de desempenho para exportar em PDF ou Excel.</p>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => { setAba('gestao'); setMostrarModalExport(true); }}
-                          className="nl-btn nl-btn-primary px-5 h-9 text-[12px] shrink-0"
-                        >
-                          Exportar
+                        <button type="button" onClick={() => { setAba('gestao'); setMostrarModalExport(true); }}
+                          className="shrink-0 text-[10px] font-black uppercase tracking-wider text-blue-700 bg-blue-100 hover:bg-blue-200 border border-blue-200 px-2.5 py-1 rounded-[4px] transition-colors self-start">
+                          Exportar →
                         </button>
                       </div>
                     )}
@@ -6001,6 +6207,18 @@ function App() {
     </main>
 
     {/* Modal: Nova Matrícula */}
+    {mostrarImportar && (
+      <ImportarDadosModal
+        onClose={() => setMostrarImportar(false)}
+        onSuccess={(resumo) => {
+          setMostrarImportar(false);
+          carregarConfiguracoes();
+          showToast(`Importação concluída: ${resumo.inseridos} inseridos e ${resumo.erros} falhas.`);
+        }}
+        electron={electron}
+        categorias={categorias || ['Geral']}
+      />
+    )}
     {mostrarForm && (
       <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100] p-4 animate-fade-in" onClick={() => setMostrarForm(false)}>
         <div className="bg-[var(--bg-surface)] w-full max-w-[500px] shadow-[0_20px_70px_rgba(0,0,0,0.3)] rounded-[6px] border border-[var(--border)] overflow-hidden flex flex-col animate-scale-in" style={{ maxHeight: 'calc(100vh - 40px)' }} onClick={e => e.stopPropagation()}>
@@ -6034,15 +6252,42 @@ function App() {
                 <label className="block text-[10px] font-bold nl-text-muted uppercase tracking-[0.12em] mb-1">
                   Nome completo <span className="text-red-500">*</span>
                 </label>
-                <input
-                  type="text"
-                  placeholder="Nome do aluno..."
-                  value={novoAluno.nome}
-                  onChange={e => setNovoAluno({ ...novoAluno, nome: e.target.value })}
-                  className="nl-input w-full h-10 px-3 text-[13px]"
-                  required
-                  autoFocus
-                />
+                <div className="relative">
+                  <input
+                    type="text"
+                    placeholder="Nome do aluno..."
+                    value={novoAluno.nome}
+                    onChange={e => handleNomeChange(e.target.value)}
+                    className="nl-input w-full h-10 px-3 text-[13px]"
+                    required
+                    autoFocus
+                    onBlur={() => setTimeout(() => setSugestoesNome([]), 200)}
+                  />
+                  {sugestoesNome.length > 0 && (
+                    <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-[var(--border)] rounded-md shadow-lg z-[110] overflow-hidden animate-scale-in">
+                      <p className="px-3 py-1.5 bg-slate-50 text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Contactos Existentes</p>
+                      {sugestoesNome.map(s => (
+                        <button
+                          key={s.id}
+                          type="button"
+                          onClick={() => {
+                            setAlunoPerfil(s);
+                            setAba('contactos');
+                            setMostrarForm(false);
+                            setSugestoesNome([]);
+                          }}
+                          className="w-full px-3 py-2 text-left hover:bg-blue-50 flex items-center justify-between group transition-colors"
+                        >
+                          <div>
+                            <p className="text-[12px] font-bold text-slate-700">{s.nome}</p>
+                            <p className="text-[10px] text-slate-400">{s.telefone || 'Sem telefone'}</p>
+                          </div>
+                          <ExternalLink size={12} className="text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* Tel + Categoria */}
@@ -6337,6 +6582,11 @@ function App() {
 
           <div className="bg-[#F8F9FC] border-t border-[#DDE2EB] px-6 py-4 flex items-center justify-end gap-3 shrink-0">
             <button type="button" onClick={() => { setMostrarFormEdicao(false); setAlunoEdicao(null); setNovoAluno(novoAlunoDefault); }} className="nl-btn nl-btn-secondary !h-9 !px-5 !text-[11px] font-bold">Cancelar</button>
+            {isImportedStatus(alunoEdicao?.status) && (
+              <button type="button" onClick={ativarImportado} className="nl-btn !h-9 !px-5 !text-[11px] font-bold !bg-emerald-600 !text-white hover:!bg-emerald-700 border border-emerald-700 shadow-sm">
+                <CheckCircle2 size={14} /> Confirmar e Ativar
+              </button>
+            )}
             <button type="submit" form="editar-aluno-form" className="nl-btn nl-btn-primary !h-9 !px-6 !text-[11px] font-bold">
               <Save size={14} /> Guardar Alterações
             </button>
@@ -6344,6 +6594,102 @@ function App() {
         </div>
       </div>
     )}
+
+    {/* Modal: Resolver Duplicados */}
+    {mostrarModalDuplicados && (
+      <div className="fixed inset-0 nl-modal-overlay flex items-center justify-center z-[160] p-4 animate-in fade-in duration-200">
+        <div className="bg-[var(--bg-surface)] w-full max-w-[600px] shadow-[0_20px_70px_rgba(0,0,0,0.4)] rounded-[8px] border border-[var(--border)] overflow-hidden flex flex-col animate-scale-in" style={{ maxHeight: '85vh' }} onClick={e => e.stopPropagation()}>
+          <div className="bg-slate-900 h-14 flex items-center shrink-0 px-6">
+            <div className="flex-1 flex items-center gap-3">
+              <div className="h-8 w-8 rounded-full bg-blue-500/20 flex items-center justify-center border border-blue-500/30">
+                <Sparkles size={18} className="text-blue-400" />
+              </div>
+              <div>
+                <p className="text-[10px] font-black text-blue-400 uppercase tracking-[0.2em] leading-none">Manutenção de Dados</p>
+                <h2 className="text-[14px] font-bold text-white tracking-tight">Duplicados Encontrados ({duplicadosEncontrados.length})</h2>
+              </div>
+            </div>
+            <button onClick={() => setMostrarModalDuplicados(false)} className="h-8 w-8 flex items-center justify-center rounded-lg text-white/40 hover:bg-white/10 hover:text-white transition-all">
+              <X size={18} />
+            </button>
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-6 custom-scrollbar space-y-6">
+            {duplicadosEncontrados.length === 0 ? (
+              <div className="py-12 text-center space-y-3">
+                <CheckCircle2 size={40} className="mx-auto text-emerald-500 opacity-40" />
+                <p className="text-[14px] font-bold nl-text">Tudo limpo!</p>
+                <p className="text-[12px] nl-text-muted">Não foram encontrados contactos com nomes ou telefones repetidos.</p>
+              </div>
+            ) : (
+              <div className="space-y-6">
+                <p className="text-[12px] nl-text-muted">Os grupos abaixo partilham o mesmo <b>nome</b> ou <b>número de telemóvel</b>. Analise e decida qual manter.</p>
+                
+                {duplicadosEncontrados.map((grupo, idx) => (
+                  <div key={idx} className="rounded-[8px] border border-slate-200 bg-slate-50 overflow-hidden shadow-sm">
+                    <div className="px-4 py-2 bg-white border-b border-slate-100 flex items-center justify-between">
+                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Grupo #{idx + 1}</span>
+                      <span className="px-2 py-0.5 bg-blue-50 text-blue-600 text-[9px] font-black rounded-full uppercase">{grupo.length} ocorrências</span>
+                    </div>
+                    <div className="divide-y divide-slate-100">
+                      {grupo.map(aluno => (
+                        <div key={aluno.id} className="p-4 bg-white hover:bg-slate-50/50 transition-colors flex items-center gap-4">
+                          <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 font-bold text-[12px] shrink-0 overflow-hidden border border-slate-200">
+                            {aluno.foto_path ? <img src={`local-resource://${aluno.foto_path}`} className="w-full h-full object-cover" /> : aluno.nome.slice(0,2).toUpperCase()}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-[13px] font-bold nl-text truncate">{aluno.nome}</p>
+                            <p className="text-[11px] nl-text-muted">{aluno.telefone || 'Sem telefone'}</p>
+                            <p className="text-[10px] text-slate-400 mt-0.5">Inscrito em: {aluno.data_matricula || '—'}</p>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <button 
+                              onClick={() => {
+                                setAlunoPerfil(aluno);
+                                setAba('contactos');
+                                setMostrarModalDuplicados(false);
+                              }}
+                              className="nl-btn !h-8 !px-3 !bg-slate-100 !text-slate-600 hover:!bg-blue-50 hover:!text-blue-600 !border-slate-200 !text-[10px] font-bold uppercase"
+                            >
+                              Ver
+                            </button>
+                            <button 
+                              onClick={() => {
+                                abrirConfirmacao({
+                                  title: 'Eliminar Duplicado',
+                                  message: `Tens a certeza que queres eliminar o registo de ${aluno.nome}? Esta ação é irreversível.`,
+                                  confirmLabel: 'Eliminar',
+                                  tone: 'danger',
+                                  onConfirm: async () => {
+                                    await eliminarAluno(aluno.id);
+                                    // Recalcular duplicados após eliminar
+                                    const novosGrupos = duplicadosEncontrados.map(g => g.filter(a => a.id !== aluno.id)).filter(g => g.length > 1);
+                                    setDuplicadosEncontrados(novosGrupos);
+                                    if (novosGrupos.length === 0) setMostrarModalDuplicados(false);
+                                  }
+                                });
+                              }}
+                              className="nl-btn !h-8 !w-8 !p-0 !bg-red-50 !text-red-500 hover:!bg-red-500 hover:!text-white !border-red-100 transition-all"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="p-4 bg-slate-50 border-t border-slate-200 flex justify-center">
+            <button onClick={() => setMostrarModalDuplicados(false)} className="nl-btn nl-btn-secondary !h-10 !px-8 !text-[11px] font-black uppercase tracking-widest shadow-sm">Fechar</button>
+          </div>
+        </div>
+      </div>
+    )}
+
 
 {/* Modal: Perfil do Aluno */}
       {alunoSelecionado && (
@@ -6515,35 +6861,52 @@ function App() {
         if (pagamentoSucesso) {
           return (
             <div className="fixed inset-0 bg-black/60 backdrop-blur-[2px] flex items-center justify-center z-[110] p-4 animate-fade-in" onClick={fecharModal}>
-              <div className="bg-[var(--bg-surface)] w-full max-w-[420px] shadow-2xl rounded-[6px] border border-[var(--border)] overflow-hidden animate-scale-in flex flex-col" onClick={e => e.stopPropagation()}>
-                <div className="px-6 pt-8 pb-6 flex flex-col items-center text-center" style={{ background: 'linear-gradient(160deg, #F0FDF4 0%, #DCFCE7 100%)', borderBottom: '1px dashed #BBF7D0' }}>
-                  <div className="w-16 h-16 rounded-full bg-white shadow-xl flex items-center justify-center mb-4 border-2 border-green-200">
-                    <CheckCircle2 size={32} className="text-green-500" />
+              <div className="bg-white w-full max-w-[360px] shadow-[0_20px_60px_rgba(0,0,0,0.25)] rounded-[10px] overflow-hidden animate-scale-in flex flex-col" onClick={e => e.stopPropagation()}>
+                {/* Receipt top bar */}
+                <div className="bg-[#0F172A] px-5 py-3 flex items-center justify-between shrink-0">
+                  <div className="flex items-center gap-2">
+                    <div className="w-5 h-5 rounded flex items-center justify-center bg-white/10 p-0.5">
+                      <img src={appLogo || APP_ICON_PATH} alt="" className="w-full h-full object-contain" />
+                    </div>
+                    <span className="text-[9px] font-black text-white/50 uppercase tracking-[0.25em]">{nomeAcademia || 'NextLevel'}</span>
                   </div>
-                  <p className="text-[10px] font-black uppercase tracking-[0.3em] text-green-600/70 mb-1">Pagamento Confirmado</p>
-                  <p className="text-[32px] font-black text-green-800 leading-none" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                  <span className="text-[8px] font-bold text-white/35 uppercase tracking-widest">Recibo Emitido</span>
+                </div>
+                {/* Confirmed amount */}
+                <div className="px-6 py-7 text-center" style={{ background: 'linear-gradient(160deg, #F0FDF4 0%, #DCFCE7 100%)' }}>
+                  <div className="w-14 h-14 rounded-full bg-white shadow-lg flex items-center justify-center mx-auto mb-3 border-2 border-green-200">
+                    <CheckCircle2 size={28} className="text-green-500" />
+                  </div>
+                  <p className="text-[9px] font-black uppercase tracking-[0.3em] text-green-600/70 mb-2">Pagamento Confirmado</p>
+                  <p className="text-[34px] font-black text-green-800 leading-none" style={{ fontVariantNumeric: 'tabular-nums' }}>
                     {formatCve(normalizeAmount(ultimoPagamentoInfo?.valor || alunoParaPagamento.plano))}
                   </p>
-                  {mesParaWhatsapp && <p className="text-[12px] font-bold text-green-600/80 mt-2">{mesParaWhatsapp}</p>}
+                  {mesParaWhatsapp && <p className="text-[11px] font-bold text-green-600/70 mt-2 capitalize">{mesParaWhatsapp}</p>}
                 </div>
-                <div className="px-6 py-5 border-b border-slate-100 bg-slate-50/30">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-lg flex items-center justify-center text-white font-black text-[16px] shrink-0 shadow-md" style={{ background: 'linear-gradient(135deg, var(--color-primary), var(--color-primary-hover))' }}>
-                      {alunoParaPagamento.nome.charAt(0).toUpperCase()}
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-[14px] font-black nl-text truncate">{alunoParaPagamento.nome}</p>
-                      <p className="text-[11px] font-bold text-slate-400">{alunoParaPagamento.telefone || 'Sem contacto'}</p>
-                    </div>
+                {/* Dashed tear line */}
+                <div className="relative border-t border-dashed border-slate-200 mx-0">
+                  <div className="absolute -left-3 -top-3 w-6 h-6 rounded-full bg-slate-100" />
+                  <div className="absolute -right-3 -top-3 w-6 h-6 rounded-full bg-slate-100" />
+                </div>
+                {/* Student info */}
+                <div className="px-5 py-4 flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-full flex items-center justify-center text-white font-black text-[14px] shrink-0 shadow-sm" style={{ background: 'linear-gradient(135deg, var(--color-primary), var(--color-primary-hover))' }}>
+                    {alunoParaPagamento.nome.charAt(0).toUpperCase()}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-[13px] font-black text-slate-800 truncate">{alunoParaPagamento.nome}</p>
+                    <p className="text-[10px] text-slate-400 font-medium">{alunoParaPagamento.telefone || 'Sem contacto'}</p>
                   </div>
                 </div>
-                <div className="p-6 space-y-3">
+                {/* Actions */}
+                <div className="px-5 pb-5 space-y-2">
+                  <div className="border-t border-dashed border-slate-100 mb-3" />
                   {whatsappNum && (
-                    <a href={whatsappUrl} target="_blank" rel="noreferrer" onClick={fecharModal} className="flex items-center justify-center gap-3 h-11 rounded-[6px] text-[12px] font-bold text-white transition-all hover:brightness-105 shadow-sm" style={{ background: '#25D366' }}>
-                      <MessageSquare size={15} /> Notificar via WhatsApp
+                    <a href={whatsappUrl} target="_blank" rel="noreferrer" onClick={fecharModal} className="flex items-center justify-center gap-3 h-10 rounded-[6px] text-[12px] font-bold text-white transition-all hover:brightness-105 shadow-sm" style={{ background: '#25D366' }}>
+                      <MessageSquare size={14} /> Notificar via WhatsApp
                     </a>
                   )}
-                  <button onClick={fecharModal} className="w-full h-10 rounded-[5px] text-[11px] font-medium nl-text-muted hover:bg-[var(--color-secondary-lighter)] transition-all border border-[var(--border)]">
+                  <button onClick={fecharModal} className="w-full h-9 rounded-[5px] text-[11px] font-medium text-slate-400 hover:bg-slate-50 transition-all border border-slate-200">
                     Concluir e fechar
                   </button>
                 </div>
@@ -6554,138 +6917,155 @@ function App() {
 
         return (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-[2px] flex items-center justify-center z-[110] p-4 animate-fade-in" onClick={fecharModal}>
-            <div className="bg-[var(--bg-surface)] w-full max-w-[460px] shadow-[0_20px_70px_rgba(0,0,0,0.3)] rounded-[6px] border border-[var(--border)] overflow-hidden animate-scale-in flex flex-col" style={{ maxHeight: 'calc(100vh - 40px)' }} onClick={e => e.stopPropagation()}>
-              <div className="bg-[#F1F4F9] border-b border-[#DDE2EB] h-12 flex items-center shrink-0">
-                <div className="flex-1 flex items-center gap-2.5 px-4">
-                  <div className="h-6 w-6 rounded-md bg-white/50 backdrop-blur-sm p-1 border border-white/40 shadow-sm flex items-center justify-center">
-                    <img src={appLogo || APP_ICON_PATH} alt="Logo" className="w-full h-full object-contain" />
+            <div className="bg-white w-full max-w-[420px] shadow-[0_20px_70px_rgba(0,0,0,0.25)] rounded-[10px] overflow-hidden animate-scale-in flex flex-col" style={{ maxHeight: 'calc(100vh - 40px)' }} onClick={e => e.stopPropagation()}>
+
+              {/* Receipt header bar */}
+              <div className="bg-[#0F172A] px-5 py-3 flex items-center justify-between shrink-0">
+                <div className="flex items-center gap-2">
+                  <div className="w-5 h-5 rounded flex items-center justify-center bg-white/10 p-0.5">
+                    <img src={appLogo || APP_ICON_PATH} alt="" className="w-full h-full object-contain" />
                   </div>
-                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] leading-none">NextLevel</span>
+                  <span className="text-[9px] font-black text-white/50 uppercase tracking-[0.25em]">{nomeAcademia || 'NextLevel'}</span>
                 </div>
-                <div className="flex-1 text-center">
-                  <h2 className="text-[12px] font-black text-slate-700 uppercase tracking-wider leading-none">Registo de Cobrança</h2>
-                </div>
-                <div className="flex-1 flex justify-end px-3">
-                  <button onClick={fecharModal} className="h-8 w-8 flex items-center justify-center rounded-md text-slate-400 hover:bg-red-50 hover:text-red-500 transition-all" title="Fechar">
-                    <X size={16} />
-                  </button>
+                <span className="text-[8px] font-bold text-white/35 uppercase tracking-widest">Registo de Pagamento</span>
+                <button onClick={fecharModal} className="w-6 h-6 flex items-center justify-center rounded text-white/40 hover:text-white/80 hover:bg-white/10 transition-all" title="Fechar">
+                  <X size={14} />
+                </button>
+              </div>
+
+              {/* Student + plan amount */}
+              <div className="px-5 pt-5 pb-4 border-b border-dashed border-slate-200 shrink-0">
+                <div className="flex items-center gap-3">
+                  <div className="w-11 h-11 rounded-full flex items-center justify-center text-white font-black text-[16px] shrink-0 shadow-md" style={{ background: 'linear-gradient(135deg, var(--color-primary), var(--color-primary-hover))' }}>
+                    {alunoParaPagamento.nome.charAt(0).toUpperCase()}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[15px] font-black text-slate-800 leading-tight truncate">{alunoParaPagamento.nome}</p>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <span className={`text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full border ${statusColors}`}>{alunoParaPagamento.status || 'ativo'}</span>
+                      {alunoParaPagamento.categoria && <span className="text-[10px] text-slate-400">{alunoParaPagamento.categoria}</span>}
+                    </div>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Mensalidade</p>
+                    <p className="text-[17px] font-black text-blue-700" style={{ fontVariantNumeric: 'tabular-nums' }}>{formatCve(normalizeAmount(alunoParaPagamento.plano))}</p>
+                  </div>
                 </div>
               </div>
 
               <div className="flex-1 overflow-y-auto custom-scrollbar">
-                <div className="px-6 py-5 bg-gradient-to-b from-slate-50/50 to-transparent">
-                  <div className="flex items-center gap-4">
-                    <div className="w-14 h-14 rounded-lg flex items-center justify-center text-white font-black text-[20px] shrink-0 shadow-lg" style={{ background: 'linear-gradient(135deg, var(--color-primary), var(--color-primary-hover))' }}>
-                      {alunoParaPagamento.nome.charAt(0).toUpperCase()}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <h3 className="text-[16px] font-black nl-text tracking-tight truncate">{alunoParaPagamento.nome}</h3>
-                      <div className="flex items-center gap-2 mt-1 flex-wrap">
-                        <span className={`text-[9px] font-black uppercase tracking-[0.1em] px-2.5 py-0.5 rounded-full border shadow-sm ${statusColors}`}>
-                          {alunoParaPagamento.status || 'ativo'}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                {/* Receipt form rows */}
+                <div className="px-5 py-4 space-y-3">
 
-                <div className="px-6 pb-4 space-y-1">
-                  {[
-                    { label: 'Valor Mensalidade', value: formatCve(normalizeAmount(alunoParaPagamento.plano)), highlight: true },
-                    { label: 'Cobertura Actual', value: resumoAlunoParaPagamento?.coverageStart && resumoAlunoParaPagamento?.coverageEnd ? `${resumoAlunoParaPagamento.coverageStart} → ${resumoAlunoParaPagamento.coverageEnd}` : 'Sem cobertura activa' },
-                    { label: 'Nova Cobertura', value: previewPagamento?.coverageStart && previewPagamento?.coverageEnd ? `${previewPagamento.coverageStart} → ${previewPagamento.coverageEnd}` : '—' },
-                    { label: 'Próximo Vencimento', value: previewPagamento?.nextChargeDate || '—' },
-                  ].map((row, i) => (
-                    <div key={row.label} className="flex items-center justify-between py-2 border-b border-slate-50 last:border-0">
-                      <span className="text-[11px] text-slate-500 font-bold uppercase tracking-wider">{row.label}</span>
-                      <span className={`text-right ${row.highlight ? 'text-[15px] font-black text-blue-700' : 'text-[12px] font-bold nl-text'}`}>{row.value}</span>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="px-6 py-5 bg-slate-50/30 border-y border-slate-100 space-y-4">
-                  {/* Valor com sugestão do plano */}
-                  <div className="space-y-1.5">
-                    <div className="flex items-center justify-between ml-1">
-                      <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500">Valor a Receber</label>
-                      {!pagamentoForm.valor && (
-                        <button
-                          type="button"
-                          onClick={() => setPagamentoForm(prev => ({ ...prev, valor: String(normalizeAmount(alunoParaPagamento.plano)) }))}
-                          className="text-[9px] font-black uppercase tracking-wide text-blue-600 hover:underline"
-                        >
-                          Usar valor do plano ({formatCve(normalizeAmount(alunoParaPagamento.plano))})
-                        </button>
-                      )}
-                    </div>
+                  {/* Valor */}
+                  <div className="flex items-center gap-3">
+                    <span className="w-24 text-[9px] font-black uppercase tracking-wider text-slate-400 shrink-0">Valor</span>
                     <input
                       type="text"
                       value={pagamentoForm.valor}
                       onChange={e => setPagamentoForm(prev => ({ ...prev, valor: e.target.value }))}
-                      className="nl-input h-11 px-4 text-[14px] font-black text-blue-700 !bg-white shadow-sm"
-                      placeholder={`Sugerido: ${formatCve(normalizeAmount(alunoParaPagamento.plano))}`}
+                      className="flex-1 nl-input h-9 px-3 text-[13px] font-black text-blue-700"
+                      placeholder={`${formatCve(normalizeAmount(alunoParaPagamento.plano))}`}
                       style={{ fontVariantNumeric: 'tabular-nums' }}
                     />
+                    {!pagamentoForm.valor && (
+                      <button type="button" onClick={() => setPagamentoForm(prev => ({ ...prev, valor: String(normalizeAmount(alunoParaPagamento.plano)) }))} className="text-[9px] font-black uppercase text-blue-500 hover:underline shrink-0 whitespace-nowrap">
+                        Usar plano
+                      </button>
+                    )}
                   </div>
-                  {/* Mês de referência + Data */}
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1.5">
-                      <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Mês de Referência</label>
-                      <select
-                        className="nl-input h-11 px-3 text-[12px] font-bold !bg-white shadow-sm capitalize"
-                        value={pagamentoForm.mesReferencia || mesFinanceiro}
-                        onChange={e => setPagamentoForm(prev => ({ ...prev, mesReferencia: e.target.value }))}
-                      >
-                        {MONTH_OPTIONS.map(m => (
-                          <option key={m} value={m} className="capitalize">{m.charAt(0).toUpperCase() + m.slice(1)}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="space-y-1.5">
-                      <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Data do Pagamento</label>
-                      <input type="date" value={pagamentoForm.dataPagamento} onChange={e => setPagamentoForm(prev => ({ ...prev, dataPagamento: e.target.value }))} className="nl-input h-11 px-4 text-[13px] font-bold !bg-white shadow-sm" />
-                    </div>
+
+                  {/* Mês ref */}
+                  <div className="flex items-center gap-3">
+                    <span className="w-24 text-[9px] font-black uppercase tracking-wider text-slate-400 shrink-0">Mês Ref.</span>
+                    <select
+                      className="flex-1 nl-input h-9 px-3 text-[12px] font-bold capitalize"
+                      value={pagamentoForm.mesReferencia || mesFinanceiro}
+                      onChange={e => setPagamentoForm(prev => ({ ...prev, mesReferencia: e.target.value }))}
+                    >
+                      {MONTH_OPTIONS.map(m => (
+                        <option key={m} value={m} className="capitalize">{m.charAt(0).toUpperCase() + m.slice(1)} {anoFinanceiro}</option>
+                      ))}
+                    </select>
                   </div>
-                  <div className="space-y-2">
-                    <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Método</label>
-                    <div className="flex flex-wrap gap-2">
+
+                  {/* Data */}
+                  <div className="flex items-center gap-3">
+                    <span className="w-24 text-[9px] font-black uppercase tracking-wider text-slate-400 shrink-0">Data Pagto.</span>
+                    <input
+                      type="date"
+                      value={pagamentoForm.dataPagamento}
+                      onChange={e => setPagamentoForm(prev => ({ ...prev, dataPagamento: e.target.value }))}
+                      className="flex-1 nl-input h-9 px-3 text-[12px] font-bold"
+                    />
+                  </div>
+
+                  {/* Método */}
+                  <div className="flex items-start gap-3">
+                    <span className="w-24 text-[9px] font-black uppercase tracking-wider text-slate-400 shrink-0 pt-2">Método</span>
+                    <div className="flex flex-wrap gap-1.5">
                       {PAYMENT_METHOD_OPTIONS.map(opt => {
                         const active = pagamentoForm.metodo === opt.value;
                         return (
-                          <button key={opt.value} type="button" onClick={() => setPagamentoForm(prev => ({ ...prev, metodo: opt.value }))} className={`rounded-[4px] px-4 py-2 text-[10px] font-bold uppercase tracking-widest transition-all border ${active ? 'bg-[var(--color-primary)] text-white border-[var(--color-primary)]' : 'bg-white border-[var(--border)] nl-text-muted hover:bg-[var(--color-secondary-lighter)]'}`}>
+                          <button key={opt.value} type="button" onClick={() => setPagamentoForm(prev => ({ ...prev, metodo: opt.value }))} className={`rounded-[4px] px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider transition-all border ${active ? 'bg-[var(--color-primary)] text-white border-[var(--color-primary)] shadow-sm' : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'}`}>
                             {opt.label}
                           </button>
                         );
                       })}
                     </div>
                   </div>
-                  <div className="border border-[var(--border)] rounded-[5px] overflow-hidden bg-[var(--bg-surface)] shadow-sm">
-                    <button onClick={() => setMostrarHistoricoModal(prev => !prev)} className="w-full flex items-center justify-between px-4 py-3 text-[10px] font-black uppercase tracking-widest text-slate-500 hover:bg-slate-50 transition-colors">
-                      <span className="flex items-center gap-2"><CreditCard size={12} className="text-blue-500" /> Histórico Recente <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 text-[9px] font-black">{historicoPorAluno.length}</span></span>
-                      {mostrarHistoricoModal ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                    </button>
-                    {mostrarHistoricoModal && (
-                      <div className="border-t border-slate-100 divide-y divide-slate-50 max-h-[150px] overflow-y-auto custom-scrollbar">
-                        {historicoPorAluno.length === 0 ? <p className="px-4 py-6 text-[11px] text-slate-400 text-center font-medium">Nenhum registo</p> : historicoPorAluno.map((p, i) => (
-                          <div key={p.id || i} className="px-4 py-2.5 flex items-center justify-between gap-3 hover:bg-slate-50/50">
-                            <div className="min-w-0">
+                </div>
+
+                {/* Dashed separator */}
+                <div className="relative border-t border-dashed border-slate-200 mx-5 my-1">
+                  <div className="absolute -left-8 -top-3 w-6 h-6 rounded-full bg-slate-100" />
+                  <div className="absolute -right-8 -top-3 w-6 h-6 rounded-full bg-slate-100" />
+                </div>
+
+                {/* Billing info preview */}
+                <div className="px-5 py-3 space-y-2">
+                  {[
+                    { label: 'Cobertura Actual', value: resumoAlunoParaPagamento?.coverageStart && resumoAlunoParaPagamento?.coverageEnd ? `${resumoAlunoParaPagamento.coverageStart} → ${resumoAlunoParaPagamento.coverageEnd}` : '—' },
+                    { label: 'Nova Cobertura', value: previewPagamento?.coverageStart && previewPagamento?.coverageEnd ? `${previewPagamento.coverageStart} → ${previewPagamento.coverageEnd}` : '—' },
+                    { label: 'Próx. Vencimento', value: previewPagamento?.nextChargeDate || '—' },
+                  ].map(row => (
+                    <div key={row.label} className="flex items-center justify-between">
+                      <span className="text-[9px] font-black uppercase tracking-wider text-slate-400">{row.label}</span>
+                      <span className="text-[11px] font-bold text-slate-600">{row.value}</span>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Collapsible history */}
+                <div className="mx-5 border-t border-slate-100 mt-2">
+                  <button onClick={() => setMostrarHistoricoModal(prev => !prev)} className="w-full flex items-center justify-between py-3 text-[9px] font-black uppercase tracking-widest text-slate-400 hover:text-slate-600 transition-colors">
+                    <span className="flex items-center gap-1.5"><CreditCard size={11} /> Histórico <span className="px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-600 text-[9px] font-black">{historicoPorAluno.length}</span></span>
+                    {mostrarHistoricoModal ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                  </button>
+                  {mostrarHistoricoModal && (
+                    <div className="divide-y divide-slate-50 max-h-[130px] overflow-y-auto custom-scrollbar mb-3">
+                      {historicoPorAluno.length === 0
+                        ? <p className="py-4 text-[11px] text-slate-400 text-center">Nenhum registo</p>
+                        : historicoPorAluno.map((p, i) => (
+                          <div key={p.id || i} className="py-2.5 flex items-center justify-between gap-3">
+                            <div>
                               <p className="text-[11px] font-black text-slate-700">{p.data_pagamento || p.dataPagamento || '—'}</p>
-                              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">{p.metodo_pagamento || p.metodoPagamento || '—'}{p.mes_referencia ? ` · ${p.mes_referencia}` : ''}</p>
+                              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-tight">{p.metodo_pagamento || p.metodoPagamento || '—'}{p.mes_referencia ? ` · ${p.mes_referencia}` : ''}</p>
                             </div>
                             <span className="text-[12px] font-black text-emerald-600 shrink-0">{formatCve(normalizeAmount(p.valor))}</span>
                           </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
+                        ))
+                      }
+                    </div>
+                  )}
                 </div>
               </div>
 
-              {/* Rodapé */}
-              <div className="bg-[#F8F9FC] border-t border-[#DDE2EB] px-6 py-4 flex items-center justify-end gap-3 shrink-0">
-                <button onClick={fecharModal} className="nl-btn nl-btn-secondary !h-9 !px-5 !text-[11px] font-bold">Cancelar</button>
-                <button onClick={registrarPagamento} className="nl-btn nl-btn-primary !h-9 !px-6 !text-[11px] font-bold">
-                  <CheckCircle2 size={14} /> Confirmar Pagamento
+              {/* Footer actions */}
+              <div className="border-t border-slate-100 px-5 py-3.5 flex items-center justify-between gap-3 bg-slate-50/40 shrink-0">
+                <button onClick={fecharModal} className="text-[11px] font-bold text-slate-400 hover:text-slate-600 transition-colors px-2 py-2">Cancelar</button>
+                <button onClick={registrarPagamento} className="nl-btn nl-btn-primary !h-10 !px-6 !text-[12px] font-black">
+                  <CheckCircle2 size={15} /> Confirmar Pagamento
                 </button>
               </div>
             </div>
@@ -7392,11 +7772,9 @@ function App() {
 
       {/* Toast Notification */}
       {toast.visible && (
-        <div className="fixed bottom-6 right-6 bg-[var(--bg-surface)] border border-[var(--border)] text-[var(--text-primary)] shadow-xl rounded-[4px] px-5 py-3.5 flex items-center gap-3 z-[9999] animate-slide-up" style={{ boxShadow: '0 8px 30px rgba(9,30,66,0.16), 0 0 0 1px rgba(9,30,66,0.06)' }}>
-           <div className="w-7 h-7 rounded-[7px] bg-green-500/10 flex items-center justify-center border border-green-200">
-              <CheckCircle2 size={15} className="text-green-600" />
-           </div>
-           <p className="text-[13px] font-bold tracking-tight">{toast.message}</p>
+        <div className="fixed bottom-6 right-6 z-[9999] animate-slide-up nl-alert nl-alert-success shadow-[0_8px_30px_rgba(9,30,66,0.14)]" style={{ minWidth: 260, maxWidth: 380 }}>
+          <div className="nl-alert-icon"><CheckCircle2 size={15} /></div>
+          <p className="nl-alert-title">{toast.message}</p>
         </div>
       )}
     </div>

@@ -1,4 +1,4 @@
-export type StudentManualStatus = 'ativo' | 'suspenso' | 'pausado' | 'bloqueado' | string | undefined;
+export type StudentManualStatus = 'ativo' | 'suspenso' | 'pausado' | 'bloqueado' | 'importado' | string | undefined;
 
 export interface BillingStudentLike {
   id: string;
@@ -80,6 +80,9 @@ export const parseFlexibleDate = (dateStr?: string | null): Date | null => {
 
   const fallback = new Date(normalized);
   if (Number.isNaN(fallback.getTime())) return null;
+  // Se for apenas um número (ex: "1"), o JS interpreta como ano 2001. 
+  // Queremos evitar isso se for menor que 100 (anos razoáveis de sistema).
+  if (/^\d+$/.test(normalized) && Number(normalized) < 100) return null;
   return clampToDay(fallback);
 };
 
@@ -156,6 +159,19 @@ export const summarizeStudentBilling = (
 ): BillingSummary => {
   const amount = normalizeAmount(student.plano);
   const manualStatus = student.status;
+
+  if (manualStatus === 'importado') {
+    return {
+      amount,
+      nextChargeDate: student.vencimento || formatPtDate(referenceDate),
+      status: 'pendente' as BillingSummary['status'],
+      statusLabel: 'Aguarda revisão',
+      daysUntilCharge: 0,
+      overdueDays: 0,
+      monthsInDebt: [],
+      rating: 3,
+    };
+  }
 
   if (manualStatus === 'bloqueado') {
     return {
