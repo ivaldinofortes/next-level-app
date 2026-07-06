@@ -6,8 +6,9 @@ const fs = require('fs');
 const { execFile } = require('child_process');
 const XLSX = require('xlsx');
 const crypto = require('crypto');
-const APP_ICON = path.join(__dirname, 'public', 'next-level-v01-2026.svg');
-const APP_ICON_SVG = path.join(__dirname, 'public', 'next-level-v01-2026.svg');
+const APP_ID = 'cv.nextlab.nextlevel';
+const APP_ICON = path.join(__dirname, 'build', 'icon.png');
+const APP_ICON_ICO = path.join(__dirname, 'build', 'icon.ico');
 
 let db = null;
 let mainWindow = null;
@@ -21,20 +22,36 @@ process.on('uncaughtException', (err) => {
 
 console.log('--- INICIANDO MAIN.CJS ---');
 
+if (process.platform === 'win32') {
+  app.setAppUserModelId(APP_ID);
+}
+
 function createWindow() {
   const win = new BrowserWindow({
     width: 1200,
     height: 800,
-    icon: fs.existsSync(APP_ICON) ? APP_ICON : undefined,
+    icon: fs.existsSync(APP_ICON_ICO) ? APP_ICON_ICO : (fs.existsSync(APP_ICON) ? APP_ICON : undefined),
     webPreferences: {
-      nodeIntegration: true,
-      contextIsolation: false,
+      preload: path.join(__dirname, 'preload.cjs'),
+      nodeIntegration: false,
+      contextIsolation: true,
     },
   });
   mainWindow = win;
 
   win.on('closed', () => {
     if (mainWindow === win) mainWindow = null;
+  });
+
+  // Permite abrir/fechar as ferramentas de desenvolvedor (DevTools)
+  win.webContents.on('before-input-event', (event, input) => {
+    const isShortcut = ((input.control || input.meta) && input.shift && input.key.toLowerCase() === 'i') ||
+                       ((input.control || input.meta) && input.alt && input.key.toLowerCase() === 'i') ||
+                       (input.key === 'F12');
+    if (isShortcut && input.type === 'keyDown') {
+      win.webContents.toggleDevTools();
+      event.preventDefault();
+    }
   });
 
   const devServerUrl =
@@ -51,6 +68,9 @@ function createWindow() {
 
   if (fs.existsSync(distPath)) {
     win.loadFile(distPath);
+    if (!app.isPackaged) {
+      win.webContents.openDevTools({ mode: 'detach' });
+    }
     return;
   }
 
@@ -69,9 +89,7 @@ app.whenReady().then(() => {
   });
 
   if (process.platform === 'darwin' && app.dock) {
-    if (fs.existsSync(APP_ICON_SVG)) {
-      app.dock.setIcon(nativeImage.createFromPath(APP_ICON_SVG));
-    } else if (fs.existsSync(APP_ICON)) {
+    if (fs.existsSync(APP_ICON)) {
       app.dock.setIcon(APP_ICON);
     }
   }
@@ -99,6 +117,23 @@ app.whenReady().then(() => {
 
   const normalizeEmail = (email = '') => String(email).trim().toLowerCase();
   const normalizeName = (name = '') => String(name).trim();
+  const parseAppDate = (dateStr) => {
+    if (!dateStr) return null;
+    const normalized = String(dateStr).trim();
+    if (!normalized) return null;
+    if (normalized.includes('/')) {
+      const [day, month, year] = normalized.split('/').map(Number);
+      if (!day || !month || !year) return null;
+      return new Date(year, month - 1, day);
+    }
+    if (normalized.includes('-')) {
+      const [year, month, day] = normalized.split('-').map(Number);
+      if (!day || !month || !year) return null;
+      return new Date(year, month - 1, day);
+    }
+    const fallback = new Date(normalized);
+    return Number.isNaN(fallback.getTime()) ? null : fallback;
+  };
   const scryptHash = (password, salt) =>
     crypto.scryptSync(String(password || ''), String(salt || ''), 64, { N: 16384, r: 8, p: 1 }).toString('hex');
   const verifyPassword = (password, record) => {
@@ -237,14 +272,19 @@ app.whenReady().then(() => {
     );
   `);
 
-  // Seed do utilizador root (criado apenas uma vez)
-  const ROOT_EMAIL = 'root@nextlab.com';
-  const ROOT_PASSWORD = '19851v4LD1n0';
-  const existingRoot = db.prepare('SELECT id FROM root_access WHERE email = ?').get(ROOT_EMAIL);
-  if (!existingRoot) {
+  // Seed técnico apenas em desenvolvimento. Uma instalação empacotada para cliente
+  // não deve nascer com uma senha root universal embutida no código.
+  const ROOT_USERNAME = 'root';
+  const ROOT_PASSWORD = process.env.NEXTLEVEL_ROOT_PASSWORD || (app.isPackaged ? '' : 'nextlevel-dev-root');
+  
+  // Migrar old root se existir
+  db.prepare("UPDATE root_access SET email = ? WHERE email = 'root@nextlab.com'").run(ROOT_USERNAME);
+
+  const existingRoot = db.prepare('SELECT id FROM root_access WHERE email = ?').get(ROOT_USERNAME);
+  if (!existingRoot && ROOT_PASSWORD) {
     const rootSalt = crypto.randomBytes(16).toString('hex');
     const rootHash = scryptHash(ROOT_PASSWORD, rootSalt);
-    db.prepare('INSERT INTO root_access (email, senha_salt, senha_hash, permissoes) VALUES (?, ?, ?, ?)').run(ROOT_EMAIL, rootSalt, rootHash, 'all');
+    db.prepare('INSERT INTO root_access (email, senha_salt, senha_hash, permissoes) VALUES (?, ?, ?, ?)').run(ROOT_USERNAME, rootSalt, rootHash, 'all');
   }
 
   // Tabela de logs técnicos (erros detalhados para suporte)
@@ -259,6 +299,19 @@ app.whenReady().then(() => {
       data_hora TEXT DEFAULT CURRENT_TIMESTAMP
     );
   `);
+
+  // Índice de desempenho: pesquisa de cobertura mensal por aluno
+  // Necessário para o isolamento por mês (getStudentStatusForMonth)
+  try {
+    db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_pagamentos_aluno_cobertura
+      ON pagamentos (aluno_id, referencia_inicio, referencia_fim);
+    `);
+    db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_pagamentos_aluno_data
+      ON pagamentos (aluno_id, data_pagamento);
+    `);
+  } catch(e) {}
 
   const ensureDefaultAdmin = () => {
     const adminEmail = 'admin@admin.com';
@@ -287,7 +340,8 @@ app.whenReady().then(() => {
   initConfig('logo_path', '');
   initConfig('categorias', JSON.stringify(['Musculação', 'Cardio', 'Crossfit']));
   initConfig('morada_academia', 'Cidade da Praia, Cabo Verde');
-  initConfig('email_academia', 'ivaldinofortes@gmail.com');
+  initConfig('email_academia', 'geral@nextlevel.cv');
+  initConfig('require_operational_password', '1');
   initConfig('telefone_academia', '+238 9597220');
   initConfig('banner_academia', '');
   initConfig('desktop_notifications', '1');
@@ -298,6 +352,8 @@ app.whenReady().then(() => {
   initConfig('setup_completed', '0');
   initConfig('license_key', '');
   initConfig('license_expiry', '');
+  initConfig('lembrar_utilizadores', '1');
+  initConfig('permitir_guardar_sessao', '1');
 
   // ────────────── IPC HANDLERS ──────────────
 
@@ -396,12 +452,12 @@ app.whenReady().then(() => {
   console.log('Registrando IPC Handler: check-auth');
   ipcMain.handle('check-auth', async (event, credenciais) => {
     try {
-      const email = normalizeEmail(credenciais?.email);
+      const usernameOrEmail = (credenciais?.email || credenciais?.username || '').trim();
       const password = String(credenciais?.password || '');
 
       // Verificar credenciais root primeiro
-      if (email === ROOT_EMAIL) {
-        const rootRecord = db.prepare('SELECT * FROM root_access WHERE email = ?').get(ROOT_EMAIL);
+      if (usernameOrEmail.toLowerCase() === ROOT_USERNAME.toLowerCase()) {
+        const rootRecord = db.prepare('SELECT * FROM root_access WHERE email = ?').get(ROOT_USERNAME);
         if (rootRecord) {
           const computed = scryptHash(password, rootRecord.senha_salt);
           let isRootValid = false;
@@ -409,25 +465,41 @@ app.whenReady().then(() => {
           if (isRootValid) {
             db.prepare('UPDATE root_access SET ultimo_acesso = CURRENT_TIMESTAMP WHERE id = ?').run(rootRecord.id);
             try {
-              db.prepare('INSERT INTO logs_tecnicos (tipo, contexto, mensagem, utilizador) VALUES (?, ?, ?, ?)').run('login', 'check-auth', 'Acesso root ao sistema', ROOT_EMAIL);
+              db.prepare('INSERT INTO logs_tecnicos (tipo, contexto, mensagem, utilizador) VALUES (?, ?, ?, ?)').run('login', 'check-auth', 'Acesso root ao sistema', ROOT_USERNAME);
             } catch(e) {}
-            return { success: true, user: { id: 0, name: 'Root Técnico', email: ROOT_EMAIL, role: 'root', isActive: true } };
+            return { success: true, user: { id: 0, name: 'Root Técnico', email: ROOT_USERNAME, username: ROOT_USERNAME, role: 'root', isActive: true } };
           }
         }
         return { success: false, message: 'Credenciais root inválidas.' };
       }
 
-      const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
-      if (!user) return { success: false, message: 'Credenciais inválidas. Verifique o email e a palavra-passe.' };
+      // Procurar utilizador por name ou email
+      const user = db.prepare('SELECT * FROM users WHERE name = ? COLLATE NOCASE OR email = ? COLLATE NOCASE').get(usernameOrEmail, usernameOrEmail);
+      
+      if (!user) return { success: false, message: 'Credenciais inválidas. Verifique o nome de utilizador e a palavra-passe.' };
       if (user.is_active !== 1) return { success: false, message: 'Conta bloqueada. Fale com o administrador.' };
-      if (!verifyPassword(password, user)) return { success: false, message: 'Credenciais inválidas. Verifique o email e a palavra-passe.' };
+      
+      // Verificar se exige password para operacionais
+      const requirePasswordConfig = db.prepare("SELECT valor FROM configuracoes WHERE chave = 'require_operational_password'").get();
+      const requireOperationalPassword = requirePasswordConfig ? requirePasswordConfig.valor === '1' : true;
+      
+      let passwordValid = false;
+      
+      if (user.role === 'operational' && !requireOperationalPassword) {
+        // Ignora a senha para operacionais se a config permitir
+        passwordValid = true;
+      } else {
+        passwordValid = verifyPassword(password, user);
+      }
+      
+      if (!passwordValid) return { success: false, message: 'Credenciais inválidas. Verifique o nome de utilizador e a palavra-passe.' };
 
       db.prepare('UPDATE users SET last_login_at = CURRENT_TIMESTAMP WHERE id = ?').run(user.id);
-      try { registrarLog('Login', `Utilizador ${email} (${user.role}) acedeu ao sistema`); } catch(e) {}
+      try { registrarLog('Login', `Utilizador ${user.name} (${user.role}) acedeu ao sistema`); } catch(e) {}
 
       return {
         success: true,
-        user: { id: user.id, name: user.name, email: user.email, role: user.role, isActive: user.is_active === 1 }
+        user: { id: user.id, name: user.name, email: user.email, username: user.name, role: user.role, isActive: user.is_active === 1 }
       };
     } catch (err) {
       console.error('Erro no handler verificar-login:', err);
@@ -548,6 +620,57 @@ app.whenReady().then(() => {
       return { success: true };
     } catch (err) {
       console.error('Erro ao adicionar pagamento:', err);
+      return { success: false, message: err.message };
+    }
+  });
+
+  ipcMain.handle('billing:register-payment', async (event, payload) => {
+    try {
+      const pagamento = payload?.pagamento || payload;
+      const alunoId = pagamento?.alunoId || pagamento?.aluno_id;
+      if (!alunoId) return { success: false, message: 'Aluno inválido para registo de pagamento.' };
+
+      const nextChargeDate = payload?.nextChargeDate || pagamento?.nextChargeDate || null;
+      const updateStudentDue = payload?.updateStudentDue !== false;
+
+      const tx = db.transaction(() => {
+        const stmt = db.prepare(`
+          INSERT INTO pagamentos (
+            aluno_id, valor, status, data_pagamento, metodo_pagamento, mes_referencia, referencia_inicio, referencia_fim
+          )
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `);
+        const result = stmt.run(
+          alunoId,
+          pagamento.valor,
+          pagamento.status || 'pago',
+          pagamento.data_pagamento,
+          pagamento.metodo_pagamento,
+          pagamento.mes_referencia,
+          pagamento.referencia_inicio || null,
+          pagamento.referencia_fim || null
+        );
+
+        let updatedDueDate = null;
+        if (updateStudentDue && nextChargeDate) {
+          const aluno = db.prepare('SELECT vencimento FROM alunos WHERE id = ?').get(alunoId);
+          const currentDueDate = parseAppDate(aluno?.vencimento);
+          const proposedDueDate = parseAppDate(nextChargeDate);
+
+          if (!currentDueDate || (proposedDueDate && proposedDueDate > currentDueDate)) {
+            db.prepare("UPDATE alunos SET vencimento = ?, modo_cobranca = 'mensalidade_movel' WHERE id = ?").run(nextChargeDate, alunoId);
+            updatedDueDate = nextChargeDate;
+          }
+        }
+
+        registrarLog('Pagamento', `Recebido ${pagamento.valor} de ${alunoId} via ${pagamento.metodo_pagamento || 'N/A'}`);
+        return { paymentId: result.lastInsertRowid, updatedDueDate };
+      });
+
+      const result = tx();
+      return { success: true, ...result };
+    } catch (err) {
+      console.error('Erro ao registar pagamento transacional:', err);
       return { success: false, message: err.message };
     }
   });
@@ -879,6 +1002,11 @@ app.whenReady().then(() => {
       return { success: true, mode: 'dev-reload' };
     }
 
+    if (app.isPackaged) {
+      await forceReload();
+      return { success: true, mode: 'packaged-reload' };
+    }
+
     const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 
     try {
@@ -916,26 +1044,10 @@ app.whenReady().then(() => {
     const defaultLicenses = {
       licencas: [
         {
-          licenca: "TEST-2026-ABC123",
-          tipo: "teste",
-          email: "cliente@test.com",
-          dataEmissao: "2026-04-29",
-          dataExpiracao: "2026-05-30",
-          status: "ativa"
-        },
-        {
-          licenca: "COM-2026-DEF456",
-          tipo: "comum",
-          email: "cliente@academia.com",
-          dataEmissao: "2026-04-29",
-          dataExpiracao: "2027-04-29",
-          status: "ativa"
-        },
-        {
-          licenca: "VITALICIO-XYZ",
+          licenca: "NEXTLEVEL-VITALICIO-2026",
           tipo: "vitalicio",
-          email: "ivaldinofortes@gmail.com",
-          dataEmissao: "2026-04-29",
+          email: "cliente@nextlevel.cv",
+          dataEmissao: "2026-07-06",
           dataExpiracao: null,
           status: "ativa"
         }
@@ -946,18 +1058,6 @@ app.whenReady().then(() => {
 
   ipcMain.handle('license:validate-external', async (event, key) => {
     try {
-      // 🔓 MASTER KEY DE DESENVOLVEDOR (Acesso irrestrito para manutenção)
-      const MASTER_KEY = "DEV-MASTER-NEXTLAB-2026";
-      if (key === MASTER_KEY) {
-        return {
-          success: true,
-          ativa: true,
-          tipo: "vitalicio",
-          expiracao: "Vitalícia",
-          email: "suporte@nextlab.com"
-        };
-      }
-
       if (!fs.existsSync(LICENSES_FILE)) return { success: false, message: 'Ficheiro de licenças não encontrado.' };
       const data = JSON.parse(fs.readFileSync(LICENSES_FILE, 'utf-8'));
       const found = data.licencas.find(l => l.licenca === key);
@@ -1007,26 +1107,128 @@ app.whenReady().then(() => {
   });
 
   ipcMain.handle('open-external', async (event, url) => {
-    shell.openExternal(url);
+    try {
+      const parsed = new URL(String(url || ''));
+      if (!['https:', 'http:', 'mailto:'].includes(parsed.protocol)) {
+        return { success: false, message: 'Protocolo externo não permitido.' };
+      }
+      await shell.openExternal(parsed.toString());
+      return { success: true };
+    } catch (err) {
+      return { success: false, message: 'URL externa inválida.' };
+    }
   });
 
   // ────────────── ROOT TÉCNICO ──────────────
 
   ipcMain.handle('root:reset-password', async (event, payload) => {
     try {
-      const email = normalizeEmail(payload?.email);
+      // Aceita userId OU email para compatibilidade retroativa
+      let user;
+      if (payload?.userId) {
+        user = db.prepare('SELECT id, email, name FROM users WHERE id = ?').get(Number(payload.userId));
+      } else if (payload?.email) {
+        const email = normalizeEmail(payload.email);
+        user = db.prepare('SELECT id, email, name FROM users WHERE email = ?').get(email);
+      }
       const novaSenha = String(payload?.novaSenha || '');
-      if (!email || !novaSenha) return { success: false, message: 'Email e nova senha são obrigatórios.' };
-      if (novaSenha.length < 6) return { success: false, message: 'A senha deve ter pelo menos 6 caracteres.' };
-
-      const user = db.prepare('SELECT id FROM users WHERE email = ?').get(email);
       if (!user) return { success: false, message: 'Utilizador não encontrado.' };
+      if (!novaSenha) return { success: false, message: 'Nova senha é obrigatória.' };
+      if (novaSenha.length < 6) return { success: false, message: 'A senha deve ter pelo menos 6 caracteres.' };
 
       const salt = crypto.randomBytes(16).toString('hex');
       const hash = scryptHash(novaSenha, salt);
       db.prepare('UPDATE users SET password_salt = ?, password_hash = ? WHERE id = ?').run(salt, hash, user.id);
-      db.prepare('INSERT INTO logs_tecnicos (tipo, contexto, mensagem, utilizador) VALUES (?, ?, ?, ?)').run('acao', 'root:reset-password', `Senha resetada para ${email}`, ROOT_EMAIL);
+      db.prepare('INSERT INTO logs_tecnicos (tipo, contexto, mensagem, utilizador) VALUES (?, ?, ?, ?)').run('acao', 'root:reset-password', `Senha resetada para ${user.name} (${user.email})`, 'root');
       return { success: true };
+    } catch (err) {
+      return { success: false, message: err.message };
+    }
+  });
+
+  ipcMain.handle('root:update-user', async (event, payload) => {
+    try {
+      const userId = Number(payload?.userId);
+      if (!userId) return { success: false, message: 'ID de utilizador inválido.' };
+
+      const user = db.prepare('SELECT id, name, email, role FROM users WHERE id = ?').get(userId);
+      if (!user) return { success: false, message: 'Utilizador não encontrado.' };
+
+      const newName = String(payload?.name || '').trim();
+      const newEmail = normalizeEmail(payload?.email || user.email);
+      const newRole = payload?.role && ['admin', 'operational'].includes(payload.role) ? payload.role : user.role;
+      const newIsActive = payload?.isActive !== undefined ? (payload.isActive ? 1 : 0) : null;
+
+      if (!newName) return { success: false, message: 'O nome não pode estar vazio.' };
+      if (!newEmail) return { success: false, message: 'O email não pode estar vazio.' };
+
+      // Verificar duplicados (ignorando o próprio utilizador)
+      const dupName = db.prepare('SELECT id FROM users WHERE name = ? AND id != ?').get(newName, userId);
+      if (dupName) return { success: false, message: `Já existe um utilizador com o nome "${newName}".` };
+
+      const dupEmail = db.prepare('SELECT id FROM users WHERE email = ? AND id != ?').get(newEmail, userId);
+      if (dupEmail) return { success: false, message: `Já existe um utilizador com o email "${newEmail}".` };
+
+      // Atualizar dados base
+      if (newIsActive !== null) {
+        db.prepare('UPDATE users SET name = ?, email = ?, role = ?, is_active = ? WHERE id = ?').run(newName, newEmail, newRole, newIsActive, userId);
+      } else {
+        db.prepare('UPDATE users SET name = ?, email = ?, role = ? WHERE id = ?').run(newName, newEmail, newRole, userId);
+      }
+
+      // Atualizar senha se fornecida
+      if (payload?.novaSenha) {
+        const novaSenha = String(payload.novaSenha);
+        if (novaSenha.length < 6) return { success: false, message: 'A senha deve ter pelo menos 6 caracteres.' };
+        const salt = crypto.randomBytes(16).toString('hex');
+        const hash = scryptHash(novaSenha, salt);
+        db.prepare('UPDATE users SET password_salt = ?, password_hash = ? WHERE id = ?').run(salt, hash, userId);
+      }
+
+      db.prepare('INSERT INTO logs_tecnicos (tipo, contexto, mensagem, utilizador) VALUES (?, ?, ?, ?)').run('acao', 'root:update-user', `Dados atualizados: ${user.name} → ${newName} (${newEmail}, ${newRole})`, 'root');
+      return { success: true, user: db.prepare('SELECT id, name, email, role, is_active, created_at, last_login_at FROM users WHERE id = ?').get(userId) };
+    } catch (err) {
+      return { success: false, message: err.message };
+    }
+  });
+
+  ipcMain.handle('root:create-user', async (event, payload) => {
+    try {
+      const name = String(payload?.name || '').trim();
+      const email = normalizeEmail(payload?.email || '');
+      const role = payload?.role && ['admin', 'operational'].includes(payload.role) ? payload.role : 'operational';
+      const senha = String(payload?.senha || '');
+
+      if (!name) return { success: false, message: 'O nome é obrigatório.' };
+      if (!email) return { success: false, message: 'O email é obrigatório.' };
+      if (!senha || senha.length < 6) return { success: false, message: 'A senha deve ter pelo menos 6 caracteres.' };
+
+      const dupName = db.prepare('SELECT id FROM users WHERE name = ?').get(name);
+      if (dupName) return { success: false, message: `Já existe um utilizador com o nome "${name}".` };
+
+      const dupEmail = db.prepare('SELECT id FROM users WHERE email = ?').get(email);
+      if (dupEmail) return { success: false, message: `Já existe um utilizador com o email "${email}".` };
+
+      const salt = crypto.randomBytes(16).toString('hex');
+      const hash = scryptHash(senha, salt);
+      const result = db.prepare('INSERT INTO users (name, email, role, password_salt, password_hash, is_active) VALUES (?, ?, ?, ?, ?, 1)').run(name, email, role, salt, hash);
+      db.prepare('INSERT INTO logs_tecnicos (tipo, contexto, mensagem, utilizador) VALUES (?, ?, ?, ?)').run('acao', 'root:create-user', `Novo utilizador criado: ${name} (${email}, ${role})`, 'root');
+      return { success: true, userId: result.lastInsertRowid };
+    } catch (err) {
+      return { success: false, message: err.message };
+    }
+  });
+
+  ipcMain.handle('root:toggle-user-active', async (event, payload) => {
+    try {
+      const userId = Number(payload?.userId);
+      if (!userId) return { success: false, message: 'ID inválido.' };
+      const user = db.prepare('SELECT id, name, is_active FROM users WHERE id = ?').get(userId);
+      if (!user) return { success: false, message: 'Utilizador não encontrado.' };
+      const newState = user.is_active ? 0 : 1;
+      db.prepare('UPDATE users SET is_active = ? WHERE id = ?').run(newState, userId);
+      db.prepare('INSERT INTO logs_tecnicos (tipo, contexto, mensagem, utilizador) VALUES (?, ?, ?, ?)').run('acao', 'root:toggle-active', `${user.name} ${newState ? 'ativado' : 'desativado'}`, 'root');
+      return { success: true, isActive: newState === 1 };
     } catch (err) {
       return { success: false, message: err.message };
     }

@@ -1,0 +1,56 @@
+const { contextBridge, ipcRenderer } = require('electron');
+
+const allowedInvokeChannels = new Set([
+  'add-aluno',
+  'add-nota',
+  'billing:register-payment',
+  'check-auth',
+  'db:reset',
+  'delete-aluno',
+  'delete-nota',
+  'export-database',
+  'export-operational-report',
+  'finalizar-importados',
+  'get-alunos',
+  'get-configuracoes',
+  'get-historico-pagamentos',
+  'get-logs',
+  'get-notas',
+  'get-pagamentos',
+  'import-alunos',
+  'license:validate-external',
+  'login:quick-access',
+  'notify-system',
+  'open-external',
+  'refresh-app',
+  'root:create-user',
+  'root:export-report',
+  'root:get-logs-tecnicos',
+  'root:get-users',
+  'root:log-error',
+  'root:update-user',
+  'select-directory',
+  'setup:save-data',
+  'show-item-in-folder',
+  'update-aluno-dados',
+  'update-aluno-status',
+  'update-configuracao',
+  'upload-foto',
+  'users:create',
+  'users:list',
+  'users:set-current',
+  'users:set-password',
+  'users:update',
+  'window:resize',
+]);
+
+contextBridge.exposeInMainWorld('electron', {
+  ipcRenderer: {
+    invoke(channel, ...args) {
+      if (!allowedInvokeChannels.has(channel)) {
+        throw new Error(`Canal IPC não permitido: ${channel}`);
+      }
+      return ipcRenderer.invoke(channel, ...args);
+    },
+  },
+});

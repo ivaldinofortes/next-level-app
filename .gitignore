@@ -10,7 +10,17 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+release/
 *.local
+*.db
+!resources/seed.db
+db_backups/
+outputs/
+spreadsheet_work/
+scratch/
+build/mac.iconset/
+build/icon.tiff
+test_insert.js
 
 # Editor directories and files
 .vscode/*

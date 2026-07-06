@@ -33,13 +33,16 @@
     "appId": "cv.nextlab.nextlevel",
     "productName": "Next Level Academia",
     "artifactName": "${productName}-${version}.${ext}",
-    "icon": "build/icon.png",
+    "icon": "build/icon.icns",
     "files": [
       "dist/**/*",
       "main.cjs",
+      "preload.cjs",
       "package.json",
       "public/**/*",
-      "build/**/*"
+      "build/icon.png",
+      "build/icon.icns",
+      "build/icon.ico"
     ],
     "extraResources": [
       {
@@ -48,17 +51,18 @@
       }
     ],
     "directories": {
-      "buildResources": "build"
+      "buildResources": "build",
+      "output": "release"
     },
     "mac": {
       "category": "public.app-category.business",
-      "icon": "build/icon.png"
+      "icon": "build/icon.icns"
     },
     "win": {
       "target": [
         "nsis"
       ],
-      "icon": "build/icon.png"
+      "icon": "build/icon.ico"
     },
     "nsis": {
       "oneClick": false,
@@ -66,8 +70,8 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "Next Level Academia",
-      "installerIcon": "build/icon.png",
-      "uninstallerIcon": "build/icon.png"
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico"
     }
   },
   "devDependencies": {

@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { useState, useEffect, useRef, type CSSProperties } from 'react';
+import { useState, useEffect, useRef, useMemo, type CSSProperties } from 'react';
 import RootPanel from './RootPanel';
 import ImportarDadosModal from './ImportarDadosModal';
 import jsPDF from 'jspdf';
@@ -17,13 +17,16 @@ import {
   BarChart2, BookUser, PieChart, UserPlus, Info, Bell, Sun, Moon, Sparkles,
   Archive, Database, HelpCircle, Globe,
   Menu, ChevronDown, ChevronUp, Clock, ShieldOff, UserCheck, Wallet, Landmark, LayoutList,
-  Star, FileBarChart, Zap, Activity, Printer, ArrowLeft, Hash
+  Star, FileBarChart, Zap, Activity, Printer, ArrowLeft, Hash, ArrowRight, History, Banknote,
+  Minimize2, Maximize2, Pencil, Send
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import {
   buildCoverageWindow,
+  calculateDayBalance,
   formatCve,
   formatPtDate,
+  getStudentStatusForMonth,
   isPaymentInsideMonth,
   normalizeAmount,
   parseFlexibleDate,
@@ -744,7 +747,7 @@ const GlobalStyles = ({ theme }: { theme: 'light' | 'dark' | 'claude' }) => {
 };
 
 // Acesso ao Electron (apenas se estivermos a correr no Electron)
-const electron = (window as any).require ? (window as any).require('electron') : null;
+const electron = (window as any).electron || null;
 
 // Tema Padrão
 const DEFAULT_THEME = '#217346';
@@ -828,6 +831,7 @@ function App() {
   // Estados para Controle Financeiro
   const [mostrarModalPagamento, setMostrarModalPagamento] = useState(false);
   const [mostrarHistoricoModal, setMostrarHistoricoModal] = useState(false);
+  const [mostrarOpcoesAvancadas, setMostrarOpcoesAvancadas] = useState(false);
   const [pagamentoSucesso, setPagamentoSucesso] = useState(false);
   const [ultimoPagamentoInfo, setUltimoPagamentoInfo] = useState(null);
   const [pagamentoForm, setPagamentoForm] = useState<PaymentFormState>({
@@ -854,6 +858,24 @@ function App() {
   const [duplicadosEncontrados, setDuplicadosEncontrados] = useState<Aluno[][]>([]);
   const [mostrarMenuAcoes, setMostrarMenuAcoes] = useState(false);
   const menuAcoesRef = useRef<HTMLDivElement>(null);
+
+  // Estados para Modal de Perfil do Aluno (Painel Unificado com Abas)
+  const [mostrarPerfilModal, setMostrarPerfilModal] = useState(false);
+  const [mostrarHistoricoPerfil, setMostrarHistoricoPerfil] = useState(false);
+  const [editandoPerfil, setEditandoPerfil] = useState(false);
+  const [col1Minimizada, setCol1Minimizada] = useState(false);
+  const [col2Minimizada, setCol2Minimizada] = useState(false);
+  const [perfilEditForm, setPerfilEditForm] = useState<Partial<Aluno>>({});
+  const [metodoPerfilPagamento, setMetodoPerfilPagamento] = useState('Dinheiro');
+  const [perfilAba, setPerfilAba] = useState<'perfil' | 'historico' | 'cobrar'>('perfil');
+  const [perfilPagamentoSucesso, setPerfilPagamentoSucesso] = useState(false);
+  const [perfilUltimoPagamentoInfo, setPerfilUltimoPagamentoInfo] = useState<any>(null);
+
+  // Estados para Modal Minimalista de Cobrança Rápida
+  const [mostrarCobrancaRapida, setMostrarCobrancaRapida] = useState(false);
+  const [alunoParaCobrancaRapida, setAlunoParaCobrancaRapida] = useState<Aluno | null>(null);
+  const [cobrancaPagamentoSucesso, setCobrancaPagamentoSucesso] = useState(false);
+  const [cobrancaUltimoPagamentoInfo, setCobrancaUltimoPagamentoInfo] = useState<any>(null);
 
   // Estados para gestão de utilizadores
   const [listaUtilizadores, setListaUtilizadores] = useState<any[]>([]);
@@ -884,6 +906,14 @@ function App() {
   const SESSION_EXPIRY_MS = 30 * 24 * 60 * 60 * 1000; // 30 dias — sessão persistente
   const [sessionUser, setSessionUser] = useState<SessionUser | null>(() => {
     try {
+      // 1. Verificar primeiro a sessão temporária (sessionStorage)
+      const tempRaw = sessionStorage.getItem('nl_session_user');
+      if (tempRaw) {
+        const parsed = JSON.parse(tempRaw);
+        if (parsed?.email && parsed?.role) return parsed as SessionUser;
+      }
+      
+      // 2. Verificar a sessão persistente (localStorage)
       const raw = localStorage.getItem('nl_session_user');
       if (!raw) return null;
       const parsed = JSON.parse(raw);
@@ -901,7 +931,7 @@ function App() {
 
   // Novos Estados Profissionais
   const [isLoggedIn, setIsLoggedIn] = useState(!!sessionUser);
-  const [loginForm, setLoginForm] = useState({ email: localStorage.getItem('nl_last_user_email') || '', password: '' });
+  const [loginForm, setLoginForm] = useState({ username: localStorage.getItem('nl_last_username') || '', password: '' });
   const [loginError, setLoginError] = useState('');
   const [appTheme, setAppTheme] = useState<'light' | 'dark' | 'claude'>(() => {
     const saved = localStorage.getItem('nl_app_theme') || localStorage.getItem('nl_gnome_theme');
@@ -925,8 +955,36 @@ function App() {
   const [backupReminderEnabled, setBackupReminderEnabled] = useState(true);
   const [whatsappTemplate, setWhatsappTemplate] = useState('Olá, {nome}. A sua mensalidade da academia está pendente. Quando puder, regularize por favor.');
   const [ultimaExportacaoOperacional, setUltimaExportacaoOperacional] = useState('');
-  const [ultimoBackupMes, setUltimoBackupMes] = useState('');
   const [diretorioBackup, setDiretorioBackup] = useState('');
+  const [ultimoBackupMes, setUltimoBackupMes] = useState('');
+  
+  // Novos Estados de Segurança e Autenticação
+  const [lembrarUtilizadores, setLembrarUtilizadores] = useState(true);
+  const [permitirGuardarSessao, setPermitirGuardarSessao] = useState(true);
+  const [requireOperationalPassword, setRequireOperationalPassword] = useState(true);
+  const [guardarSessao, setGuardarSessao] = useState(false);
+  const [mostrarDropdownRecentes, setMostrarDropdownRecentes] = useState(false);
+  const [utilizadoresRecentes, setUtilizadoresRecentes] = useState<{ email: string, name: string, role: string }[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem('nl_recent_users') || '[]');
+    } catch(e) {
+      return [];
+    }
+  });
+
+  const adicionarUtilizadorRecente = (email: string, name: string, role: string) => {
+    try {
+      const listRaw = localStorage.getItem('nl_recent_users') || '[]';
+      const list = JSON.parse(listRaw);
+      const filtered = list.filter((u: any) => u.email.toLowerCase() !== email.toLowerCase());
+      filtered.unshift({ email, name, role });
+      const limited = filtered.slice(0, 5);
+      localStorage.setItem('nl_recent_users', JSON.stringify(limited));
+      setUtilizadoresRecentes(limited);
+    } catch (e) {
+      console.error(e);
+    }
+  };
   
   // Estados de Licenciamento e Setup (Fase 3)
   const [setupStep, setSetupStep] = useState(1);
@@ -1017,7 +1075,7 @@ function App() {
   }, [zoomListaNormalizado]);
 
   useEffect(() => {
-    const intervalId = window.setInterval(() => setAgora(new Date()), 1000);
+    const intervalId = window.setInterval(() => setAgora(new Date()), 60_000);
     return () => window.clearInterval(intervalId);
   }, []);
 
@@ -1155,6 +1213,57 @@ function App() {
   };
 
   const parseDate = (dateStr?: string) => parseFlexibleDate(dateStr) || new Date();
+  const getAlunoNomeSeguro = (aluno?: Partial<Aluno> | null) => {
+    const nome = String(aluno?.nome || '').trim();
+    return nome || 'Aluno sem nome';
+  };
+  const getAlunoIniciais = (aluno?: Partial<Aluno> | null) =>
+    getAlunoNomeSeguro(aluno).slice(0, 2).toUpperCase();
+  const getAvatarColorByName = (nome?: string) => {
+    const avatarColors = ['bg-blue-500','bg-violet-500','bg-emerald-500','bg-rose-500','bg-amber-500','bg-teal-500','bg-indigo-500'];
+    return avatarColors[(String(nome || 'A').charCodeAt(0) || 65) % avatarColors.length];
+  };
+  const abrirPerfilAluno = (aluno?: Aluno | null) => {
+    if (!aluno?.id) {
+      showToast('❌ Não foi possível abrir este aluno. Dados incompletos.');
+      return;
+    }
+    setAlunoPerfil({
+      ...aluno,
+      nome: getAlunoNomeSeguro(aluno),
+      plano: String(aluno.plano || ''),
+      telefone: aluno.telefone || '',
+      status: aluno.status || 'ativo',
+    } as Aluno);
+    setPerfilPagamentoSucesso(false);
+    setPerfilUltimoPagamentoInfo(null);
+    setMostrarHistoricoPerfil(false);
+    setEditandoPerfil(false);
+    setPagamentoForm({
+      valor: String(normalizeAmount(aluno.plano) || ''),
+      dataPagamento: formatInputDate(),
+      metodo: DEFAULT_PAYMENT_METHOD,
+      mesReferencia: mesFinanceiro,
+    });
+    carregarNotas(aluno.id);
+    setMostrarPerfilModal(true);
+  };
+  const registrarPagamentoAtomico = async (
+    pagamento: Pagamento,
+    nextChargeDate?: string,
+    updateStudentDue = true
+  ) => {
+    const ipcRenderer = electron?.ipcRenderer || (window as any).electron?.ipcRenderer;
+    if (!ipcRenderer) throw new Error('Electron IPC indisponível.');
+
+    const res = await ipcRenderer.invoke('billing:register-payment', {
+      pagamento,
+      nextChargeDate,
+      updateStudentDue,
+    });
+    if (!res?.success) throw new Error(res?.message || 'Erro ao registar pagamento.');
+    return res;
+  };
 
   const calcularVencimentoInteligente = (
     dataMatriculaStr: string,
@@ -1200,7 +1309,12 @@ function App() {
   const [pagamentos, setPagamentos] = useState<Pagamento[]>([]);
 
   const mesFinanceiroIndex = MONTH_OPTIONS.indexOf(mesFinanceiro);
-  const hojeReferencia = new Date();
+  const hojeReferenciaKey = agora.toDateString();
+  const hojeReferencia = useMemo(() => {
+    const date = new Date();
+    date.setHours(0, 0, 0, 0);
+    return date;
+  }, [hojeReferenciaKey]);
   const periodoSelecionadoKey = getMonthKey(mesFinanceiro, anoFinanceiro);
   const periodoSelecionadoFuturo = isFutureMonth(mesFinanceiroIndex, anoFinanceiro, hojeReferencia);
   const inicioPeriodoSelecionado = mesFinanceiroIndex >= 0
@@ -1221,92 +1335,109 @@ function App() {
     return new Date(anoFinanceiro, mesFinanceiroIndex + 1, 0);
   })();
 
-  const resumosFinanceiros = alunos.map((aluno) => {
-    const resumo = summarizeStudentBilling(aluno, pagamentos, referenciaFinanceira);
-    return { aluno, resumo };
-  });
+  const resumosFinanceiros = useMemo(() => {
+    return alunos.map((aluno) => {
+      // Também usa isolamento por mês para que os contadores do dashboard
+      // reflictam o estado do mês selecionado, não do mês corrente.
+      const resumo = getStudentStatusForMonth(aluno, pagamentos, anoFinanceiro, mesFinanceiroIndex, hojeReferencia);
+      return { aluno, resumo };
+    });
+  }, [alunos, pagamentos, anoFinanceiro, mesFinanceiroIndex, hojeReferencia]);
 
-  const timelineMonths = MONTH_OPTIONS.map((mes, index) => {
-    const future = isFutureMonth(index, anoFinanceiro, hojeReferencia);
-    const monthStart = new Date(anoFinanceiro, index, 1);
-    const monthEnd = future
-      ? new Date(anoFinanceiro, index, 1)
-      : new Date(anoFinanceiro, index + 1, 0);
+  const timelineMonths = useMemo(() => {
+    return MONTH_OPTIONS.map((mes, index) => {
+      const future = isFutureMonth(index, anoFinanceiro, hojeReferencia);
+      const monthStart = new Date(anoFinanceiro, index, 1);
+      const monthEnd = future
+        ? new Date(anoFinanceiro, index, 1)
+        : new Date(anoFinanceiro, index + 1, 0);
 
-    const students = future
+      const students = future
+        ? []
+        : alunos.filter((aluno) => {
+            const enrollment = parseFlexibleDate(aluno.data_matricula);
+            return enrollment ? enrollment.getTime() <= monthEnd.getTime() : true;
+          });
+
+      const fresh = future
+        ? []
+        : students.filter((aluno) => isSameMonthAndYear(parseFlexibleDate(aluno.data_matricula), index, anoFinanceiro));
+
+      const debtCount = future
+        ? 0
+        : students.filter((aluno) => {
+            // Usar isolamento por mês: cada mês é avaliado independentemente
+            const summary = getStudentStatusForMonth(aluno, pagamentos, anoFinanceiro, index, hojeReferencia);
+            return summary.status === 'atrasado' || summary.status === 'hoje';
+          }).length;
+
+      return {
+        id: mes,
+        monthIndex: index,
+        label: mes,
+        shortLabel: mes.slice(0, 3),
+        future,
+        active: mesFinanceiro === mes,
+        isCurrent: anoFinanceiro === hojeReferencia.getFullYear() && index === hojeReferencia.getMonth(),
+        count: students.length,
+        newCount: fresh.length,
+        debtCount,
+        monthStart,
+        monthEnd,
+      };
+    }).filter((month) => !month.future);
+  }, [anoFinanceiro, hojeReferencia, alunos, pagamentos, mesFinanceiro]);
+
+  const alunosNoPeriodo = useMemo(() => {
+    return periodoSelecionadoFuturo
       ? []
       : alunos.filter((aluno) => {
           const enrollment = parseFlexibleDate(aluno.data_matricula);
-          return enrollment ? enrollment.getTime() <= monthEnd.getTime() : true;
+          return enrollment ? enrollment.getTime() <= referenciaFinanceira.getTime() : true;
         });
+  }, [periodoSelecionadoFuturo, alunos, referenciaFinanceira]);
 
-    const fresh = future
-      ? []
-      : students.filter((aluno) => isSameMonthAndYear(parseFlexibleDate(aluno.data_matricula), index, anoFinanceiro));
+  const resumosHistoricoMensal = useMemo(() => {
+    return alunosNoPeriodo.map((aluno) => {
+      // Isolamento por mês: para meses passados usa apenas os pagamentos que cobrem esse mês.
+      // Para o mês corrente usa o campo vencimento normalmente.
+      const resumo = getStudentStatusForMonth(aluno, pagamentos, anoFinanceiro, mesFinanceiroIndex, hojeReferencia);
+      const dataMatricula = parseFlexibleDate(aluno.data_matricula);
+      const entrouNesteMes = isSameMonthAndYear(dataMatricula, mesFinanceiroIndex, anoFinanceiro);
+      const origem = entrouNesteMes
+        ? `Novo em ${mesFinanceiro}`
+        : `Migrado de ${MONTH_OPTIONS[(mesFinanceiroIndex + 11) % 12]}`;
 
-    const debtCount = future
-      ? 0
-      : students.filter((aluno) => {
-          const summary = summarizeStudentBilling(aluno, pagamentos, monthEnd);
-          return summary.status === 'atrasado' || summary.status === 'hoje';
-        }).length;
+      return {
+        aluno,
+        resumo,
+        dataMatricula,
+        entrouNesteMes,
+        origem,
+      };
+    });
+  }, [alunosNoPeriodo, pagamentos, anoFinanceiro, mesFinanceiroIndex, hojeReferencia, mesFinanceiro]);
 
-    return {
-      id: mes,
-      monthIndex: index,
-      label: mes,
-      shortLabel: mes.slice(0, 3),
-      future,
-      active: mesFinanceiro === mes,
-      isCurrent: anoFinanceiro === hojeReferencia.getFullYear() && index === hojeReferencia.getMonth(),
-      count: students.length,
-      newCount: fresh.length,
-      debtCount,
-      monthStart,
-      monthEnd,
-    };
-  }).filter((month) => !month.future);
+  const alunosPausados = useMemo(() => resumosFinanceiros.filter(({ aluno }) => isPausedStatus(aluno.status)), [resumosFinanceiros]);
+  const alunosBloqueados = useMemo(() => resumosFinanceiros.filter(({ aluno }) => isBlockedStatus(aluno.status)), [resumosFinanceiros]);
+  const alunosImportados = useMemo(() => alunos.filter((a) => isImportedStatus(a.status)), [alunos]);
+  const alunosAtivos = useMemo(() => resumosFinanceiros.filter(({ aluno }) => isOperationallyActive(aluno.status)), [resumosFinanceiros]);
+  const alunosEmDivida = useMemo(() => alunosAtivos.filter(({ resumo }) => resumo.status === 'atrasado' || resumo.status === 'hoje'), [alunosAtivos]);
+  const alunosComPagamentoEmDia = useMemo(() => alunosAtivos.filter(({ resumo }) => ['pago', 'alerta', 'pendente', 'critico'].includes(resumo.status)), [alunosAtivos]);
+  const pagamentosDoPeriodo = useMemo(() => pagamentos.filter((pagamento) => isPaymentInsideMonth(pagamento, mesFinanceiro, anoFinanceiro)), [pagamentos, mesFinanceiro, anoFinanceiro]);
+  const totalRecebidoPeriodo = useMemo(() => pagamentosDoPeriodo.reduce((acc, pagamento) => acc + normalizeAmount(pagamento.valor), 0), [pagamentosDoPeriodo]);
+  const previsaoRecuperacao = useMemo(() => alunosEmDivida.reduce((acc, { aluno }) => acc + normalizeAmount(aluno.plano), 0), [alunosEmDivida]);
+  const cobrancasParaHoje = useMemo(() => alunosAtivos.filter(({ resumo }) => resumo.status === 'hoje').length, [alunosAtivos]);
+  
+  const alunosInscritosHoje = useMemo(() => {
+    return alunos.filter((aluno) => {
+      const enrollment = parseFlexibleDate(aluno.data_matricula);
+      if (!enrollment) return false;
+      return formatPtDate(enrollment) === formatPtDate(hojeReferencia);
+    }).length;
+  }, [alunos, hojeReferencia]);
 
-  const alunosNoPeriodo = periodoSelecionadoFuturo
-    ? []
-    : alunos.filter((aluno) => {
-        const enrollment = parseFlexibleDate(aluno.data_matricula);
-        return enrollment ? enrollment.getTime() <= referenciaFinanceira.getTime() : true;
-      });
-
-  const resumosHistoricoMensal = alunosNoPeriodo.map((aluno) => {
-    const resumo = summarizeStudentBilling(aluno, pagamentos, referenciaFinanceira);
-    const dataMatricula = parseFlexibleDate(aluno.data_matricula);
-    const entrouNesteMes = isSameMonthAndYear(dataMatricula, mesFinanceiroIndex, anoFinanceiro);
-    const origem = entrouNesteMes
-      ? `Novo em ${mesFinanceiro}`
-      : `Migrado de ${MONTH_OPTIONS[(mesFinanceiroIndex + 11) % 12]}`;
-
-    return {
-      aluno,
-      resumo,
-      dataMatricula,
-      entrouNesteMes,
-      origem,
-    };
-  });
-
-  const alunosPausados = resumosFinanceiros.filter(({ aluno }) => isPausedStatus(aluno.status));
-  const alunosBloqueados = resumosFinanceiros.filter(({ aluno }) => isBlockedStatus(aluno.status));
-  const alunosImportados = alunos.filter((a) => isImportedStatus(a.status));
-  const alunosAtivos = resumosFinanceiros.filter(({ aluno }) => isOperationallyActive(aluno.status));
-  const alunosEmDivida = alunosAtivos.filter(({ resumo }) => resumo.status === 'atrasado' || resumo.status === 'hoje');
-  const alunosComPagamentoEmDia = alunosAtivos.filter(({ resumo }) => ['pago', 'alerta', 'pendente', 'critico'].includes(resumo.status));
-  const pagamentosDoPeriodo = pagamentos.filter((pagamento) => isPaymentInsideMonth(pagamento, mesFinanceiro, anoFinanceiro));
-  const totalRecebidoPeriodo = pagamentosDoPeriodo.reduce((acc, pagamento) => acc + normalizeAmount(pagamento.valor), 0);
-  const previsaoRecuperacao = alunosEmDivida.reduce((acc, { aluno }) => acc + normalizeAmount(aluno.plano), 0);
-  const cobrancasParaHoje = alunosAtivos.filter(({ resumo }) => resumo.status === 'hoje').length;
-  const alunosInscritosHoje = alunos.filter((aluno) => {
-    const enrollment = parseFlexibleDate(aluno.data_matricula);
-    if (!enrollment) return false;
-    return formatPtDate(enrollment) === formatPtDate(hojeReferencia);
-  }).length;
-  const cobrancasCriticas = alunosAtivos.filter(({ resumo }) => ['hoje', 'critico'].includes(resumo.status)).length;
+  const cobrancasCriticas = useMemo(() => alunosAtivos.filter(({ resumo }) => ['hoje', 'critico'].includes(resumo.status)).length, [alunosAtivos]);
   const mesAtualOperacional = `${hojeReferencia.getFullYear()}-${String(hojeReferencia.getMonth() + 1).padStart(2, '0')}`;
   const backupMensalPendente = backupReminderEnabled && ultimoBackupMes !== mesAtualOperacional;
   const homeAlerts = [
@@ -1415,21 +1546,10 @@ function App() {
           referencia_fim: janela.coverageEnd
         };
 
-        if (window.electron) {
-          await window.electron.ipcRenderer.invoke('add-pagamento', novoPagamento);
-        }
+        await registrarPagamentoAtomico(novoPagamento as Pagamento, janela.nextChargeDate);
         
         // Projetar próximo vencimento para o próximo loop ou para o estado final
         currentDueDate = parseFlexibleDate(janela.nextChargeDate) || new Date();
-      }
-      
-      // Atualizar vencimento final do aluno
-      if (window.electron) {
-        const alunoAtualizado = {
-          ...alunoParaResolver,
-          vencimento: formatPtDate(currentDueDate)
-        };
-        await window.electron.ipcRenderer.invoke('update-aluno-dados', alunoAtualizado);
       }
       
       await carregarDados();
@@ -1443,8 +1563,8 @@ function App() {
     }
   };
 
-  const resumoAlunoSelecionado = alunoSelecionado ? summarizeStudentBilling(alunoSelecionado, pagamentos) : null;
-  const resumoAlunoParaPagamento = alunoParaPagamento ? summarizeStudentBilling(alunoParaPagamento, pagamentos) : null;
+  const resumoAlunoSelecionado = alunoSelecionado ? getStudentStatusForMonth(alunoSelecionado, pagamentos, anoFinanceiro, mesFinanceiroIndex, hojeReferencia) : null;
+  const resumoAlunoParaPagamento = alunoParaPagamento ? getStudentStatusForMonth(alunoParaPagamento, pagamentos, anoFinanceiro, mesFinanceiroIndex, hojeReferencia) : null;
   const previewPagamento = alunoParaPagamento
     ? buildCoverageWindow(
         formatPtDate(parseDate(pagamentoForm.dataPagamento)),
@@ -1571,6 +1691,9 @@ function App() {
         if (configs.ultima_exportacao_operacional) setUltimaExportacaoOperacional(configs.ultima_exportacao_operacional);
         if (configs.ultimo_backup_mes) setUltimoBackupMes(configs.ultimo_backup_mes);
         if (configs.diretorio_backup) setDiretorioBackup(configs.diretorio_backup);
+        if (configs.lembrar_utilizadores) setLembrarUtilizadores(configs.lembrar_utilizadores === '1');
+        if (configs.permitir_guardar_sessao) setPermitirGuardarSessao(configs.permitir_guardar_sessao === '1');
+        if (configs.require_operational_password !== undefined) setRequireOperationalPassword(configs.require_operational_password === '1');
 
         const setupOk = configs.setup_completed === '1';
         
@@ -1647,6 +1770,7 @@ function App() {
       const mod = e.metaKey || e.ctrlKey;
       if (mod && e.key === 'r') { e.preventDefault(); setAba('relatorios_detalhado'); }
       if (mod && e.key === ',') { e.preventDefault(); setAba('configuracoes'); }
+      if (mod && e.key === 'j') { e.preventDefault(); setAba('contactos'); }
     };
     window.addEventListener('keydown', handleKeyDown);
 
@@ -1844,8 +1968,20 @@ function App() {
     }
 
     try {
+      const selectedMonthName = pagamentoForm.mesReferencia || mesFinanceiro;
+      const targetMonthIndex = MONTH_OPTIONS.indexOf(selectedMonthName);
+      const targetYear = anoFinanceiro;
+
+      const dueDay = (() => {
+        const date = parseFlexibleDate(alunoParaPagamento.vencimento) || parseFlexibleDate(alunoParaPagamento.data_matricula) || new Date();
+        return date.getDate();
+      })();
+
+      const targetDueDate = new Date(targetYear, targetMonthIndex, dueDay);
+      const targetDueDateStr = formatPtDate(targetDueDate);
+
       const dataPagamento = formatPtDate(parseDate(pagamentoForm.dataPagamento));
-      const janelaCobranca = buildCoverageWindow(dataPagamento, alunoParaPagamento.vencimento);
+      const janelaCobranca = buildCoverageWindow(dataPagamento, targetDueDateStr);
       const valorPagamento = String(
         normalizeAmount(pagamentoForm.valor) || normalizeAmount(alunoParaPagamento.plano) || 1000
       );
@@ -1856,26 +1992,17 @@ function App() {
         status: 'pago',
         data_pagamento: dataPagamento,
         metodo_pagamento: pagamentoForm.metodo,
-        mes_referencia: janelaCobranca.monthReference,
+        mes_referencia: `${selectedMonthName.charAt(0).toUpperCase() + selectedMonthName.slice(1)} ${targetYear}`,
         referencia_inicio: janelaCobranca.coverageStart,
         referencia_fim: janelaCobranca.coverageEnd,
       };
 
       if (electron) {
-        // Atualizar pagamento
-        await electron.ipcRenderer.invoke('add-pagamento', novoPagamento);
-        
-        // Atualizar vencimento do aluno para a próxima cobrança do ciclo real.
-        const alunoAtualizado = {
-          ...alunoParaPagamento,
-          vencimento: janelaCobranca.nextChargeDate,
-          modo_cobranca: 'mensalidade_movel',
-        };
-        await electron.ipcRenderer.invoke('update-aluno-dados', alunoAtualizado);
+        await registrarPagamentoAtomico(novoPagamento, janelaCobranca.nextChargeDate);
         adicionarNotificacao('Pagamento Registado', `Pagamento de ${alunoParaPagamento.nome} (${novoPagamento.mes_referencia}) foi registado com sucesso.`, 'sucesso');
         await notificarSistema(nomeAcademia, `Pagamento de ${alunoParaPagamento.nome} registado com sucesso.`);
 
-        setUltimoPagamentoInfo({ valor: valorPagamento, mes: janelaCobranca.monthReference });
+        setUltimoPagamentoInfo({ valor: valorPagamento, mes: novoPagamento.mes_referencia });
         setPagamentoSucesso(true);
         if (alunoSelecionado?.id === alunoParaPagamento.id) {
           carregarHistorico(alunoParaPagamento.id);
@@ -1996,6 +2123,9 @@ function App() {
       guardarConfiguracao('morada_academia', moradaAcademia),
       guardarConfiguracao('email_academia', emailAcademia),
       guardarConfiguracao('telefone_academia', telefoneAcademia),
+      guardarConfiguracao('lembrar_utilizadores', lembrarUtilizadores ? '1' : '0'),
+      guardarConfiguracao('permitir_guardar_sessao', permitirGuardarSessao ? '1' : '0'),
+      guardarConfiguracao('require_operational_password', requireOperationalPassword ? '1' : '0'),
     ]);
 
     localStorage.setItem('nl_nome_academia', nomeAcademia);
@@ -2005,7 +2135,7 @@ function App() {
     localStorage.setItem('nl_telefone_academia', telefoneAcademia);
 
     showToast('Definições gerais guardadas.');
-    adicionarNotificacao('Definições atualizadas', 'Os dados institucionais foram guardados no sistema.', 'sucesso');
+    adicionarNotificacao('Definições atualizadas', 'Os dados gerais e políticas de login foram guardados.', 'sucesso');
   };
 
   const salvarPreferenciasNotificacoes = async () => {
@@ -2109,7 +2239,7 @@ function App() {
 
         // Se pagou na inscrição → registar pagamento imediato
         if (pagouAgora) {
-          await electron.ipcRenderer.invoke('add-pagamento', {
+          await registrarPagamentoAtomico({
             alunoId: id,
             valor: String(normalizeAmount(novoAluno.plano)),
             status: 'pago',
@@ -2118,7 +2248,7 @@ function App() {
             mes_referencia: janelaPrimeiroPagamento?.monthReference,
             referencia_inicio: janelaPrimeiroPagamento?.coverageStart,
             referencia_fim: janelaPrimeiroPagamento?.coverageEnd,
-          });
+          }, janelaPrimeiroPagamento?.nextChargeDate, false);
           showToast(`✅ ${novoAluno.nome} matriculado e pagamento registado!`);
           adicionarNotificacao('Nova Matrícula', `${novoAluno.nome} foi matriculado e efetuou o primeiro pagamento.`, 'sucesso');
         } else {
@@ -2528,14 +2658,25 @@ function App() {
   const marcarComoPago = (alunoId: string) => {
     const aluno = alunos.find(a => a.id === alunoId);
     if (aluno) {
-      setAlunoParaPagamento(aluno);
+      const alunoSeguro = {
+        ...aluno,
+        nome: getAlunoNomeSeguro(aluno),
+        plano: String(aluno.plano || ''),
+        telefone: aluno.telefone || '',
+        status: aluno.status || 'ativo',
+      } as Aluno;
+      setAlunoParaCobrancaRapida(alunoSeguro);
+      setCobrancaPagamentoSucesso(false);
+      setCobrancaUltimoPagamentoInfo(null);
       setPagamentoForm({
-        valor: String(normalizeAmount(aluno.plano) || ''),
+        valor: String(normalizeAmount(alunoSeguro.plano) || ''),
         dataPagamento: formatInputDate(),
         metodo: DEFAULT_PAYMENT_METHOD,
+        mesReferencia: mesFinanceiro,
       });
-      setAlunoSelecionado(null);
-      setMostrarModalPagamento(true);
+      setMostrarCobrancaRapida(true);
+    } else {
+      showToast('❌ Aluno não encontrado para cobrança.');
     }
   };
 
@@ -2728,7 +2869,7 @@ function App() {
       .sort((a, b) => a.nome.localeCompare(b.nome));
 
     const rows = alunosRel.map((a, idx) => {
-      const resumo = summarizeStudentBilling(a, pagamentos, refRel);
+      const resumo = getStudentStatusForMonth(a, pagamentos, anoRelatorio, mesIdx, hojeReferencia);
       return {
         '#': idx + 1,
         'Nome': a.nome,
@@ -2839,12 +2980,12 @@ function App() {
 
     try {
       const res = await electron.ipcRenderer.invoke('check-auth', { 
-        email: loginForm.email, 
+        username: loginForm.username, 
         password: loginForm.password 
       });
       
       if (res.success) {
-        localStorage.setItem('nl_last_user_email', loginForm.email);
+        localStorage.setItem('nl_last_username', loginForm.username);
         if (res.user?.email) {
           const role: UserRole = res.user.role === 'root' ? 'root' : (res.user.role === 'admin' ? 'admin' : 'operational');
           const user: SessionUser = {
@@ -2853,7 +2994,17 @@ function App() {
             email: String(res.user.email),
             role,
           };
-          localStorage.setItem('nl_session_user', JSON.stringify({ ...user, loginTimestamp: Date.now() }));
+          
+          if (lembrarUtilizadores) {
+            adicionarUtilizadorRecente(user.email, user.name, user.role);
+          }
+          
+          if (permitirGuardarSessao && guardarSessao) {
+            localStorage.setItem('nl_session_user', JSON.stringify({ ...user, loginTimestamp: Date.now() }));
+          } else {
+            sessionStorage.setItem('nl_session_user', JSON.stringify(user));
+          }
+          
           setSessionUser(user);
           if (role !== 'root') {
             electron?.ipcRenderer.invoke('users:set-current', { name: user.name });
@@ -2875,6 +3026,7 @@ function App() {
 
   const handleLogout = () => {
     localStorage.removeItem('nl_session_user');
+    sessionStorage.removeItem('nl_session_user');
     setSessionUser(null);
     setIsLoggedIn(false);
     setAba('home');
@@ -2950,7 +3102,7 @@ function App() {
          email: COMPANY_EMAIL,
          telefone: '9597220',
          morada: 'Modo Dev',
-         licenca: 'DEV-MASTER-NEXTLAB-2026',
+         licenca: 'NEXTLEVEL-VITALICIO-2026',
          dataExpiracao: 'Vitalícia',
          tipoLicenca: 'vitalicio'
        };
@@ -3079,13 +3231,14 @@ function App() {
                   Sistema de gestão profissional focado em alta performance operacional.
                 </p>
                 
-                {/* Developer Shortcut */}
-                <button 
-                  onClick={saltarSetupDesenvolvedor}
-                  className="text-[11px] font-bold text-slate-400 hover:text-slate-600 uppercase tracking-widest transition-colors mt-4"
-                >
-                  [ Ignorar (Modo Desenvolvedor) ]
-                </button>
+                {import.meta.env.DEV && (
+                  <button
+                    onClick={saltarSetupDesenvolvedor}
+                    className="text-[11px] font-bold text-slate-400 hover:text-slate-600 uppercase tracking-widest transition-colors mt-4"
+                  >
+                    [ Ignorar (Modo Desenvolvedor) ]
+                  </button>
+                )}
               </div>
             )}
 
@@ -3411,17 +3564,47 @@ function App() {
 
             <form onSubmit={handleLogin} className="space-y-4">
               <div className="space-y-1.5">
-                <label className="block text-[10px] font-bold nl-text-muted uppercase tracking-wider">Email</label>
+                <label className="block text-[10px] font-bold nl-text-muted uppercase tracking-wider">Nome de Utilizador</label>
                 <div className="relative">
-                  <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={15} />
+                  <User className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={15} />
                   <input
-                    type="email"
-                    value={loginForm.email}
-                    onChange={(e) => setLoginForm({...loginForm, email: e.target.value})}
-                    placeholder="email@academia.cv"
+                    type="text"
+                    value={loginForm.username}
+                    onChange={(e) => setLoginForm({...loginForm, username: e.target.value})}
+                    onFocus={() => setMostrarDropdownRecentes(true)}
+                    onBlur={() => setTimeout(() => setMostrarDropdownRecentes(false), 200)}
+                    placeholder="O teu nome..."
                     className="w-full h-11 pl-10 pr-4 bg-slate-50 border border-slate-200 rounded-[6px] focus:bg-white focus:ring-2 focus:ring-[var(--color-primary)]/15 focus:border-[var(--color-primary)] outline-none transition-all text-[13px]"
                     required
                   />
+                  {mostrarDropdownRecentes && lembrarUtilizadores && utilizadoresRecentes.filter(u => u.name !== 'root' && u.name !== 'Root Técnico').length > 0 && (
+                    <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-[6px] shadow-lg z-50 max-h-48 overflow-y-auto">
+                      <div className="p-1.5 space-y-0.5">
+                        {utilizadoresRecentes.filter(u => u.name !== 'root' && u.name !== 'Root Técnico').map((u) => (
+                          <button
+                            key={u.name}
+                            type="button"
+                            onMouseDown={() => {
+                              setLoginForm(prev => ({ ...prev, username: u.name }));
+                              setMostrarDropdownRecentes(false);
+                            }}
+                            className="w-full flex items-center justify-between px-3 py-2 text-left text-[12px] hover:bg-slate-50 rounded-[4px] transition-colors"
+                          >
+                            <div className="min-w-0">
+                              <p className="font-bold text-slate-700 leading-none">{u.name}</p>
+                            </div>
+                            <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded-[3px] border ${
+                              u.role === 'admin' 
+                                ? 'bg-red-50 border-red-100 text-red-600'
+                                : 'bg-blue-50 border-blue-100 text-blue-600'
+                            }`}>
+                              {u.role === 'admin' ? 'Admin' : 'Operador'}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -3435,13 +3618,39 @@ function App() {
                     onChange={(e) => setLoginForm({...loginForm, password: e.target.value})}
                     placeholder="••••••••••"
                     className="w-full h-11 pl-10 pr-11 bg-slate-50 border border-slate-200 rounded-[6px] focus:bg-white focus:ring-2 focus:ring-[var(--color-primary)]/15 focus:border-[var(--color-primary)] outline-none transition-all text-[13px]"
-                    required
                   />
                   <button type="button" onClick={() => setMostrarSenha(!mostrarSenha)} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors">
                     {mostrarSenha ? <EyeOff size={15} /> : <Eye size={15} />}
                   </button>
                 </div>
               </div>
+
+              {permitirGuardarSessao && (
+                <div className="space-y-1 py-1">
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={guardarSessao}
+                      onChange={(e) => setGuardarSessao(e.target.checked)}
+                      className="w-4 h-4 rounded border-slate-300 text-[var(--color-primary)] focus:ring-[var(--color-primary)]/20"
+                    />
+                    <span className="text-[12px] font-medium text-slate-600">Manter sessão iniciada</span>
+                  </label>
+                  {guardarSessao && (() => {
+                    const isTypedAdmin = loginForm.username.toLowerCase().includes('admin') || 
+                                         loginForm.username.toLowerCase() === 'root' ||
+                                         utilizadoresRecentes.some(u => u.name.toLowerCase() === loginForm.username.toLowerCase() && (u.role === 'admin' || u.role === 'root'));
+                    if (isTypedAdmin) {
+                      return (
+                        <p className="text-[10px] text-amber-600 font-semibold flex items-center gap-1 leading-normal pl-6">
+                          ⚠️ Atenção Administrador: Não recomendado em computadores partilhados.
+                        </p>
+                      );
+                    }
+                    return null;
+                  })()}
+                </div>
+              )}
 
               {loginError && (
                 <div className="p-3 bg-red-50 border border-red-100 rounded-[5px] flex items-center gap-2.5 text-red-600 text-[12px] font-medium">
@@ -3650,7 +3859,6 @@ function App() {
             {[
               { id: 'home',      label: 'Painel',    icon: <Layout size={14} /> },
               { id: 'gestao',    label: 'Alunos',    icon: <Users size={14} /> },
-              { id: 'contactos', label: 'Contactos', icon: <BookUser size={14} /> },
             ].map((nav) => (
               <button
                 key={nav.id}
@@ -3671,7 +3879,7 @@ function App() {
         {/* Right: Context actions + Profile */}
         <div className="flex items-center gap-1.5 min-w-[220px] justify-end">
           {/* Page chip for secondary pages */}
-          {(aba === 'relatorios_detalhado' || aba === 'configuracoes') && (
+          {(aba === 'relatorios_detalhado' || aba === 'configuracoes' || aba === 'contactos') && (
             <div className="flex items-center gap-2 mr-1">
               <button
                 onClick={() => setAba('home')}
@@ -3683,10 +3891,12 @@ function App() {
               <span className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11px] font-bold ${
                 aba === 'relatorios_detalhado'
                   ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                  : aba === 'contactos'
+                  ? 'bg-violet-50 border-violet-200 text-violet-700'
                   : 'bg-slate-100 border-slate-200 text-slate-600'
               }`}>
-                {aba === 'relatorios_detalhado' ? <FileBarChart size={11} /> : <Settings size={11} />}
-                {aba === 'relatorios_detalhado' ? 'Relatório' : 'Ajustes'}
+                {aba === 'relatorios_detalhado' ? <FileBarChart size={11} /> : aba === 'contactos' ? <BookUser size={11} /> : <Settings size={11} />}
+                {aba === 'relatorios_detalhado' ? 'Relatório' : aba === 'contactos' ? 'Contactos' : 'Ajustes'}
               </span>
             </div>
           )}
@@ -3732,10 +3942,11 @@ function App() {
               className={`w-9 h-9 rounded-full flex items-center justify-center text-white font-black text-[13px] border-2 border-[var(--bg-app)] shadow-sm hover:scale-105 transition-all ${
                 aba === 'relatorios_detalhado' ? 'ring-2 ring-emerald-400' :
                 aba === 'configuracoes' ? 'ring-2 ring-slate-400' :
+                aba === 'contactos' ? 'ring-2 ring-violet-400' :
                 'ring-1 ring-[var(--border)]'
               }`}
               style={{ background: 'linear-gradient(135deg, var(--color-primary) 0%, #0747A6 100%)' }}
-              title={aba === 'relatorios_detalhado' ? 'Relatório activo' : aba === 'configuracoes' ? 'Ajustes activos' : 'Menu'}
+              title={aba === 'relatorios_detalhado' ? 'Relatório activo' : aba === 'configuracoes' ? 'Ajustes activos' : aba === 'contactos' ? 'Contactos activos' : 'Menu'}
             >
               {(sessionUser?.name || 'U').charAt(0).toUpperCase()}
             </button>
@@ -3768,6 +3979,14 @@ function App() {
                           <Settings size={15} className="text-slate-400 shrink-0" />
                           <span className="flex-1 text-left">Ajustes do Sistema</span>
                           <kbd className="text-[9px] font-mono text-slate-300 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200 group-hover:bg-slate-200 group-hover:text-slate-500 transition-colors">⌘,</kbd>
+                        </button>
+                        <button
+                          onClick={() => { setAba('contactos'); setMostrarUserMenu(false); }}
+                          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-[4px] hover:bg-violet-50 text-[13px] font-semibold text-violet-700 transition-colors group"
+                        >
+                          <BookUser size={15} className="text-violet-500 shrink-0" />
+                          <span className="flex-1 text-left">Contactos (CRM)</span>
+                          <kbd className="text-[9px] font-mono text-slate-300 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200 group-hover:bg-violet-100 group-hover:text-violet-500 group-hover:border-violet-200 transition-colors">⌘J</kbd>
                         </button>
                         <div className="h-px bg-[#F4F5F7] my-1 mx-2" />
                       </>
@@ -3869,79 +4088,85 @@ function App() {
                 </div>
               </div>
 
-              {/* ── 4 stat cards ────────────────────────────────────────── */}
+              {/* ── Sumário de situação (substitui os 4 cards) ───────────── */}
               {(() => {
-                const pctRecebido = receitaPrevista > 0 ? Math.min(100, Math.round((totalRecebidoPeriodo / receitaPrevista) * 100)) : 0;
-                const cards = [
+                const itens = [
                   {
-                    title: 'Alunos Activos',
-                    value: String(alunosAtivos.length),
-                    sub: alunosNovosNoPeriodo.length > 0 ? `+${alunosNovosNoPeriodo.length} novos em ${mesFinanceiro}` : 'Sem novas entradas',
+                    icon: <Users size={14} />,
+                    label: 'Alunos activos',
+                    value: alunosAtivos.length,
+                    valueLabel: String(alunosAtivos.length),
+                    note: alunosNovosNoPeriodo.length > 0 ? `+${alunosNovosNoPeriodo.length} novos em ${mesFinanceiro}` : 'Sem novas entradas',
+                    color: '#1B6ABF',
                     action: () => setAba('gestao'),
-                    color: '#1B6ABF', bgColor: '#F2F8FF', borderColor: '#E1EFFF',
-                    icon: <Users size={15} />,
-                    extra: null as React.ReactNode,
                   },
                   {
-                    title: 'Em Dívida',
-                    value: String(alunosEmDivida.length),
-                    sub: alunosEmDivida.length > 0 ? formatCve(previsaoRecuperacao) + ' em atraso' : 'Tudo regularizado',
-                    action: () => { setAba('gestao'); setFiltroStatus('divida'); },
+                    icon: <AlertCircle size={14} />,
+                    label: 'Em dívida',
+                    value: alunosEmDivida.length,
+                    valueLabel: String(alunosEmDivida.length),
+                    note: alunosEmDivida.length > 0 ? formatCve(previsaoRecuperacao) + ' em atraso' : 'Tudo regularizado',
                     color: alunosEmDivida.length > 0 ? '#C0392B' : '#1A7A48',
-                    bgColor: alunosEmDivida.length > 0 ? '#FFF5F5' : '#F2FDF5',
-                    borderColor: alunosEmDivida.length > 0 ? '#FFEBEB' : '#E1F7E9',
-                    icon: <AlertCircle size={15} />,
-                    extra: null as React.ReactNode,
-                  },
-                  {
-                    title: 'Vencem Hoje',
-                    value: String(cobrancasParaHoje),
-                    sub: cobrancasCriticas > 0 ? `${cobrancasCriticas} em estado crítico` : 'Sem urgências imediatas',
                     action: () => { setAba('gestao'); setFiltroStatus('divida'); },
-                    color: cobrancasParaHoje > 0 ? '#C26B00' : '#1A7A48',
-                    bgColor: cobrancasParaHoje > 0 ? '#FFF9EB' : '#F2FDF5',
-                    borderColor: cobrancasParaHoje > 0 ? '#FFEDC2' : '#E1F7E9',
-                    icon: <Clock size={15} />,
-                    extra: null as React.ReactNode,
                   },
                   {
-                    title: 'Receita do Mês',
-                    value: formatCve(totalRecebidoPeriodo),
-                    sub: `de ${formatCve(receitaPrevista)} previstos`,
-                    action: () => setAba('relatorios_detalhado'),
-                    color: '#1A7A48', bgColor: '#F2FDF5', borderColor: '#E1F7E9',
-                    icon: <Wallet size={15} />,
-                    extra: (
-                      <div className="mt-2.5">
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-[9px] font-bold uppercase tracking-wider" style={{ color: '#1A7A48', opacity: 0.7 }}>Arrecadado</span>
-                          <span className="text-[10px] font-black" style={{ color: '#1A7A48' }}>{pctRecebido}%</span>
-                        </div>
-                        <div className="h-1 w-full rounded-full bg-emerald-100 overflow-hidden">
-                          <div className="h-full rounded-full bg-emerald-500 transition-all duration-700" style={{ width: `${pctRecebido}%` }} />
-                        </div>
-                      </div>
-                    ),
+                    icon: <Clock size={14} />,
+                    label: 'Vencem hoje',
+                    value: cobrancasParaHoje,
+                    valueLabel: String(cobrancasParaHoje),
+                    note: cobrancasCriticas > 0 ? `${cobrancasCriticas} em estado crítico` : 'Sem urgências imediatas',
+                    color: cobrancasParaHoje > 0 ? '#C26B00' : '#1A7A48',
+                    action: () => { setAba('gestao'); setFiltroStatus('divida'); },
                   },
                 ];
                 return (
-                  <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-                    {cards.map(card => (
-                      <button key={card.title} type="button" onClick={card.action}
-                        style={{ backgroundColor: card.bgColor, borderColor: card.borderColor }}
-                        className="group text-left rounded-[6px] border p-4 hover:shadow-[0_4px_12px_rgba(0,0,0,0.08)] transition-all duration-200 shadow-[0_1px_4px_rgba(0,0,0,0.04)] relative overflow-hidden">
-                        <div className="absolute top-0 left-0 right-0 h-[3px] rounded-t-[6px]" style={{ background: card.color }} />
-                        <div className="flex items-start justify-between mt-1 mb-2">
-                          <p className="text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider leading-tight pr-1">{card.title}</p>
-                          <div className="w-7 h-7 rounded-full flex items-center justify-center shrink-0" style={{ background: `${card.color}18`, color: card.color }}>
-                            {card.icon}
+                  <div
+                    className="rounded-[6px] border border-[var(--border)] bg-[var(--bg-surface)] shadow-[0_1px_4px_rgba(0,0,0,0.05)]"
+                    style={{ minHeight: '88px' }}
+                  >
+                    {/* Cabeçalho */}
+                    <div className="flex items-center gap-2 px-5 pt-4 pb-3 border-b border-[var(--border)]">
+                      <BarChart2 size={12} className="text-[var(--color-primary)] opacity-60" />
+                      <p className="text-[10px] font-bold uppercase tracking-[0.25em] text-[var(--color-primary)] opacity-60">Situação actual</p>
+                    </div>
+
+                    {/* Lista de itens */}
+                    <div className="flex items-stretch divide-x divide-[var(--border)]">
+                      {itens.map((item, idx) => (
+                        <button
+                          key={idx}
+                          type="button"
+                          onClick={item.action}
+                          className="flex-1 flex items-center gap-3 px-5 py-4 text-left hover:bg-[var(--bg-app)] transition-colors duration-150 group"
+                        >
+                          {/* Ícone */}
+                          <div
+                            className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition-transform duration-150 group-hover:scale-110"
+                            style={{ background: `${item.color}15`, color: item.color }}
+                          >
+                            {item.icon}
                           </div>
-                        </div>
-                        <p className="text-[22px] font-black nl-text leading-none">{card.value}</p>
-                        <p className="text-[10px] text-[var(--text-secondary)] mt-1.5 font-medium leading-tight">{card.sub}</p>
-                        {card.extra}
-                      </button>
-                    ))}
+
+                          {/* Texto */}
+                          <div className="min-w-0">
+                            <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-secondary)] leading-none mb-1">
+                              {item.label}
+                            </p>
+                            <div className="flex items-baseline gap-2">
+                              <span
+                                className="text-[22px] font-black leading-none tabular-nums"
+                                style={{ color: item.color }}
+                              >
+                                {item.valueLabel}
+                              </span>
+                            </div>
+                            <p className="text-[10px] text-[var(--text-secondary)] mt-1 leading-tight truncate max-w-[160px]">
+                              {item.note}
+                            </p>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 );
               })()}
@@ -4111,13 +4336,12 @@ function App() {
                       const dataMatricula = parseFlexibleDate(aluno.data_matricula);
                       const hoje = new Date(); hoje.setHours(0,0,0,0);
                       const isHoje = dataMatricula && dataMatricula.getTime() === hoje.getTime();
-                      const avatarColors = ['bg-blue-500','bg-violet-500','bg-emerald-500','bg-rose-500','bg-amber-500','bg-teal-500','bg-indigo-500'];
-                      const avatarBg = avatarColors[aluno.nome.charCodeAt(0) % avatarColors.length];
+                      const avatarBg = getAvatarColorByName(aluno.nome);
                       const isLatest = idx === 0;
                       if (isLatest) {
                         return (
                           <button key={aluno.id} type="button"
-                            onClick={() => { setAlunoPerfil(aluno); carregarNotas(aluno.id); setAba('contactos'); }}
+                            onClick={() => abrirPerfilAluno(aluno)}
                             className="w-full text-left px-4 py-3.5 border-b border-[var(--border-light)] transition-colors hover:brightness-[0.97]"
                             style={{ background: 'linear-gradient(135deg, #EEF4FF 0%, #E8F5E9 100%)' }}>
                             <div className="flex items-center gap-3">
@@ -4125,7 +4349,7 @@ function App() {
                                 <div className={`w-10 h-10 rounded-full flex items-center justify-center text-[13px] font-black text-white overflow-hidden shadow-md ${avatarBg}`}>
                                   {aluno.foto_path
                                     ? <img src={`local-resource://${aluno.foto_path}`} className="w-full h-full object-cover" />
-                                    : aluno.nome.slice(0,2).toUpperCase()}
+                                    : getAlunoIniciais(aluno)}
                                 </div>
                                 <span className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full bg-amber-400 border-2 border-white flex items-center justify-center shadow-sm">
                                   <Star size={7} className="text-white fill-white" />
@@ -4151,12 +4375,12 @@ function App() {
                       }
                       return (
                         <button key={aluno.id} type="button"
-                          onClick={() => { setAlunoPerfil(aluno); carregarNotas(aluno.id); setAba('contactos'); }}
+                          onClick={() => abrirPerfilAluno(aluno)}
                           className="w-full flex items-center gap-3 px-4 py-2.5 transition-colors text-left border-b border-[var(--border-light)] last:border-0 hover:bg-[var(--color-secondary-lighter)]/40">
                           <div className={`w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-black text-white shrink-0 overflow-hidden ${avatarBg}`}>
                             {aluno.foto_path
                               ? <img src={`local-resource://${aluno.foto_path}`} className="w-full h-full object-cover" />
-                              : aluno.nome.slice(0,2).toUpperCase()}
+                              : getAlunoIniciais(aluno)}
                           </div>
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-1.5">
@@ -4189,7 +4413,7 @@ function App() {
             .filter(a => { const e = parseFlexibleDate(a.data_matricula); return e ? e.getTime() <= refRelatorio.getTime() : true; })
             .sort((a, b) => a.nome.localeCompare(b.nome));
 
-          const resumosRel = alunosPeriodoRel.map(aluno => ({ aluno, resumo: summarizeStudentBilling(aluno, pagamentos, refRelatorio) }));
+          const resumosRel = alunosPeriodoRel.map(aluno => ({ aluno, resumo: getStudentStatusForMonth(aluno, pagamentos, anoRelatorio, mesIdxRel, hojeReferencia) }));
 
           const totalInscritos = alunosPeriodoRel.length;
           const pagosCount   = resumosRel.filter(r => r.resumo.status === 'pago').length;
@@ -4698,8 +4922,8 @@ function App() {
                               <tr
                                 key={`${periodoSelecionadoKey}-${aluno.id}`}
                                 className={`group border-b border-[var(--border-light)] transition-colors cursor-pointer ${isImported ? 'bg-amber-50 hover:bg-amber-100' : `rp-${index % 6}`}`}
-                                onClick={() => isImported ? abrirEdicao(aluno) : marcarComoPago(aluno.id)}
-                                title={isImported ? 'Clique para editar e confirmar dados' : 'Clique para abrir painel de cobrança'}
+                                onClick={() => isImported ? abrirEdicao(aluno) : abrirPerfilAluno(aluno)}
+                                title={isImported ? 'Clique para editar e confirmar dados' : 'Clique para ver o perfil completo do aluno'}
                               >
                                 {/* Nº */}
                                 <td className="align-middle text-center" style={{ padding: 'var(--list-row-py) var(--list-row-px)' }}>
@@ -4709,7 +4933,7 @@ function App() {
                                 <td className="align-middle" style={{ padding: 'var(--list-row-py) var(--list-row-px)' }}>
                                   <div className="flex items-center gap-2">
                                     <div className="rounded-full bg-[var(--color-secondary-lighter)] flex items-center justify-center font-semibold nl-text-muted border border-[var(--border)] overflow-hidden shrink-0" style={{ width: 'var(--list-avatar-size)', height: 'var(--list-avatar-size)', fontSize: 'var(--list-font-secondary)' }}>
-                                      {aluno.foto_path ? <img src={`local-resource://${aluno.foto_path}`} className="w-full h-full object-cover" /> : aluno.nome.slice(0,2).toUpperCase()}
+                                      {aluno.foto_path ? <img src={`local-resource://${aluno.foto_path}`} className="w-full h-full object-cover" /> : getAlunoIniciais(aluno)}
                                     </div>
                                     <div className="flex min-w-0 flex-col">
                                       <div className="flex items-center gap-1.5">
@@ -4762,12 +4986,7 @@ function App() {
                                 {/* Acções */}
                                 <td className="align-middle" style={{ padding: 'var(--list-row-py) var(--list-row-px)' }} onClick={(e) => e.stopPropagation()}>
                                   <div className="flex items-center justify-center gap-1">
-                                    <button onClick={(e) => { e.stopPropagation(); marcarComoPago(aluno.id); }}
-                                      className="nl-icon-btn !w-6 !h-6 !rounded-[4px] hover:!bg-[var(--color-primary)] hover:!text-white hover:!border-[var(--color-primary)]"
-                                      title="Cobrar / Ver detalhes">
-                                      <Wallet size={12} />
-                                    </button>
-                                    <button onClick={(e) => { e.stopPropagation(); setAlunoPerfil(aluno); setAba('contactos'); carregarNotas(aluno.id); }}
+                                    <button onClick={(e) => { e.stopPropagation(); abrirPerfilAluno(aluno); }}
                                       className="nl-icon-btn !w-6 !h-6 !rounded-[4px] hover:!bg-[var(--color-primary-light)] hover:!text-[var(--color-primary)] hover:!border-[var(--color-primary)]/20"
                                       title="Ver perfil em Contactos">
                                       <BookUser size={11} />
@@ -4823,252 +5042,10 @@ function App() {
         )}
 
         {/* Module: Finanças — removido, integrado em Alunos */}
-        {false && (
-          <div className="animate-slide-up h-full flex flex-col w-full overflow-hidden">
-            <div className="sticky top-0 z-20 overflow-hidden border-b border-[var(--border)] bg-[var(--bg-surface)] shadow-[0_10px_24px_rgba(15,23,42,0.04)]">
-              <div className="overflow-x-auto px-6 py-3">
-                <div className="flex min-w-[1180px] items-center justify-between gap-8">
-                  <div className="flex items-center gap-5 shrink-0">
-                    <div className="min-w-0 shrink-0">
-                      <h2 className="text-[18px] font-extrabold nl-text tracking-tight whitespace-nowrap">Finanças</h2>
-                    </div>
-
-                    <div className="flex items-center rounded-full border border-[var(--border-light)] bg-[var(--color-secondary-lighter)]/45 p-1">
-                      {[
-                        { id: 'todos', label: 'Todos' },
-                        { id: 'atrasados', label: 'Em dívida' },
-                        { id: 'cobertos', label: 'Cobertos' },
-                      ].map((filtro) => (
-                        <button
-                          key={filtro.id}
-                          type="button"
-                          onClick={() => setFiltroFinanceiroRapido(filtro.id as FinanceQuickFilter)}
-                          className={`rounded-full px-4 py-1.5 text-[11px] font-bold uppercase tracking-[0.12em] transition-all ${
-                            filtroFinanceiroRapido === filtro.id
-                              ? 'bg-[var(--color-primary)] text-white shadow-sm'
-                              : 'text-[var(--text-secondary)] hover:bg-white/70'
-                          }`}
-                        >
-                          {filtro.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="flex flex-1 justify-center">
-                    <div className="relative min-w-[380px] w-full max-w-[540px]">
-                      <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-secondary)]" />
-                      <input
-                        type="text"
-                        placeholder="Buscar aluno por nome ou telefone..."
-                        value={pesquisaFinanceira}
-                        onChange={(e) => setPesquisaFinanceira(e.target.value)}
-                        className="nl-input h-10 !rounded-full !pl-10 !pr-10 !bg-[var(--bg-surface)] !border-[var(--border-light)]"
-                      />
-                      {pesquisaFinanceira && (
-                        <button
-                          type="button"
-                          onClick={() => setPesquisaFinanceira('')}
-                          className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-[var(--text-tertiary)] transition-colors hover:bg-[var(--bg-surface)] hover:text-[var(--color-primary)]"
-                          title="Limpar pesquisa"
-                        >
-                          <X size={14} />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="flex items-center shrink-0 gap-3">
-                    <button
-                      onClick={() => alunoFinanceiroSelecionado && marcarComoPago(alunoFinanceiroSelecionado.id)}
-                      disabled={!alunoFinanceiroSelecionado}
-                      className={`nl-btn h-9 px-3 whitespace-nowrap !shadow-none ${
-                        alunoFinanceiroSelecionado
-                          ? 'nl-btn-primary'
-                          : 'nl-btn-secondary opacity-50 cursor-not-allowed'
-                      }`}
-                    >
-                      <CheckCircle2 size={16} /> Registar Pagamento
-                    </button>
-                  </div>
-                </div>
-              </div>
-              <div className={`overflow-x-auto transition-all ${timelineFinanceiraMinimizada ? 'py-1' : 'py-2'}`}>
-                <div className={`flex min-w-[1180px] items-center gap-3 ${timelineFinanceiraMinimizada ? 'min-h-[40px]' : 'min-h-[52px]'}`}>
-                  <div className="flex items-center gap-2 shrink-0 pl-6">
-                    <button onClick={() => setAnoFinanceiro(prev => prev - 1)} className="flex h-7 w-7 items-center justify-center rounded-full border border-[var(--border-light)] text-[var(--text-secondary)] transition-colors hover:border-[var(--color-primary)]/30 hover:text-[var(--color-primary)]">
-                      <ChevronLeft size={14} />
-                    </button>
-                    <div className="rounded-full border border-[var(--border-light)] bg-[var(--color-secondary-lighter)]/28 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--text-secondary)]">
-                      {anoFinanceiro}
-                    </div>
-                    <button onClick={() => setAnoFinanceiro(prev => prev + 1)} className="flex h-7 w-7 items-center justify-center rounded-full border border-[var(--border-light)] text-[var(--text-secondary)] transition-colors hover:border-[var(--color-primary)]/30 hover:text-[var(--color-primary)]">
-                      <ChevronRight size={14} />
-                    </button>
-                  </div>
-
-                  <div className="relative flex-1 min-w-[520px]">
-                    <div className="absolute left-0 right-0 top-1/2 h-px -translate-y-1/2 bg-[#D9E2F2]" />
-                    <div className="relative flex items-center justify-between gap-1">
-                      {MONTH_OPTIONS.map((mes, index) => {
-                        const isFuturo = isFutureMonth(index, anoFinanceiro, new Date());
-                        const isMesAtual = anoFinanceiro === new Date().getFullYear() && index === new Date().getMonth();
-                        const ativo = mesFinanceiro === mes;
-                        if (isFuturo) return null;
-
-                        return (
-                          <button
-                            key={mes}
-                            onClick={() => setMesFinanceiro(mes)}
-                            className={`group flex min-w-[70px] flex-col items-center transition-all ${timelineFinanceiraMinimizada ? 'gap-0 py-0.5' : 'gap-1 py-1'}`}
-                          >
-                            <span className={`h-3 w-3 rounded-full border transition-all ${
-                              ativo
-                                ? 'border-[var(--color-primary)] bg-[var(--color-primary)] shadow-[0_0_0_3px_rgba(37,99,235,0.12)]'
-                                : isMesAtual
-                                  ? 'border-[#2563EB] bg-white'
-                                  : 'border-[var(--border)] bg-[var(--bg-surface)] group-hover:border-[var(--color-primary)]/45'
-                            }`} />
-                            <div className={`${timelineFinanceiraMinimizada ? 'h-0 overflow-hidden opacity-0' : 'px-1 py-0.5 opacity-100'} text-[10px] font-bold uppercase tracking-[0.12em] transition-all ${
-                              ativo ? 'text-[var(--color-primary)]' : 'text-[var(--text-secondary)]'
-                            }`}>
-                              {mes.slice(0, 3)}
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  <div className="flex shrink-0 items-center gap-2 pr-6">
-                    <button
-                      type="button"
-                      onClick={() => setTimelineFinanceiraMinimizada((prev) => !prev)}
-                      className="inline-flex h-7 items-center gap-2 rounded-full border border-[var(--border-light)] px-3 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--text-secondary)] transition-colors hover:bg-[var(--color-secondary-lighter)]/45"
-                      title={timelineFinanceiraMinimizada ? 'Expandir régua temporal' : 'Minimizar régua temporal'}
-                    >
-                      <ChevronDown size={13} className={`transition-transform ${timelineFinanceiraMinimizada ? '-rotate-90' : 'rotate-0'}`} />
-                      {timelineFinanceiraMinimizada ? 'Expandir' : 'Minimizar'}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex-1 overflow-hidden px-6 py-10">
-              <div className="mx-auto h-full w-full" style={{ maxWidth: `${larguraListas}px` }}>
-                <div className="nl-card flex h-full overflow-hidden flex-col !rounded-[5px] !p-0 border border-[var(--border)] bg-[var(--bg-surface)] shadow-[0_20px_38px_rgba(15,23,42,0.08)]">
-                  <div className="border-b border-[var(--border-light)] bg-[var(--color-secondary-lighter)]/18 px-5 py-4">
-                    <div className="flex items-center justify-between gap-4">
-                      <div>
-                        <p className="text-[11px] font-bold uppercase tracking-[0.18em] nl-text-muted">Lista financeira</p>
-                        <h3 className="mt-1 text-[18px] font-extrabold nl-text capitalize tracking-tight">
-                          {mesFinanceiro} <span className="text-[var(--color-primary)]">{anoFinanceiro}</span>
-                        </h3>
-                      </div>
-
-                      <div className="flex items-center gap-3 text-[11px] font-semibold text-[var(--text-secondary)]">
-                        <span>{alunosFinanceirosFiltrados.length} aluno(s)</span>
-                        <span>{formatCve(totalRecebidoPeriodo)}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="overflow-y-auto flex-1 custom-scrollbar" style={estiloTabelaAlunos}>
-                      {alunosFinanceirosFiltrados.length === 0 ? (
-                        <div className="h-full flex flex-col items-center justify-center gap-3 opacity-50">
-                          <CreditCard size={34} />
-                          <div className="text-center">
-                            <p className="text-[14px] font-bold nl-text uppercase tracking-widest">Nenhum aluno encontrado</p>
-                            <p className="text-[12px] nl-text-muted mt-1">Tente outro filtro ou outro período financeiro.</p>
-                          </div>
-                        </div>
-                      ) : (
-                        <table className="w-full text-left border-collapse">
-                          <thead className="bg-[var(--color-secondary-lighter)] text-[10px] font-bold nl-text-muted uppercase tracking-[0.08em] sticky top-0 z-10 border-b border-[var(--border)]">
-                            <tr>
-                              <th className="w-[36%]" style={{ padding: 'var(--list-row-py) var(--list-row-px)' }}>Aluno</th>
-                              <th className="w-[14%]" style={{ padding: 'var(--list-row-py) var(--list-row-px)' }}>Plano</th>
-                              <th className="w-[18%]" style={{ padding: 'var(--list-row-py) var(--list-row-px)' }}>Cobrança</th>
-                              <th className="w-[14%]" style={{ padding: 'var(--list-row-py) var(--list-row-px)' }}>Estado</th>
-                              <th className="w-[12%]" style={{ padding: 'var(--list-row-py) var(--list-row-px)' }}>Cobertura</th>
-                              <th className="w-[6%] text-center" style={{ padding: 'var(--list-row-py) var(--list-row-px)' }}>Ações</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {alunosFinanceirosFiltrados.map(({ aluno, resumo }, index) => {
-                              const tone = getBillingTone(resumo.status);
-                              const tom = obterTomPastel(index);
-                              const selecionado = alunoFinanceiroSelecionado?.id === aluno.id;
-
-                              return (
-                                <tr
-                                  key={aluno.id}
-                                  className={`group border-b border-[var(--border-light)] transition-colors ${
-                                    selecionado ? 'bg-[var(--color-primary-light)]' : `${tone.surface} hover:bg-slate-100`
-                                  }`}
-                                >
-                                  <td className="align-middle" style={{ padding: 'var(--list-row-py) var(--list-row-px)' }}>
-                                    <div className="flex items-center gap-2.5">
-                                      <div
-                                        className="rounded-[3px] bg-[var(--color-secondary-light)] flex items-center justify-center font-bold nl-text border border-[var(--border)] overflow-hidden"
-                                        style={{ width: 'var(--list-avatar-size)', height: 'var(--list-avatar-size)', fontSize: 'var(--list-font-secondary)' }}
-                                      >
-                                        {aluno.foto_path ? <img src={`local-resource://${aluno.foto_path}`} className="w-full h-full object-cover" /> : aluno.nome.slice(0,2).toUpperCase()}
-                                      </div>
-                                      <div className="flex min-w-0 flex-col">
-                                        <p className={`font-bold truncate transition-colors ${selecionado ? 'text-[var(--color-primary)]' : 'nl-text group-hover:text-[var(--color-primary)]'}`} style={{ fontSize: 'var(--list-font-primary)' }}>{aluno.nome}</p>
-                                        <p className="nl-text-muted" style={{ fontSize: 'var(--list-font-secondary)' }}>{aluno.telefone || aluno.id}</p>
-                                      </div>
-                                    </div>
-                                  </td>
-                                  <td className="align-middle" style={{ padding: 'var(--list-row-py) var(--list-row-px)' }}>
-                                    <span className="font-semibold nl-text" style={{ fontSize: 'var(--list-font-primary)' }}>{formatCve(aluno.plano)}</span>
-                                  </td>
-                                  <td className="align-middle" style={{ padding: 'var(--list-row-py) var(--list-row-px)' }}>
-                                    <div className="flex flex-col leading-tight">
-                                      <span className="font-bold nl-text" style={{ fontSize: 'var(--list-font-primary)' }}>{resumo.nextChargeDate}</span>
-                                      <span className={`${tone.accent} font-semibold`} style={{ fontSize: 'var(--list-font-secondary)' }}>{resumo.statusLabel}</span>
-                                    </div>
-                                  </td>
-                                  <td className="align-middle" style={{ padding: 'var(--list-row-py) var(--list-row-px)' }}>
-                                    <span className={`badge ${tone.badge}`}>{getBillingBadgeLabel(resumo.status)}</span>
-                                  </td>
-                                  <td className="align-middle" style={{ padding: 'var(--list-row-py) var(--list-row-px)' }}>
-                                    <div className="flex flex-col leading-tight">
-                                      <span className="font-semibold nl-text" style={{ fontSize: 'var(--list-font-secondary)' }}>
-                                        {resumo.coverageEnd || 'Sem cobertura'}
-                                      </span>
-                                    </div>
-                                  </td>
-                                  <td className="align-middle text-center" style={{ padding: 'var(--list-row-py) var(--list-row-px)' }}>
-                                    <div className="flex items-center justify-center gap-2">
-                                      <button
-                                        type="button"
-                                        onClick={() => selecionarAlunoFinanceiro(alunoFinanceiroSelecionado?.id === aluno.id ? null : aluno)}
-                                        className="w-7 h-7 rounded-[3px] nl-btn-ghost flex items-center justify-center hover:bg-[var(--color-primary-light)] hover:text-[var(--color-primary)] transition-all"
-                                        title="Ver resumo"
-                                      >
-                                        <Eye size={15} />
-                                      </button>
-                                    </div>
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      )}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* Module: CRM / Contactos */}
         {aba === 'contactos' && (() => {
-          const resumoContacto = alunoPerfil ? summarizeStudentBilling(alunoPerfil, pagamentos, referenciaFinanceira) : null;
+          const resumoContacto = alunoPerfil ? getStudentStatusForMonth(alunoPerfil, pagamentos, anoFinanceiro, mesFinanceiroIndex, hojeReferencia) : null;
           const pagamentosAluno = alunoPerfil ? pagamentos.filter(p => (p.alunoId || p.aluno_id) === alunoPerfil.id).sort((a, b) => (b.id || 0) - (a.id || 0)) : [];
 
           return (
@@ -5173,7 +5150,7 @@ function App() {
                   </div>
                 ) : alunosDirectorio.map((aluno) => {
                   const isSelected = alunoPerfil?.id === aluno.id;
-                  const resumoItem = summarizeStudentBilling(aluno, pagamentos, referenciaFinanceira);
+                  const resumoItem = getStudentStatusForMonth(aluno, pagamentos, anoFinanceiro, mesFinanceiroIndex, hojeReferencia);
                   const dotColor = resumoItem.status === 'atrasado' || resumoItem.status === 'hoje'
                     ? 'bg-red-500'
                     : resumoItem.status === 'pago'
@@ -5186,17 +5163,13 @@ function App() {
                             ? 'bg-red-800'
                             : 'bg-blue-400';
 
-                  const iniciais = (aluno.nome || '?').trim().slice(0, 2).toUpperCase();
-                  const avatarColors = [
-                    'bg-blue-500', 'bg-violet-500', 'bg-emerald-500',
-                    'bg-rose-500', 'bg-amber-500', 'bg-teal-500', 'bg-indigo-500',
-                  ];
-                  const avatarColor = avatarColors[aluno.nome.charCodeAt(0) % avatarColors.length];
+                  const iniciais = getAlunoIniciais(aluno);
+                  const avatarColor = getAvatarColorByName(aluno.nome);
 
                   return (
                     <button
                       key={aluno.id}
-                      onClick={() => { setAlunoPerfil(aluno); carregarNotas(aluno.id); }}
+                      onClick={() => { setAlunoPerfil({ ...aluno, nome: getAlunoNomeSeguro(aluno) } as Aluno); carregarNotas(aluno.id); }}
                       className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors border-b border-[var(--border-light)]/60 ${
                         isSelected
                           ? 'bg-[var(--color-primary-light)] border-l-2 border-l-[var(--color-primary)]'
@@ -5240,9 +5213,8 @@ function App() {
                       ? 'text-amber-600 bg-amber-50 border-amber-200'
                       : 'text-blue-600 bg-blue-50 border-blue-200';
 
-                const iniciais = (alunoPerfil.nome || '?').trim().slice(0, 2).toUpperCase();
-                const avatarColors = ['bg-blue-500','bg-violet-500','bg-emerald-500','bg-rose-500','bg-amber-500','bg-teal-500','bg-indigo-500'];
-                const avatarColor = avatarColors[alunoPerfil.nome.charCodeAt(0) % avatarColors.length];
+                const iniciais = getAlunoIniciais(alunoPerfil);
+                const avatarColor = getAvatarColorByName(alunoPerfil.nome);
 
                 return (
                   <>
@@ -5294,7 +5266,6 @@ function App() {
                         <button onClick={() => window.open(`mailto:${alunoPerfil.email}`)} title="E-mail" className="w-8 h-8 rounded-full flex items-center justify-center nl-text-muted hover:bg-slate-100 border border-transparent hover:border-slate-200 transition-all"><Mail size={14} /></button>
                         <div className="w-px h-5 bg-slate-200 mx-1" />
                         <button onClick={() => abrirEdicao(alunoPerfil)} className="h-8 px-3 rounded-[6px] text-[11px] font-semibold nl-text border border-[var(--border)] bg-white hover:bg-slate-50 transition-colors flex items-center gap-1.5"><Edit size={12} /> Editar</button>
-                        <button onClick={() => marcarComoPago(alunoPerfil.id)} className="h-8 px-3 rounded-[6px] text-[11px] font-semibold text-white bg-emerald-600 hover:bg-emerald-700 transition-colors flex items-center gap-1.5 shadow-sm"><Wallet size={12} /> Cobrar</button>
                         <div className="relative" ref={menuAcoesRef}>
                           <button onClick={() => setMostrarMenuAcoes(!mostrarMenuAcoes)} title="Mais opções" className={`w-8 h-8 rounded-full flex items-center justify-center nl-text-muted hover:bg-slate-100 border border-transparent hover:border-slate-200 transition-all ${mostrarMenuAcoes ? 'bg-slate-100' : ''}`}><MoreVertical size={14} /></button>
                           {mostrarMenuAcoes && (
@@ -5584,6 +5555,43 @@ function App() {
                           <label className="text-[11px] font-bold nl-text-muted uppercase tracking-wider">Localização / Morada</label>
                           <input type="text" value={moradaAcademia} onChange={(e) => setMoradaAcademia(e.target.value)} className="nl-input w-full h-12 px-4" />
                        </div>
+                    </div>
+
+                    {/* ── Segurança de Acesso ── */}
+                    <div className="space-y-4 pt-8 border-t border-[var(--border)]">
+                      <div>
+                        <h3 className="text-[14px] font-bold nl-text">Segurança & Autenticação</h3>
+                        <p className="text-[12px] nl-text-muted mt-0.5">Defina as políticas de privacidade e persistência de sessão para o ecrã de login.</p>
+                      </div>
+
+                      <div className="flex flex-col gap-3">
+                        {/* Lembrar utilizadores */}
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <div className={`w-9 h-5 rounded-full transition-colors relative ${lembrarUtilizadores ? 'bg-[var(--color-primary)]' : 'bg-slate-200'}`}
+                               onClick={() => setLembrarUtilizadores(!lembrarUtilizadores)}>
+                            <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-all ${lembrarUtilizadores ? 'left-4' : 'left-0.5'}`} />
+                          </div>
+                          <span className="text-[12px] nl-text-muted">Lembrar utilizadores anteriores (mostra lista no email do login)</span>
+                        </label>
+
+                        {/* Guardar sessão */}
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <div className={`w-9 h-5 rounded-full transition-colors relative ${permitirGuardarSessao ? 'bg-[var(--color-primary)]' : 'bg-slate-200'}`}
+                               onClick={() => setPermitirGuardarSessao(!permitirGuardarSessao)}>
+                            <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-all ${permitirGuardarSessao ? 'left-4' : 'left-0.5'}`} />
+                          </div>
+                          <span className="text-[12px] nl-text-muted">Permitir guardar sessão (exibe a caixa "Manter sessão iniciada")</span>
+                        </label>
+
+                        {/* Exigir Senha para Operacionais */}
+                        <label className="flex items-center gap-2 cursor-pointer mt-1">
+                          <div className={`w-9 h-5 rounded-full transition-colors relative ${requireOperationalPassword ? 'bg-[var(--color-primary)]' : 'bg-slate-200'}`}
+                               onClick={() => setRequireOperationalPassword(!requireOperationalPassword)}>
+                            <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-all ${requireOperationalPassword ? 'left-4' : 'left-0.5'}`} />
+                          </div>
+                          <span className="text-[12px] nl-text-muted">Exigir palavra-passe para utilizadores operacionais</span>
+                        </label>
+                      </div>
                     </div>
 
                     {/* ── Slideshow de Login ── */}
@@ -6271,10 +6279,9 @@ function App() {
                           key={s.id}
                           type="button"
                           onClick={() => {
-                            setAlunoPerfil(s);
-                            setAba('contactos');
                             setMostrarForm(false);
                             setSugestoesNome([]);
+                            abrirPerfilAluno(s);
                           }}
                           className="w-full px-3 py-2 text-left hover:bg-blue-50 flex items-center justify-between group transition-colors"
                         >
@@ -6635,7 +6642,7 @@ function App() {
                       {grupo.map(aluno => (
                         <div key={aluno.id} className="p-4 bg-white hover:bg-slate-50/50 transition-colors flex items-center gap-4">
                           <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 font-bold text-[12px] shrink-0 overflow-hidden border border-slate-200">
-                            {aluno.foto_path ? <img src={`local-resource://${aluno.foto_path}`} className="w-full h-full object-cover" /> : aluno.nome.slice(0,2).toUpperCase()}
+                            {aluno.foto_path ? <img src={`local-resource://${aluno.foto_path}`} className="w-full h-full object-cover" /> : getAlunoIniciais(aluno)}
                           </div>
                           <div className="flex-1 min-w-0">
                             <p className="text-[13px] font-bold nl-text truncate">{aluno.nome}</p>
@@ -6645,9 +6652,8 @@ function App() {
                           <div className="flex items-center gap-1.5">
                             <button 
                               onClick={() => {
-                                setAlunoPerfil(aluno);
-                                setAba('contactos');
                                 setMostrarModalDuplicados(false);
+                                abrirPerfilAluno(aluno);
                               }}
                               className="nl-btn !h-8 !px-3 !bg-slate-100 !text-slate-600 hover:!bg-blue-50 hover:!text-blue-600 !border-slate-200 !text-[10px] font-bold uppercase"
                             >
@@ -6738,6 +6744,15 @@ function App() {
                       : 'Sem cobertura ativa'
                   },
                   { label: 'Último pagamento', value: resumoAlunoSelecionado?.lastPaymentDate || 'Ainda sem registo' },
+                  {
+                    label: 'Saldo de dias',
+                    value: (() => {
+                      const balance = resumoAlunoSelecionado?.dayBalance || 0;
+                      if (balance > 0) return <span className="text-emerald-600 font-bold">+{balance} dias (Antecipado)</span>;
+                      if (balance < 0) return <span className="text-red-600 font-bold">{balance} dias (Atraso)</span>;
+                      return <span className="text-slate-500 font-bold">0 dias (Em dia)</span>;
+                    })()
+                  },
                 ].map((item) => (
                   <div key={item.label} className="flex items-start justify-between gap-6 border-b border-[var(--border-light)] py-3 last:border-b-0">
                     <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--text-secondary)] shrink-0">{item.label}</span>
@@ -6759,9 +6774,6 @@ function App() {
                 <button onClick={() => abrirEdicao(alunoSelecionado)} className="nl-btn nl-btn-ghost h-10 px-4 text-[11px] font-bold uppercase tracking-[0.12em]">
                   Editar
                 </button>
-                <button onClick={() => marcarComoPago(alunoSelecionado.id)} className="nl-btn nl-btn-primary h-10 px-4 text-[11px] font-bold uppercase tracking-[0.12em]">
-                  <CheckCircle2 size={15} /> Registar Pagamento
-                </button>
               </div>
             </div>
           </div>
@@ -6769,7 +6781,7 @@ function App() {
       )}
 
       {confirmDialog.visible && (
-        <div className="fixed inset-0 nl-modal-overlay flex items-center justify-center z-[115] p-4 animate-in fade-in duration-200">
+        <div className="fixed inset-0 nl-modal-overlay flex items-center justify-center z-[9999] p-4 animate-in fade-in duration-200">
           <div className="nl-modal w-full max-w-md overflow-hidden flex flex-col animate-slide-up">
             <div className={`px-8 py-6 border-b border-[var(--border)] flex items-center gap-4 ${
               confirmDialog.tone === 'danger'
@@ -6820,258 +6832,7 @@ function App() {
         </div>
       )}
 
-      {/* Modal: Registo de Pagamento */}
-      {mostrarModalPagamento && alunoParaPagamento && (() => {
-        const hoje = new Date();
-        const diaHoje = hoje.getDate();
-        const vencParts = (alunoParaPagamento.vencimento || '').split('/');
-        const diaVenc = vencParts.length >= 1 ? parseInt(vencParts[0], 10) : 0;
-        
-        const historicoPorAluno = pagamentos
-          .filter(p => p.aluno_id === alunoParaPagamento.id || p.alunoId === alunoParaPagamento.id)
-          .sort((a, b) => (b.id || 0) - (a.id || 0))
-          .slice(0, 8);
 
-        const whatsappNum = (alunoParaPagamento.telefone || '').replace(/\D/g, '');
-        const valorParaWhatsapp = ultimoPagamentoInfo?.valor
-          ? formatCve(normalizeAmount(ultimoPagamentoInfo.valor))
-          : formatCve(normalizeAmount(alunoParaPagamento.plano));
-        const mesParaWhatsapp = ultimoPagamentoInfo?.mes || '';
-        const whatsappMsg = encodeURIComponent(
-          `Olá ${alunoParaPagamento.nome.split(' ')[0]}! 👋\nO seu pagamento de *${valorParaWhatsapp}*${mesParaWhatsapp ? ` referente a *${mesParaWhatsapp}*` : ''} foi registado com sucesso.\n\nObrigado por continuar connosco! 💪`
-        );
-        const whatsappUrl = `https://wa.me/${whatsappNum}?text=${whatsappMsg}`;
-
-        const fecharModal = () => {
-          setMostrarModalPagamento(false);
-          setAlunoParaPagamento(null);
-          setMostrarHistoricoModal(false);
-          setPagamentoSucesso(false);
-          setUltimoPagamentoInfo(null);
-          setPagamentoForm({ valor: '', dataPagamento: formatInputDate(), metodo: DEFAULT_PAYMENT_METHOD });
-        };
-
-        const statusColors = (() => {
-          const s = alunoParaPagamento.status || 'ativo';
-          if (s === 'ativo') return 'bg-green-50 text-green-700 border-green-200';
-          if (s === 'pausado') return 'bg-amber-50 text-amber-700 border-amber-200';
-          return 'bg-red-50 text-red-700 border-red-200';
-        })();
-
-        if (pagamentoSucesso) {
-          return (
-            <div className="fixed inset-0 bg-black/60 backdrop-blur-[2px] flex items-center justify-center z-[110] p-4 animate-fade-in" onClick={fecharModal}>
-              <div className="bg-white w-full max-w-[360px] shadow-[0_20px_60px_rgba(0,0,0,0.25)] rounded-[10px] overflow-hidden animate-scale-in flex flex-col" onClick={e => e.stopPropagation()}>
-                {/* Receipt top bar */}
-                <div className="bg-[#0F172A] px-5 py-3 flex items-center justify-between shrink-0">
-                  <div className="flex items-center gap-2">
-                    <div className="w-5 h-5 rounded flex items-center justify-center bg-white/10 p-0.5">
-                      <img src={appLogo || APP_ICON_PATH} alt="" className="w-full h-full object-contain" />
-                    </div>
-                    <span className="text-[9px] font-black text-white/50 uppercase tracking-[0.25em]">{nomeAcademia || 'NextLevel'}</span>
-                  </div>
-                  <span className="text-[8px] font-bold text-white/35 uppercase tracking-widest">Recibo Emitido</span>
-                </div>
-                {/* Confirmed amount */}
-                <div className="px-6 py-7 text-center" style={{ background: 'linear-gradient(160deg, #F0FDF4 0%, #DCFCE7 100%)' }}>
-                  <div className="w-14 h-14 rounded-full bg-white shadow-lg flex items-center justify-center mx-auto mb-3 border-2 border-green-200">
-                    <CheckCircle2 size={28} className="text-green-500" />
-                  </div>
-                  <p className="text-[9px] font-black uppercase tracking-[0.3em] text-green-600/70 mb-2">Pagamento Confirmado</p>
-                  <p className="text-[34px] font-black text-green-800 leading-none" style={{ fontVariantNumeric: 'tabular-nums' }}>
-                    {formatCve(normalizeAmount(ultimoPagamentoInfo?.valor || alunoParaPagamento.plano))}
-                  </p>
-                  {mesParaWhatsapp && <p className="text-[11px] font-bold text-green-600/70 mt-2 capitalize">{mesParaWhatsapp}</p>}
-                </div>
-                {/* Dashed tear line */}
-                <div className="relative border-t border-dashed border-slate-200 mx-0">
-                  <div className="absolute -left-3 -top-3 w-6 h-6 rounded-full bg-slate-100" />
-                  <div className="absolute -right-3 -top-3 w-6 h-6 rounded-full bg-slate-100" />
-                </div>
-                {/* Student info */}
-                <div className="px-5 py-4 flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-full flex items-center justify-center text-white font-black text-[14px] shrink-0 shadow-sm" style={{ background: 'linear-gradient(135deg, var(--color-primary), var(--color-primary-hover))' }}>
-                    {alunoParaPagamento.nome.charAt(0).toUpperCase()}
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-[13px] font-black text-slate-800 truncate">{alunoParaPagamento.nome}</p>
-                    <p className="text-[10px] text-slate-400 font-medium">{alunoParaPagamento.telefone || 'Sem contacto'}</p>
-                  </div>
-                </div>
-                {/* Actions */}
-                <div className="px-5 pb-5 space-y-2">
-                  <div className="border-t border-dashed border-slate-100 mb-3" />
-                  {whatsappNum && (
-                    <a href={whatsappUrl} target="_blank" rel="noreferrer" onClick={fecharModal} className="flex items-center justify-center gap-3 h-10 rounded-[6px] text-[12px] font-bold text-white transition-all hover:brightness-105 shadow-sm" style={{ background: '#25D366' }}>
-                      <MessageSquare size={14} /> Notificar via WhatsApp
-                    </a>
-                  )}
-                  <button onClick={fecharModal} className="w-full h-9 rounded-[5px] text-[11px] font-medium text-slate-400 hover:bg-slate-50 transition-all border border-slate-200">
-                    Concluir e fechar
-                  </button>
-                </div>
-              </div>
-            </div>
-          );
-        }
-
-        return (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-[2px] flex items-center justify-center z-[110] p-4 animate-fade-in" onClick={fecharModal}>
-            <div className="bg-white w-full max-w-[420px] shadow-[0_20px_70px_rgba(0,0,0,0.25)] rounded-[10px] overflow-hidden animate-scale-in flex flex-col" style={{ maxHeight: 'calc(100vh - 40px)' }} onClick={e => e.stopPropagation()}>
-
-              {/* Receipt header bar */}
-              <div className="bg-[#0F172A] px-5 py-3 flex items-center justify-between shrink-0">
-                <div className="flex items-center gap-2">
-                  <div className="w-5 h-5 rounded flex items-center justify-center bg-white/10 p-0.5">
-                    <img src={appLogo || APP_ICON_PATH} alt="" className="w-full h-full object-contain" />
-                  </div>
-                  <span className="text-[9px] font-black text-white/50 uppercase tracking-[0.25em]">{nomeAcademia || 'NextLevel'}</span>
-                </div>
-                <span className="text-[8px] font-bold text-white/35 uppercase tracking-widest">Registo de Pagamento</span>
-                <button onClick={fecharModal} className="w-6 h-6 flex items-center justify-center rounded text-white/40 hover:text-white/80 hover:bg-white/10 transition-all" title="Fechar">
-                  <X size={14} />
-                </button>
-              </div>
-
-              {/* Student + plan amount */}
-              <div className="px-5 pt-5 pb-4 border-b border-dashed border-slate-200 shrink-0">
-                <div className="flex items-center gap-3">
-                  <div className="w-11 h-11 rounded-full flex items-center justify-center text-white font-black text-[16px] shrink-0 shadow-md" style={{ background: 'linear-gradient(135deg, var(--color-primary), var(--color-primary-hover))' }}>
-                    {alunoParaPagamento.nome.charAt(0).toUpperCase()}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[15px] font-black text-slate-800 leading-tight truncate">{alunoParaPagamento.nome}</p>
-                    <div className="flex items-center gap-2 mt-0.5">
-                      <span className={`text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full border ${statusColors}`}>{alunoParaPagamento.status || 'ativo'}</span>
-                      {alunoParaPagamento.categoria && <span className="text-[10px] text-slate-400">{alunoParaPagamento.categoria}</span>}
-                    </div>
-                  </div>
-                  <div className="text-right shrink-0">
-                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Mensalidade</p>
-                    <p className="text-[17px] font-black text-blue-700" style={{ fontVariantNumeric: 'tabular-nums' }}>{formatCve(normalizeAmount(alunoParaPagamento.plano))}</p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex-1 overflow-y-auto custom-scrollbar">
-                {/* Receipt form rows */}
-                <div className="px-5 py-4 space-y-3">
-
-                  {/* Valor */}
-                  <div className="flex items-center gap-3">
-                    <span className="w-24 text-[9px] font-black uppercase tracking-wider text-slate-400 shrink-0">Valor</span>
-                    <input
-                      type="text"
-                      value={pagamentoForm.valor}
-                      onChange={e => setPagamentoForm(prev => ({ ...prev, valor: e.target.value }))}
-                      className="flex-1 nl-input h-9 px-3 text-[13px] font-black text-blue-700"
-                      placeholder={`${formatCve(normalizeAmount(alunoParaPagamento.plano))}`}
-                      style={{ fontVariantNumeric: 'tabular-nums' }}
-                    />
-                    {!pagamentoForm.valor && (
-                      <button type="button" onClick={() => setPagamentoForm(prev => ({ ...prev, valor: String(normalizeAmount(alunoParaPagamento.plano)) }))} className="text-[9px] font-black uppercase text-blue-500 hover:underline shrink-0 whitespace-nowrap">
-                        Usar plano
-                      </button>
-                    )}
-                  </div>
-
-                  {/* Mês ref */}
-                  <div className="flex items-center gap-3">
-                    <span className="w-24 text-[9px] font-black uppercase tracking-wider text-slate-400 shrink-0">Mês Ref.</span>
-                    <select
-                      className="flex-1 nl-input h-9 px-3 text-[12px] font-bold capitalize"
-                      value={pagamentoForm.mesReferencia || mesFinanceiro}
-                      onChange={e => setPagamentoForm(prev => ({ ...prev, mesReferencia: e.target.value }))}
-                    >
-                      {MONTH_OPTIONS.map(m => (
-                        <option key={m} value={m} className="capitalize">{m.charAt(0).toUpperCase() + m.slice(1)} {anoFinanceiro}</option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {/* Data */}
-                  <div className="flex items-center gap-3">
-                    <span className="w-24 text-[9px] font-black uppercase tracking-wider text-slate-400 shrink-0">Data Pagto.</span>
-                    <input
-                      type="date"
-                      value={pagamentoForm.dataPagamento}
-                      onChange={e => setPagamentoForm(prev => ({ ...prev, dataPagamento: e.target.value }))}
-                      className="flex-1 nl-input h-9 px-3 text-[12px] font-bold"
-                    />
-                  </div>
-
-                  {/* Método */}
-                  <div className="flex items-start gap-3">
-                    <span className="w-24 text-[9px] font-black uppercase tracking-wider text-slate-400 shrink-0 pt-2">Método</span>
-                    <div className="flex flex-wrap gap-1.5">
-                      {PAYMENT_METHOD_OPTIONS.map(opt => {
-                        const active = pagamentoForm.metodo === opt.value;
-                        return (
-                          <button key={opt.value} type="button" onClick={() => setPagamentoForm(prev => ({ ...prev, metodo: opt.value }))} className={`rounded-[4px] px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider transition-all border ${active ? 'bg-[var(--color-primary)] text-white border-[var(--color-primary)] shadow-sm' : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'}`}>
-                            {opt.label}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Dashed separator */}
-                <div className="relative border-t border-dashed border-slate-200 mx-5 my-1">
-                  <div className="absolute -left-8 -top-3 w-6 h-6 rounded-full bg-slate-100" />
-                  <div className="absolute -right-8 -top-3 w-6 h-6 rounded-full bg-slate-100" />
-                </div>
-
-                {/* Billing info preview */}
-                <div className="px-5 py-3 space-y-2">
-                  {[
-                    { label: 'Cobertura Actual', value: resumoAlunoParaPagamento?.coverageStart && resumoAlunoParaPagamento?.coverageEnd ? `${resumoAlunoParaPagamento.coverageStart} → ${resumoAlunoParaPagamento.coverageEnd}` : '—' },
-                    { label: 'Nova Cobertura', value: previewPagamento?.coverageStart && previewPagamento?.coverageEnd ? `${previewPagamento.coverageStart} → ${previewPagamento.coverageEnd}` : '—' },
-                    { label: 'Próx. Vencimento', value: previewPagamento?.nextChargeDate || '—' },
-                  ].map(row => (
-                    <div key={row.label} className="flex items-center justify-between">
-                      <span className="text-[9px] font-black uppercase tracking-wider text-slate-400">{row.label}</span>
-                      <span className="text-[11px] font-bold text-slate-600">{row.value}</span>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Collapsible history */}
-                <div className="mx-5 border-t border-slate-100 mt-2">
-                  <button onClick={() => setMostrarHistoricoModal(prev => !prev)} className="w-full flex items-center justify-between py-3 text-[9px] font-black uppercase tracking-widest text-slate-400 hover:text-slate-600 transition-colors">
-                    <span className="flex items-center gap-1.5"><CreditCard size={11} /> Histórico <span className="px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-600 text-[9px] font-black">{historicoPorAluno.length}</span></span>
-                    {mostrarHistoricoModal ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-                  </button>
-                  {mostrarHistoricoModal && (
-                    <div className="divide-y divide-slate-50 max-h-[130px] overflow-y-auto custom-scrollbar mb-3">
-                      {historicoPorAluno.length === 0
-                        ? <p className="py-4 text-[11px] text-slate-400 text-center">Nenhum registo</p>
-                        : historicoPorAluno.map((p, i) => (
-                          <div key={p.id || i} className="py-2.5 flex items-center justify-between gap-3">
-                            <div>
-                              <p className="text-[11px] font-black text-slate-700">{p.data_pagamento || p.dataPagamento || '—'}</p>
-                              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-tight">{p.metodo_pagamento || p.metodoPagamento || '—'}{p.mes_referencia ? ` · ${p.mes_referencia}` : ''}</p>
-                            </div>
-                            <span className="text-[12px] font-black text-emerald-600 shrink-0">{formatCve(normalizeAmount(p.valor))}</span>
-                          </div>
-                        ))
-                      }
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Footer actions */}
-              <div className="border-t border-slate-100 px-5 py-3.5 flex items-center justify-between gap-3 bg-slate-50/40 shrink-0">
-                <button onClick={fecharModal} className="text-[11px] font-bold text-slate-400 hover:text-slate-600 transition-colors px-2 py-2">Cancelar</button>
-                <button onClick={registrarPagamento} className="nl-btn nl-btn-primary !h-10 !px-6 !text-[12px] font-black">
-                  <CheckCircle2 size={15} /> Confirmar Pagamento
-                </button>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
 
       {/* Menu de Contexto */}
       {contextMenu && (
@@ -7084,16 +6845,6 @@ function App() {
             <Shield size={10} className="text-[var(--color-primary)]" />
           </div>
           
-          <div className="px-2 py-1">
-            <button onClick={() => {
-              const a = alunos.find(al => al.id === contextMenu.alunoId);
-              if (a) marcarComoPago(a.id);
-              setContextMenu(null);
-            }} className="w-full text-left px-3 py-3 bg-[var(--color-primary)] text-white rounded-[3px] flex items-center gap-3 text-[13px] font-bold shadow-sm hover:bg-[var(--color-primary-hover)] transition-all">
-              <CreditCard size={16} /> REGISTAR PAGAMENTO
-            </button>
-          </div>
-
           <div className="h-px bg-[var(--border-light)] my-1.5 mx-2"></div>
 
           <button onClick={() => {
@@ -7769,6 +7520,546 @@ function App() {
           </div>
         </div>
       )}
+
+      {/* ═══════════════════════════════════════════════════════════════════════
+          MODAL DE PERFIL DO ALUNO — Painel Unificado com Abas
+          Abas: [ Perfil ] [ Histórico ] [ Cobrar ]
+      ═══════════════════════════════════════════════════════════════════════ */}
+      {mostrarPerfilModal && alunoPerfil && (() => {
+        const nomePerfil = getAlunoNomeSeguro(alunoPerfil);
+        const primeiroNomePerfil = nomePerfil.split(' ')[0] || 'Aluno';
+        const resumoPerfil = getStudentStatusForMonth(alunoPerfil, pagamentos, anoFinanceiro, mesFinanceiroIndex, hojeReferencia);
+        const pagamentosAlunoPerfil = pagamentos
+          .filter(p => (p.alunoId || p.aluno_id) === alunoPerfil.id)
+          .sort((a, b) => (b.id || 0) - (a.id || 0));
+        const avatarBg = getAvatarColorByName(nomePerfil);
+        const valorMensalidade = normalizeAmount(alunoPerfil.plano) || 0;
+
+        // Dados para a aba Cobrar (preview de cobertura)
+        const perfilPreview = alunoPerfil
+          ? buildCoverageWindow(
+              formatPtDate(parseDate(pagamentoForm.dataPagamento)),
+              alunoPerfil.vencimento
+            )
+          : null;
+        const perfilResumoCobranca = getStudentStatusForMonth(alunoPerfil, pagamentos, anoFinanceiro, mesFinanceiroIndex, hojeReferencia);
+
+        // WhatsApp para recibo inline
+        const whatsappNumPerfil = (alunoPerfil.telefone || '').replace(/\D/g, '');
+        const valorWhatsappPerfil = perfilUltimoPagamentoInfo?.valor
+          ? formatCve(normalizeAmount(perfilUltimoPagamentoInfo.valor))
+          : formatCve(normalizeAmount(alunoPerfil.plano));
+        const mesWhatsappPerfil = perfilUltimoPagamentoInfo?.mes || '';
+        const whatsappMsgPerfil = encodeURIComponent(
+          `Olá ${primeiroNomePerfil}! 👋\nO seu pagamento de *${valorWhatsappPerfil}*${mesWhatsappPerfil ? ` referente a *${mesWhatsappPerfil}*` : ''} foi registado com sucesso.\n\nObrigado por continuar connosco! 💪`
+        );
+        const whatsappUrlPerfil = `https://wa.me/${whatsappNumPerfil}?text=${whatsappMsgPerfil}`;
+
+        const fecharPerfilModal = () => {
+          setMostrarPerfilModal(false);
+          setMostrarHistoricoPerfil(false);
+          setEditandoPerfil(false);
+          setPerfilEditForm({});
+          setCol1Minimizada(false);
+          setCol2Minimizada(false);
+          setPerfilAba('perfil');
+          setPerfilPagamentoSucesso(false);
+          setPerfilUltimoPagamentoInfo(null);
+          setPagamentoForm({ valor: '', dataPagamento: formatInputDate(), metodo: DEFAULT_PAYMENT_METHOD });
+        };
+
+        const iniciarEdicao = () => {
+          setEditandoPerfil(true);
+          setPerfilEditForm({
+            nome: nomePerfil,
+            telefone: alunoPerfil.telefone,
+            email: alunoPerfil.email || '',
+            sexo: alunoPerfil.sexo || '',
+            data_nascimento: alunoPerfil.data_nascimento || '',
+            morada: alunoPerfil.morada || '',
+            categoria: alunoPerfil.categoria || '',
+            plano: alunoPerfil.plano,
+          });
+        };
+
+        const salvarEdicao = async () => {
+          if (!window.electron) return;
+          const alunoAtualizado = { ...alunoPerfil, ...perfilEditForm };
+          await window.electron.ipcRenderer.invoke('update-aluno-dados', alunoAtualizado);
+          await carregarDados();
+          setAlunoPerfil(alunoAtualizado as Aluno);
+          setEditandoPerfil(false);
+          abrirNotificacao('sucesso', 'Dados Atualizados', `Perfil de ${getAlunoNomeSeguro(alunoAtualizado)} salvo com sucesso.`);
+        };
+
+        // Registrar pagamento direto do perfil (aba Cobrar)
+        const registrarPagamentoPerfil = async () => {
+          if (!alunoPerfil) return;
+          const valForm = pagamentoForm.valor || String(valorMensalidade);
+          if (!valForm || normalizeAmount(valForm) <= 0) {
+            showToast('❌ Valor inválido. Insira um valor maior que zero.');
+            return;
+          }
+          if (!pagamentoForm.dataPagamento) {
+            showToast('❌ Data de pagamento é obrigatória.');
+            return;
+          }
+          try {
+            const selectedMonthName = pagamentoForm.mesReferencia || mesFinanceiro;
+            const targetMonthIndex = MONTH_OPTIONS.indexOf(selectedMonthName);
+            const targetYear = anoFinanceiro;
+            const dueDay = (() => {
+              const date = parseFlexibleDate(alunoPerfil.vencimento) || parseFlexibleDate(alunoPerfil.data_matricula) || new Date();
+              return date.getDate();
+            })();
+            const targetDueDate = new Date(targetYear, targetMonthIndex, dueDay);
+            const targetDueDateStr = formatPtDate(targetDueDate);
+            const dataPagamento = formatPtDate(parseDate(pagamentoForm.dataPagamento));
+            const janelaCobranca = buildCoverageWindow(dataPagamento, targetDueDateStr);
+            const valorPagamento = String(normalizeAmount(valForm) || normalizeAmount(alunoPerfil.plano) || 1000);
+
+            const novoPagamento: Pagamento = {
+              alunoId: alunoPerfil.id,
+              valor: valorPagamento,
+              status: 'pago',
+              data_pagamento: dataPagamento,
+              metodo_pagamento: pagamentoForm.metodo,
+              mes_referencia: `${selectedMonthName.charAt(0).toUpperCase() + selectedMonthName.slice(1)} ${targetYear}`,
+              referencia_inicio: janelaCobranca.coverageStart,
+              referencia_fim: janelaCobranca.coverageEnd,
+            };
+
+            if (electron) {
+              await registrarPagamentoAtomico(novoPagamento, janelaCobranca.nextChargeDate);
+              adicionarNotificacao('Pagamento Registado', `Pagamento de ${nomePerfil} (${novoPagamento.mes_referencia}) foi registado com sucesso.`, 'sucesso');
+              await notificarSistema(nomeAcademia, `Pagamento de ${nomePerfil} registado com sucesso.`);
+
+              setPerfilUltimoPagamentoInfo({ valor: valorPagamento, mes: novoPagamento.mes_referencia });
+              setPerfilPagamentoSucesso(true);
+              if (alunoSelecionado?.id === alunoPerfil.id) {
+                carregarHistorico(alunoPerfil.id);
+              }
+              await carregarConfiguracoes();
+              setTimeout(() => { fecharPerfilModal(); }, 2000); // Fecha automaticamente após o sucesso
+            }
+          } catch (error) {
+            console.error('Erro ao registar pagamento:', error);
+            showToast('❌ Erro ao registar pagamento no sistema.');
+          }
+        };
+
+        const statusColorsPerfil = (() => {
+          const s = alunoPerfil.status || 'ativo';
+          if (s === 'ativo') return 'bg-green-50 text-green-700 border-green-200';
+          if (s === 'pausado') return 'bg-amber-50 text-amber-700 border-amber-200';
+          return 'bg-red-50 text-red-700 border-red-200';
+        })();
+
+        return (
+          <>
+            {/* Backdrop */}
+            <div
+              className="fixed inset-0 z-[200] bg-slate-900/40 backdrop-blur-[3px] animate-fade-in"
+              onClick={fecharPerfilModal}
+            />
+
+            {/* Container do Modal */}
+            <div
+              className="fixed inset-0 z-[210] flex items-center justify-center p-4 animate-scale-in"
+              onClick={(e) => { if (e.target === e.currentTarget) fecharPerfilModal(); }}
+            >
+              <div
+                className="bg-white rounded-[16px] shadow-[0_25px_80px_rgba(0,0,0,0.2)] border border-slate-200/60 w-full max-w-[480px] max-h-[90vh] flex flex-col overflow-hidden relative"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {perfilPagamentoSucesso ? (
+                  /* ── SUCCESS STATE ── */
+                  <div className="flex flex-col items-center justify-center p-10 text-center animate-scale-in">
+                    <div className="w-20 h-20 rounded-full bg-emerald-50 flex items-center justify-center mb-6">
+                      <CheckCircle2 size={40} className="text-emerald-500" />
+                    </div>
+                    <h3 className="text-[20px] font-black text-slate-800 mb-2">Pagamento Registado!</h3>
+                    <p className="text-[14px] text-slate-500 font-medium">
+                      O valor de {formatCve(normalizeAmount(perfilUltimoPagamentoInfo?.valor || alunoPerfil.plano))} foi cobrado com sucesso.
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    {/* ══════ 1. CABEÇALHO (INFO DO CLIENTE) ══════ */}
+                    <div className="px-6 py-5 bg-gradient-to-b from-slate-50 to-white border-b border-slate-100 relative shrink-0">
+                      <button onClick={fecharPerfilModal} className="absolute top-4 right-4 w-8 h-8 rounded-full flex items-center justify-center text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-all z-10">
+                        <X size={16} />
+                      </button>
+
+                      <div className="flex items-center gap-4">
+                        <div className={`w-16 h-16 rounded-full flex items-center justify-center text-[22px] font-black text-white overflow-hidden shadow-lg ring-4 ring-white ${avatarBg} shrink-0`}>
+                          {alunoPerfil.foto_path
+                            ? <img src={`local-resource://${alunoPerfil.foto_path}`} className="w-full h-full object-cover" />
+                            : getAlunoIniciais(alunoPerfil)}
+                        </div>
+                        <div className="flex-1 min-w-0 pr-6">
+                          <h2 className="text-[18px] font-black text-slate-800 tracking-tight truncate leading-tight">{nomePerfil}</h2>
+                          <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                            <span className={`text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full border ${statusColorsPerfil}`}>
+                              {alunoPerfil.status || 'ativo'}
+                            </span>
+                            <span className="text-[11px] font-medium text-slate-400 flex items-center gap-1">
+                              {alunoPerfil.categoria || 'Geral'}
+                            </span>
+                            <span className="text-[11px] font-medium text-slate-400 flex items-center gap-1">
+                              • {alunoPerfil.telefone || 'Sem contacto'}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* ══════ 2. ÁREA DO HISTÓRICO (ACCORDION) ══════ */}
+                    <div className="shrink-0 bg-slate-50/50 border-b border-slate-100">
+                      <button 
+                        onClick={() => setMostrarHistoricoPerfil(!mostrarHistoricoPerfil)}
+                        className="w-full px-6 py-3.5 flex items-center justify-between text-slate-500 hover:text-slate-800 hover:bg-slate-50 transition-colors focus:outline-none"
+                      >
+                        <div className="flex items-center gap-2">
+                          <History size={15} className={mostrarHistoricoPerfil ? "text-blue-500" : ""} />
+                          <span className="text-[12px] font-bold">
+                            {mostrarHistoricoPerfil ? "Ocultar Histórico de Pagamentos" : `Ver Histórico (${pagamentosAlunoPerfil.length} pagamentos)`}
+                          </span>
+                        </div>
+                        {mostrarHistoricoPerfil ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                      </button>
+
+                      {mostrarHistoricoPerfil && (
+                        <div className="px-6 pb-4 max-h-[220px] overflow-y-auto custom-scrollbar bg-slate-50/50 animate-fade-in">
+                          {pagamentosAlunoPerfil.length === 0 ? (
+                            <p className="text-[12px] font-medium text-slate-400 text-center py-6">Sem pagamentos registados.</p>
+                          ) : (
+                            <div className="space-y-2 mt-2">
+                              {pagamentosAlunoPerfil.map((pag) => (
+                                <div key={pag.id} className="flex items-center justify-between bg-white border border-slate-200/60 rounded-xl p-3 shadow-sm">
+                                  <div>
+                                    <p className="text-[12px] font-bold text-slate-700 capitalize">{pag.mes_referencia}</p>
+                                    <p className="text-[10px] text-slate-400 font-medium">{pag.data_pagamento} • {pag.metodo_pagamento}</p>
+                                  </div>
+                                  <div className="text-right">
+                                    <p className="text-[13px] font-black text-slate-800 tabular-nums">{formatCve(pag.valor)}</p>
+                                    <span className="text-[9px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded uppercase">{pag.status}</span>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* ══════ 3. ÁREA DE COBRANÇA (FOCO PRINCIPAL) ══════ */}
+                    <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                      <div className="text-center">
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2 block">Valor a Registar (CVE)</span>
+                        <div className="relative max-w-[200px] mx-auto group">
+                          <input
+                            type="text"
+                            value={pagamentoForm.valor}
+                            onChange={e => setPagamentoForm(prev => ({ ...prev, valor: e.target.value }))}
+                            className="w-full text-center font-black text-4xl text-slate-800 tracking-tight bg-slate-50/50 border border-slate-200 rounded-2xl py-3 focus:bg-white focus:outline-none focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 transition-all placeholder:text-slate-300"
+                            placeholder={`${valorMensalidade}`}
+                            style={{ fontVariantNumeric: 'tabular-nums' }}
+                          />
+                          <div className="absolute right-3 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <Pencil size={14} className="text-slate-400" />
+                          </div>
+                        </div>
+                        {pagamentoForm.valor && normalizeAmount(pagamentoForm.valor) !== valorMensalidade && (
+                          <button onClick={() => setPagamentoForm(prev => ({ ...prev, valor: '' }))} className="mt-2 text-[10px] font-bold text-blue-500 hover:text-blue-600 transition-colors">
+                            Repor valor original ({formatCve(valorMensalidade)})
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        {/* Mês de Referência */}
+                        <div>
+                          <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1.5 block">Mês Ref.</label>
+                          <div className="relative">
+                            <select
+                              className="w-full bg-slate-50 border border-slate-200 text-[13px] font-extrabold text-slate-700 capitalize rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 appearance-none cursor-pointer"
+                              value={pagamentoForm.mesReferencia || mesFinanceiro}
+                              onChange={e => setPagamentoForm(prev => ({ ...prev, mesReferencia: e.target.value }))}
+                            >
+                              {MONTH_OPTIONS.map(m => (
+                                <option key={m} value={m}>{m.charAt(0).toUpperCase() + m.slice(1)} {anoFinanceiro}</option>
+                              ))}
+                            </select>
+                            <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                          </div>
+                        </div>
+                        
+                        {/* Data do Pagamento */}
+                        <div>
+                          <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1.5 block">Data</label>
+                          <input
+                            type="date"
+                            value={pagamentoForm.dataPagamento}
+                            onChange={e => setPagamentoForm(prev => ({ ...prev, dataPagamento: e.target.value }))}
+                            className="w-full bg-slate-50 border border-slate-200 text-[13px] font-extrabold text-slate-700 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                          />
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={registrarPagamentoPerfil}
+                        className="w-full h-[52px] bg-blue-600 hover:bg-blue-700 active:scale-[0.98] text-white rounded-xl text-[15px] font-black shadow-lg shadow-blue-500/20 flex items-center justify-center gap-2 transition-all mt-2"
+                      >
+                        <CheckCircle2 size={18} /> Confirmar & Cobrar
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          </>
+        );
+      })()}
+
+      {/* Modal Minimalista de Cobrança Rápida */}
+      {mostrarCobrancaRapida && alunoParaCobrancaRapida && (() => {
+        const nomeCobranca = getAlunoNomeSeguro(alunoParaCobrancaRapida);
+        const primeiroNomeCobranca = nomeCobranca.split(' ')[0] || 'Aluno';
+        const valorOriginal = normalizeAmount(alunoParaCobrancaRapida.plano) || 0;
+        const valorCobranca = pagamentoForm.valor || String(valorOriginal);
+        const mesCobranca = pagamentoForm.mesReferencia || mesFinanceiro;
+        
+        const whatsappNum = (alunoParaCobrancaRapida.telefone || '').replace(/\D/g, '');
+        const valorWhatsapp = cobrancaUltimoPagamentoInfo?.valor
+          ? formatCve(normalizeAmount(cobrancaUltimoPagamentoInfo.valor))
+          : formatCve(normalizeAmount(valorCobranca));
+        const mesWhatsapp = cobrancaUltimoPagamentoInfo?.mes || '';
+        const whatsappMsg = encodeURIComponent(
+          `Olá ${primeiroNomeCobranca}! 👋\nO seu pagamento de *${valorWhatsapp}*${mesWhatsapp ? ` referente a *${mesWhatsapp}*` : ''} foi registado com sucesso.\n\nObrigado por continuar connosco! 💪`
+        );
+        const whatsappUrl = `https://wa.me/${whatsappNum}?text=${whatsappMsg}`;
+
+        const fecharCobrancaRapida = () => {
+          setMostrarCobrancaRapida(false);
+          setAlunoParaCobrancaRapida(null);
+          setCobrancaPagamentoSucesso(false);
+          setCobrancaUltimoPagamentoInfo(null);
+          setPagamentoForm({ valor: '', dataPagamento: formatInputDate(), metodo: DEFAULT_PAYMENT_METHOD });
+        };
+
+        const registrarCobrancaRapida = async () => {
+          if (!valorCobranca || normalizeAmount(valorCobranca) <= 0) {
+            showToast('❌ Valor inválido. Insira um valor maior que zero.');
+            return;
+          }
+          if (!pagamentoForm.dataPagamento) {
+            showToast('❌ Data de pagamento é obrigatória.');
+            return;
+          }
+          try {
+            const selectedMonthName = mesCobranca;
+            const targetMonthIndex = MONTH_OPTIONS.indexOf(selectedMonthName);
+            const targetYear = anoFinanceiro;
+            const dueDay = (() => {
+              const date = parseFlexibleDate(alunoParaCobrancaRapida.vencimento) || parseFlexibleDate(alunoParaCobrancaRapida.data_matricula) || new Date();
+              return date.getDate();
+            })();
+            const targetDueDate = new Date(targetYear, targetMonthIndex, dueDay);
+            const targetDueDateStr = formatPtDate(targetDueDate);
+            const dataPagamento = formatPtDate(parseDate(pagamentoForm.dataPagamento));
+            const janelaCobranca = buildCoverageWindow(dataPagamento, targetDueDateStr);
+            const valorPagamento = String(normalizeAmount(valorCobranca));
+
+            const novoPagamento: Pagamento = {
+              alunoId: alunoParaCobrancaRapida.id,
+              valor: valorPagamento,
+              status: 'pago',
+              data_pagamento: dataPagamento,
+              metodo_pagamento: pagamentoForm.metodo,
+              mes_referencia: `${selectedMonthName.charAt(0).toUpperCase() + selectedMonthName.slice(1)} ${targetYear}`,
+              referencia_inicio: janelaCobranca.coverageStart,
+              referencia_fim: janelaCobranca.coverageEnd,
+            };
+
+            if (electron) {
+              await registrarPagamentoAtomico(novoPagamento, janelaCobranca.nextChargeDate);
+              adicionarNotificacao('Pagamento Registado', `Pagamento de ${nomeCobranca} (${novoPagamento.mes_referencia}) foi registado com sucesso.`, 'sucesso');
+              await notificarSistema(nomeAcademia, `Pagamento de ${nomeCobranca} registado com sucesso.`);
+
+              setCobrancaUltimoPagamentoInfo({ valor: valorPagamento, mes: novoPagamento.mes_referencia });
+              setCobrancaPagamentoSucesso(true);
+              if (alunoSelecionado?.id === alunoParaCobrancaRapida.id) {
+                carregarHistorico(alunoParaCobrancaRapida.id);
+              }
+              await carregarConfiguracoes();
+            }
+          } catch (error) {
+            console.error('Erro ao registar pagamento rápido:', error);
+            showToast('❌ Erro ao registar pagamento no sistema.');
+          }
+        };
+
+        const avatarBg = getAvatarColorByName(nomeCobranca);
+        const pagamentosAlunoCobranca = pagamentos
+          .filter(p => (p.alunoId || p.aluno_id) === alunoParaCobrancaRapida.id)
+          .sort((a, b) => (b.id || 0) - (a.id || 0));
+
+        return (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[200] p-4 animate-fade-in" onClick={fecharCobrancaRapida}>
+            <div className="bg-[var(--bg-surface)] w-full max-w-[500px] shadow-[0_20px_70px_rgba(0,0,0,0.3)] rounded-[6px] border border-[var(--border)] overflow-hidden flex flex-col animate-scale-in" style={{ maxHeight: 'calc(100vh - 40px)' }} onClick={e => e.stopPropagation()}>
+              <div className="bg-[#F1F4F9] border-b border-[#DDE2EB] h-12 flex items-center shrink-0">
+                <div className="flex-1 flex items-center gap-2.5 px-4">
+                  <div className="h-6 w-6 rounded-md bg-white/50 backdrop-blur-sm p-1 border border-white/40 shadow-sm flex items-center justify-center">
+                    <img src={appLogo || APP_ICON_PATH} alt="Logo" className="w-full h-full object-contain" />
+                  </div>
+                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] leading-none">NextLevel</span>
+                </div>
+                <div className="flex-1 text-center whitespace-nowrap">
+                  <h2 className="text-[12px] font-black text-slate-700 uppercase tracking-wider leading-none">Registar Cobrança</h2>
+                </div>
+                <div className="flex-1 flex justify-end px-3">
+                  <button onClick={fecharCobrancaRapida} className="h-8 w-8 flex items-center justify-center rounded-md text-slate-400 hover:bg-red-50 hover:text-red-500 transition-all" title="Fechar">
+                    <X size={16} />
+                  </button>
+                </div>
+              </div>
+
+              {cobrancaPagamentoSucesso ? (
+                <div className="px-5 py-8 text-center space-y-4">
+                  <div className="w-16 h-16 rounded-full bg-emerald-50 border border-emerald-100 flex items-center justify-center mx-auto">
+                    <CheckCircle2 size={34} className="text-emerald-500" />
+                  </div>
+                  <div>
+                    <h3 className="text-[18px] font-black nl-text">Pagamento Registado</h3>
+                    <p className="text-[13px] nl-text-muted mt-1">
+                      {formatCve(normalizeAmount(cobrancaUltimoPagamentoInfo?.valor || valorCobranca))} registados para {nomeCobranca}.
+                    </p>
+                  </div>
+                  {whatsappNum && (
+                    <button
+                      type="button"
+                      onClick={() => electron?.ipcRenderer.invoke('open-external', whatsappUrl)}
+                      className="nl-btn nl-btn-primary !h-9 !px-5 !text-[11px] font-bold mx-auto"
+                    >
+                      <Send size={14} /> Enviar Recibo
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <>
+                  <div className="px-5 pt-4 pb-3 space-y-3 overflow-y-auto custom-scrollbar">
+                    <p className="text-[9px] font-black uppercase tracking-[0.2em] text-[var(--text-secondary)]">Aluno</p>
+
+                    <div className="flex items-center gap-3 rounded-[8px] border border-[var(--border-light)] bg-[var(--color-secondary-lighter)]/35 p-3">
+                      <div className={`w-11 h-11 rounded-full flex items-center justify-center text-[14px] font-black text-white overflow-hidden ${avatarBg} shrink-0`}>
+                        {alunoParaCobrancaRapida.foto_path
+                          ? <img src={`local-resource://${alunoParaCobrancaRapida.foto_path}`} className="w-full h-full object-cover" />
+                          : getAlunoIniciais(alunoParaCobrancaRapida)}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[14px] font-black nl-text truncate">{nomeCobranca}</p>
+                        <p className="text-[11px] nl-text-muted truncate">
+                          {alunoParaCobrancaRapida.telefone || 'Sem contacto'} · {alunoParaCobrancaRapida.categoria || 'Geral'}
+                        </p>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className="text-[9px] font-black uppercase tracking-[0.12em] text-[var(--text-secondary)]">Mensalidade</p>
+                        <p className="text-[13px] font-black nl-text tabular-nums">{formatCve(valorOriginal)}</p>
+                      </div>
+                    </div>
+
+                    {pagamentosAlunoCobranca.length > 0 && (
+                      <div className="rounded-[8px] border border-[#C7DEFF] bg-[#EEF4FF] px-3 py-2 flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <History size={13} className="text-[#1D4ED8]" />
+                          <span className="text-[10px] font-bold text-[#1D4ED8] uppercase tracking-[0.1em]">Último pagamento</span>
+                        </div>
+                        <span className="text-[11px] font-extrabold text-[#1D4ED8] truncate max-w-[210px]">
+                          {pagamentosAlunoCobranca[0].mes_referencia || pagamentosAlunoCobranca[0].data_pagamento || 'Registado'}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div style={{ borderTop: '1px dashed var(--border-light)', margin: '0 20px' }} />
+
+                  <div className="px-5 pt-4 pb-5 space-y-3">
+                    <p className="text-[9px] font-black uppercase tracking-[0.2em] text-[var(--text-secondary)]">Dados da Cobrança</p>
+
+                    <div>
+                      <label className="block text-[10px] font-bold nl-text-muted uppercase tracking-[0.12em] mb-1">
+                        Valor recebido (CVE) <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={pagamentoForm.valor}
+                        onChange={e => setPagamentoForm(prev => ({ ...prev, valor: e.target.value }))}
+                        className="nl-input w-full h-10 px-3 text-[14px] font-bold"
+                        placeholder={String(valorOriginal)}
+                        style={{ fontVariantNumeric: 'tabular-nums' }}
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[10px] font-bold nl-text-muted uppercase tracking-[0.12em] mb-1">Mês referência</label>
+                        <select
+                          value={pagamentoForm.mesReferencia || mesFinanceiro}
+                          onChange={e => setPagamentoForm(prev => ({ ...prev, mesReferencia: e.target.value }))}
+                          className="nl-input w-full h-10 px-3 text-[13px] cursor-pointer capitalize"
+                        >
+                          {MONTH_OPTIONS.map(m => (
+                            <option key={m} value={m}>{m.charAt(0).toUpperCase() + m.slice(1)} {anoFinanceiro}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold nl-text-muted uppercase tracking-[0.12em] mb-1">Data</label>
+                        <input
+                          type="date"
+                          value={pagamentoForm.dataPagamento}
+                          onChange={e => setPagamentoForm(prev => ({ ...prev, dataPagamento: e.target.value }))}
+                          className="nl-input w-full h-10 px-3 text-[13px]"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-bold nl-text-muted uppercase tracking-[0.12em] mb-1">Método</label>
+                      <select
+                        value={pagamentoForm.metodo}
+                        onChange={e => setPagamentoForm(prev => ({ ...prev, metodo: e.target.value }))}
+                        className="nl-input w-full h-10 px-3 text-[13px] cursor-pointer"
+                      >
+                        {PAYMENT_METHOD_OPTIONS.map((method, idx) => <option key={idx} value={method.label}>{method.label}</option>)}
+                      </select>
+                    </div>
+
+                    <div className="flex items-center justify-between px-3 py-2.5 rounded-[8px] bg-[#ECFDF5] border border-[#BBF7D0]">
+                      <div className="flex items-center gap-2">
+                        <Wallet size={13} className="text-[#15803D]" />
+                        <span className="text-[11px] font-bold text-[#15803D] uppercase tracking-[0.1em]">Total a registar</span>
+                      </div>
+                      <span className="text-[13px] font-extrabold text-[#15803D]" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                        {formatCve(normalizeAmount(valorCobranca))}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="bg-[#F8F9FC] border-t border-[#DDE2EB] px-6 py-4 flex items-center justify-end gap-3 shrink-0">
+                    <button type="button" onClick={fecharCobrancaRapida} className="nl-btn nl-btn-secondary !h-9 !px-5 !text-[11px] font-bold">Cancelar</button>
+                    <button type="button" onClick={registrarCobrancaRapida} className="nl-btn nl-btn-primary !h-9 !px-6 !text-[11px] font-bold">
+                      <CheckCircle2 size={14} /> Confirmar Cobrança
+                    </button>
+                  </div>
+                </>
+              )}
+              </div>
+          </div>
+        );
+      })()}
 
       {/* Toast Notification */}
       {toast.visible && (

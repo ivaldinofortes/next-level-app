@@ -20,6 +20,7 @@ export interface BillingPaymentLike {
   mes_referencia?: string;
 }
 
+/** Resultado legado — mantido para compatibilidade com o mês corrente */
 export interface BillingSummary {
   amount: number;
   coverageStart?: string;
@@ -33,6 +34,43 @@ export interface BillingSummary {
   monthsInDebt: string[];
   rating: number; // 1-5
 }
+
+/** Resultado por mês — novo sistema de isolamento */
+export interface MonthlyBillingSummary {
+  status:
+    | 'pago'
+    | 'atrasado'
+    | 'pendente'
+    | 'critico'
+    | 'alerta'
+    | 'hoje'
+    | 'futuro'
+    | 'suspenso'
+    | 'pausado'
+    | 'bloqueado'
+    | 'importado';
+  statusLabel: string;
+  /** Registo de pagamento que cobre este mês (se existir) */
+  coveringPayment?: BillingPaymentLike;
+  daysUntilCharge: number;
+  overdueDays: number;
+  /** Lista de meses com dívida */
+  monthsInDebt: string[];
+  rating: number;
+  /** Saldo de dias: positivo = antecipado, negativo = atrasado */
+  dayBalance: number;
+  amount: number;
+}
+
+/** Entrada do histórico de saldo de dias */
+export interface DayBalanceEntry {
+  mesReferencia: string;
+  dataPagamento: string;
+  vencimentoEsperado: string;
+  diasDiferenca: number; // positivo = antecipado, negativo = atrasado
+}
+
+// ─── Constantes ─────────────────────────────────────────────────────────────
 
 const MS_PER_DAY = 1000 * 60 * 60 * 24;
 
@@ -50,6 +88,8 @@ const MONTHS_PT = [
   'novembro',
   'dezembro',
 ];
+
+// ─── Utilitários de data ─────────────────────────────────────────────────────
 
 const clampToDay = (date: Date) => {
   const result = new Date(date);
@@ -80,8 +120,6 @@ export const parseFlexibleDate = (dateStr?: string | null): Date | null => {
 
   const fallback = new Date(normalized);
   if (Number.isNaN(fallback.getTime())) return null;
-  // Se for apenas um número (ex: "1"), o JS interpreta como ano 2001. 
-  // Queremos evitar isso se for menor que 100 (anos razoáveis de sistema).
   if (/^\d+$/.test(normalized) && Number(normalized) < 100) return null;
   return clampToDay(fallback);
 };
@@ -119,6 +157,8 @@ const diffInDays = (fromDate: Date, toDate: Date) => {
   return Math.ceil((to - from) / MS_PER_DAY);
 };
 
+// ─── Janela de cobertura ─────────────────────────────────────────────────────
+
 export const buildCoverageWindow = (paymentDateStr?: string, currentDueDateStr?: string) => {
   const today = clampToDay(new Date());
   const paymentDate = parseFlexibleDate(paymentDateStr) || today;
@@ -136,21 +176,232 @@ export const buildCoverageWindow = (paymentDateStr?: string, currentDueDateStr?:
   };
 };
 
-const getSortedStudentPayments = (
-  studentId: string,
-  payments: BillingPaymentLike[]
-) =>
-  payments
-    .filter((payment) => (payment.aluno_id || payment.alunoId) === studentId && payment.status === 'pago')
-    .sort((left, right) => {
-      const leftDate = parseFlexibleDate(left.referencia_fim || left.data_pagamento);
-      const rightDate = parseFlexibleDate(right.referencia_fim || right.data_pagamento);
+// ─── Helpers internos ────────────────────────────────────────────────────────
 
-      if (!leftDate && !rightDate) return (left.id || 0) - (right.id || 0);
-      if (!leftDate) return -1;
-      if (!rightDate) return 1;
-      return leftDate.getTime() - rightDate.getTime();
+const getStudentPayments = (studentId: string, payments: BillingPaymentLike[]) =>
+  payments.filter(
+    (p) => (p.aluno_id || p.alunoId) === studentId && p.status === 'pago'
+  );
+
+const getSortedStudentPayments = (studentId: string, payments: BillingPaymentLike[]) =>
+  getStudentPayments(studentId, payments).sort((a, b) => {
+    const aDate = parseFlexibleDate(a.referencia_fim || a.data_pagamento);
+    const bDate = parseFlexibleDate(b.referencia_fim || b.data_pagamento);
+    if (!aDate && !bDate) return (a.id || 0) - (b.id || 0);
+    if (!aDate) return -1;
+    if (!bDate) return 1;
+    return aDate.getTime() - bDate.getTime();
+  });
+
+const ratingFromDebt = (monthsInDebt: number, overdueDays: number) => {
+  let rating = 5;
+  if (monthsInDebt > 0) rating -= monthsInDebt;
+  else if (overdueDays > 0) rating -= 0.5;
+  return Math.max(1, Math.min(5, rating));
+};
+
+// ─── NOVA FUNÇÃO PRINCIPAL: isolamento por mês ──────────────────────────────
+
+/**
+ * Determina o estado de pagamento de um aluno para um mês ESPECÍFICO.
+ *
+ * Esta função é IMUTÁVEL em relação ao tempo:
+ * - Meses passados: estado determinado APENAS pelos registos de pagamentos
+ *   que cobrem esse mês. O campo `vencimento` é IGNORADO para meses passados.
+ * - Mês corrente: usa `vencimento` apenas quando não há pagamento registado.
+ * - Meses futuros: retorna sempre 'futuro'.
+ */
+export const getStudentStatusForMonth = (
+  student: BillingStudentLike,
+  payments: BillingPaymentLike[],
+  targetYear: number,
+  targetMonthIndex: number,
+  today: Date = new Date()
+): MonthlyBillingSummary => {
+  const amount = normalizeAmount(student.plano);
+  const todayClean = clampToDay(today);
+  const dayBalance = calculateDayBalance(student, payments).balance;
+
+  // ── 1. Estados manuais (bloqueado, pausado, etc.) ────────────────────────
+  const manualStatus = student.status;
+  if (manualStatus === 'importado') {
+    return { amount, status: 'importado', statusLabel: 'Aguarda revisão', daysUntilCharge: 0, overdueDays: 0, monthsInDebt: [], rating: 3, dayBalance };
+  }
+  if (manualStatus === 'bloqueado') {
+    return { amount, status: 'bloqueado', statusLabel: 'Bloqueado', daysUntilCharge: 0, overdueDays: 0, monthsInDebt: [], rating: 1, dayBalance };
+  }
+  if (manualStatus === 'suspenso') {
+    return { amount, status: 'suspenso', statusLabel: 'Suspenso', daysUntilCharge: 0, overdueDays: 0, monthsInDebt: [], rating: 3, dayBalance };
+  }
+  if (manualStatus === 'pausado') {
+    return { amount, status: 'pausado', statusLabel: 'Em pausa', daysUntilCharge: 0, overdueDays: 0, monthsInDebt: [], rating: 3, dayBalance };
+  }
+
+  // ── 2. Calcular janela do mês alvo ───────────────────────────────────────
+  const monthStart = clampToDay(new Date(targetYear, targetMonthIndex, 1));
+  const monthEnd = clampToDay(new Date(targetYear, targetMonthIndex + 1, 0));
+
+  // ── 3. Mês futuro → sem dados ────────────────────────────────────────────
+  if (monthStart > todayClean) {
+    return { amount, status: 'futuro', statusLabel: 'Mês futuro', daysUntilCharge: 999, overdueDays: 0, monthsInDebt: [], rating: 5, dayBalance };
+  }
+
+  // ── 4. Aluno ainda não matriculado neste mês ─────────────────────────────
+  const enrollmentDate = parseFlexibleDate(student.data_matricula);
+  if (enrollmentDate && enrollmentDate > monthEnd) {
+    return { amount, status: 'futuro', statusLabel: 'Não matriculado', daysUntilCharge: 999, overdueDays: 0, monthsInDebt: [], rating: 5, dayBalance };
+  }
+
+  // ── 5. Procurar pagamento que cobre este mês ─────────────────────────────
+  //
+  // Um pagamento cobre um mês se a sua janela de cobertura intersecta o mês:
+  //   referencia_fim >= monthStart  E  referencia_inicio <= monthEnd
+  //
+  // Fallback para pagamentos antigos sem referencia_inicio/fim:
+  //   data_pagamento no mês alvo  OU  mes_referencia textual match
+  //
+  const studentPaidPayments = getStudentPayments(student.id, payments);
+
+  const coveringPayment = studentPaidPayments.find((p) => {
+    const refInicio = parseFlexibleDate(p.referencia_inicio);
+    const refFim = parseFlexibleDate(p.referencia_fim);
+
+    // Estratégia principal: janela explícita
+    if (refInicio && refFim) {
+      return refFim >= monthStart && refInicio <= monthEnd;
+    }
+
+    // Fallback 1: data_pagamento dentro do mês
+    const dataPag = parseFlexibleDate(p.data_pagamento);
+    if (dataPag) {
+      if (dataPag.getFullYear() === targetYear && dataPag.getMonth() === targetMonthIndex) return true;
+    }
+
+    // Fallback 2: mes_referencia textual
+    if (p.mes_referencia) {
+      const ref = p.mes_referencia.toLowerCase();
+      if (ref.includes(MONTHS_PT[targetMonthIndex]) && ref.includes(String(targetYear))) return true;
+    }
+
+    return false;
+  });
+
+  if (coveringPayment) {
+    return {
+      amount,
+      status: 'pago',
+      statusLabel: 'Pago',
+      coveringPayment,
+      daysUntilCharge: 999,
+      overdueDays: 0,
+      monthsInDebt: [],
+      rating: ratingFromDebt(0, 0),
+      dayBalance,
+    };
+  }
+
+  // ── 6. Sem pagamento: mês corrente → calcular com vencimento ────────────
+  const isCurrentMonth =
+    targetYear === todayClean.getFullYear() && targetMonthIndex === todayClean.getMonth();
+
+  if (isCurrentMonth) {
+    const dueDate = parseFlexibleDate(student.vencimento);
+    const effectiveDueDate = dueDate || (enrollmentDate ? addMonthsClamped(enrollmentDate, 1) : todayClean);
+    const daysUntilCharge = diffInDays(todayClean, effectiveDueDate);
+    const overdueDays = daysUntilCharge < 0 ? Math.abs(daysUntilCharge) : 0;
+
+    const monthsInDebt: string[] = [];
+    if (overdueDays > 0) {
+      let tempDate = new Date(effectiveDueDate);
+      while (tempDate <= todayClean) {
+        monthsInDebt.push(`${MONTHS_PT[tempDate.getMonth()]} ${tempDate.getFullYear()}`);
+        tempDate = addMonthsClamped(tempDate, 1);
+      }
+    }
+
+    let status: MonthlyBillingSummary['status'] = 'pago';
+    let statusLabel = 'Pago';
+    if (daysUntilCharge < 0) {
+      status = 'atrasado';
+      statusLabel = overdueDays === 1 ? '1 dia em atraso' : `${overdueDays} dias em atraso`;
+    } else if (daysUntilCharge === 0) {
+      status = 'hoje';
+      statusLabel = 'Vence hoje';
+    } else if (daysUntilCharge <= 3) {
+      status = 'critico';
+      statusLabel = `Vence em ${daysUntilCharge} dias`;
+    } else if (daysUntilCharge <= 7) {
+      status = 'pendente';
+      statusLabel = `Vence em ${daysUntilCharge} dias`;
+    } else if (daysUntilCharge <= 15) {
+      status = 'alerta';
+      statusLabel = `Vence em ${daysUntilCharge} dias`;
+    }
+
+    return {
+      amount,
+      status,
+      statusLabel,
+      daysUntilCharge,
+      overdueDays,
+      monthsInDebt,
+      rating: ratingFromDebt(monthsInDebt.length, overdueDays),
+      dayBalance,
+    };
+  }
+
+  // ── 7. Mês passado sem pagamento → sempre em dívida ─────────────────────
+  const overdueDays = Math.max(1, diffInDays(monthEnd, todayClean));
+  return {
+    amount,
+    status: 'atrasado',
+    statusLabel: `Não pago em ${MONTHS_PT[targetMonthIndex]}`,
+    daysUntilCharge: -overdueDays,
+    overdueDays,
+    monthsInDebt: [`${MONTHS_PT[targetMonthIndex]} ${targetYear}`],
+    rating: ratingFromDebt(1, overdueDays),
+    dayBalance,
+  };
+};
+
+// ─── Saldo de dias ───────────────────────────────────────────────────────────
+
+/**
+ * Calcula o saldo acumulado de dias de antecedência/atraso de um aluno.
+ *
+ * Para cada pagamento com referencia_inicio e data_pagamento:
+ *   delta = diffInDays(data_pagamento, referencia_inicio)
+ *   positivo → pagou antes do início do período (crédito)
+ *   negativo → pagou depois (débito)
+ */
+export const calculateDayBalance = (
+  student: BillingStudentLike,
+  payments: BillingPaymentLike[]
+): { balance: number; details: DayBalanceEntry[] } => {
+  const studentPayments = getSortedStudentPayments(student.id, payments);
+  const details: DayBalanceEntry[] = [];
+  let balance = 0;
+
+  for (const p of studentPayments) {
+    const dataPag = parseFlexibleDate(p.data_pagamento);
+    const refInicio = parseFlexibleDate(p.referencia_inicio);
+    if (!dataPag || !refInicio) continue;
+
+    const delta = diffInDays(dataPag, refInicio);
+    balance += delta;
+    details.push({
+      mesReferencia: p.mes_referencia || '',
+      dataPagamento: formatPtDate(dataPag),
+      vencimentoEsperado: formatPtDate(refInicio),
+      diasDiferenca: delta,
     });
+  }
+
+  return { balance, details };
+};
+
+// ─── Função legada ───────────────────────────────────────────────────────────
+// Mantida para compatibilidade. Usada onde não há mês específico alvo.
 
 export const summarizeStudentBilling = (
   student: BillingStudentLike,
@@ -159,57 +410,19 @@ export const summarizeStudentBilling = (
 ): BillingSummary => {
   const amount = normalizeAmount(student.plano);
   const manualStatus = student.status;
+  const today = clampToDay(referenceDate);
 
   if (manualStatus === 'importado') {
-    return {
-      amount,
-      nextChargeDate: student.vencimento || formatPtDate(referenceDate),
-      status: 'pendente' as BillingSummary['status'],
-      statusLabel: 'Aguarda revisão',
-      daysUntilCharge: 0,
-      overdueDays: 0,
-      monthsInDebt: [],
-      rating: 3,
-    };
+    return { amount, nextChargeDate: student.vencimento || formatPtDate(today), status: 'pendente', statusLabel: 'Aguarda revisão', daysUntilCharge: 0, overdueDays: 0, monthsInDebt: [], rating: 3 };
   }
-
   if (manualStatus === 'bloqueado') {
-    return {
-      amount,
-      nextChargeDate: student.vencimento || formatPtDate(referenceDate),
-      status: 'bloqueado',
-      statusLabel: 'Bloqueado',
-      daysUntilCharge: 0,
-      overdueDays: 0,
-      monthsInDebt: [],
-      rating: 1,
-    };
+    return { amount, nextChargeDate: student.vencimento || formatPtDate(today), status: 'bloqueado', statusLabel: 'Bloqueado', daysUntilCharge: 0, overdueDays: 0, monthsInDebt: [], rating: 1 };
   }
-
   if (manualStatus === 'suspenso') {
-    return {
-      amount,
-      nextChargeDate: student.vencimento || formatPtDate(referenceDate),
-      status: 'suspenso',
-      statusLabel: 'Suspenso',
-      daysUntilCharge: 0,
-      overdueDays: 0,
-      monthsInDebt: [],
-      rating: 3,
-    };
+    return { amount, nextChargeDate: student.vencimento || formatPtDate(today), status: 'suspenso', statusLabel: 'Suspenso', daysUntilCharge: 0, overdueDays: 0, monthsInDebt: [], rating: 3 };
   }
-
   if (manualStatus === 'pausado') {
-    return {
-      amount,
-      nextChargeDate: student.vencimento || formatPtDate(referenceDate),
-      status: 'pausado',
-      statusLabel: 'Em pausa',
-      daysUntilCharge: 0,
-      overdueDays: 0,
-      monthsInDebt: [],
-      rating: 3,
-    };
+    return { amount, nextChargeDate: student.vencimento || formatPtDate(today), status: 'pausado', statusLabel: 'Em pausa', daysUntilCharge: 0, overdueDays: 0, monthsInDebt: [], rating: 3 };
   }
 
   const history = getSortedStudentPayments(student.id, payments);
@@ -218,7 +431,7 @@ export const summarizeStudentBilling = (
   let coverageStart = lastPayment?.referencia_inicio;
   let coverageEnd = lastPayment?.referencia_fim;
   let nextChargeDate = student.vencimento;
-  let lastPaymentDate = lastPayment?.data_pagamento;
+  const lastPaymentDate = lastPayment?.data_pagamento;
 
   if (lastPayment && (!coverageStart || !coverageEnd || !nextChargeDate)) {
     const generated = buildCoverageWindow(lastPayment.data_pagamento, student.vencimento);
@@ -228,38 +441,30 @@ export const summarizeStudentBilling = (
   }
 
   if (!nextChargeDate) {
-    const firstDue = parseFlexibleDate(student.data_matricula) || parseFlexibleDate(student.vencimento) || clampToDay(referenceDate);
+    const firstDue = parseFlexibleDate(student.data_matricula) || parseFlexibleDate(student.vencimento) || today;
     nextChargeDate = formatPtDate(firstDue);
   }
 
-  const dueDate = parseFlexibleDate(nextChargeDate) || clampToDay(referenceDate);
-  const daysUntilCharge = diffInDays(referenceDate, dueDate);
+  const dueDate = parseFlexibleDate(nextChargeDate) || today;
+  const daysUntilCharge = diffInDays(today, dueDate);
   const overdueDays = daysUntilCharge < 0 ? Math.abs(daysUntilCharge) : 0;
 
-  // Calculate multiple months in debt
   const monthsInDebt: string[] = [];
   if (overdueDays > 0) {
     let tempDate = new Date(dueDate);
-    while (tempDate < referenceDate) {
+    while (tempDate < today) {
       monthsInDebt.push(`${MONTHS_PT[tempDate.getMonth()]} ${tempDate.getFullYear()}`);
       tempDate = addMonthsClamped(tempDate, 1);
     }
   }
 
-  // Calculate Rating (1-5)
-  // Logic: Starts at 5, drops by 0.5 for each week of total historical delay or current debt
   let rating = 5;
-  if (monthsInDebt.length > 0) {
-    rating -= monthsInDebt.length;
-  } else if (overdueDays > 0) {
-    rating -= 0.5;
-  }
-  // Clamp rating
+  if (monthsInDebt.length > 0) rating -= monthsInDebt.length;
+  else if (overdueDays > 0) rating -= 0.5;
   rating = Math.max(1, Math.min(5, rating));
 
   let status: BillingSummary['status'] = 'pago';
   let statusLabel = 'Pago';
-
   if (daysUntilCharge < 0) {
     status = 'atrasado';
     statusLabel = overdueDays === 1 ? '1 dia em atraso' : `${overdueDays} dias em atraso`;
@@ -277,20 +482,10 @@ export const summarizeStudentBilling = (
     statusLabel = `Vence em ${daysUntilCharge} dias`;
   }
 
-  return {
-    amount,
-    coverageStart,
-    coverageEnd,
-    nextChargeDate,
-    lastPaymentDate,
-    status,
-    statusLabel,
-    daysUntilCharge,
-    overdueDays,
-    monthsInDebt,
-    rating,
-  };
+  return { amount, coverageStart, coverageEnd, nextChargeDate, lastPaymentDate, status, statusLabel, daysUntilCharge, overdueDays, monthsInDebt, rating };
 };
+
+// ─── isPaymentInsideMonth (compatibilidade) ──────────────────────────────────
 
 export const isPaymentInsideMonth = (
   payment: BillingPaymentLike,
@@ -301,7 +496,7 @@ export const isPaymentInsideMonth = (
   if (paymentDate) {
     return paymentDate.getMonth() === MONTHS_PT.indexOf(targetMonthName) && paymentDate.getFullYear() === targetYear;
   }
-
   const ref = (payment.mes_referencia || '').toLowerCase();
   return ref.includes(targetMonthName) && ref.includes(String(targetYear));
 };
+

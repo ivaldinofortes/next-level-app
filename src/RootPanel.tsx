@@ -1,19 +1,18 @@
 // @ts-nocheck
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Shield, LogOut, RotateCcw, FileBarChart, Activity, Users,
   Eye, EyeOff, AlertCircle, CheckCircle2, Download, RefreshCw,
-  Clock, Mail, Lock, Terminal, Zap, ChevronDown, ChevronUp,
-  UserCheck, UserX, Key, Database, Settings, AlertTriangle
+  Clock, Mail, Lock, Terminal, Zap, Key, Database,
+  Plus, Edit2, UserCheck, UserX, X, Save, ChevronRight,
 } from 'lucide-react';
 
-const electron = (window as any).require ? (window as any).require('electron') : null;
+const electron = (window as any).electron || null;
 
 interface RootPanelProps { onLogout: () => void; }
-type RootTab = 'usuarios' | 'senhas' | 'relatorios' | 'logs' | 'sistema';
+type RootTab = 'usuarios' | 'relatorios' | 'logs' | 'sistema';
 
 const NEXT_LAB_ICON = '/next.svg';
-const APP_LOGO = '/next-level-v01-2026.svg';
 
 function useBlink(interval = 600) {
   const [v, setV] = useState(true);
@@ -21,6 +20,235 @@ function useBlink(interval = 600) {
   return v;
 }
 
+function Msg({ ok, texto }: { ok: boolean; texto: string }) {
+  return (
+    <div className="p-3 rounded-[5px] flex items-start gap-2 text-[12px]"
+      style={{ background: ok ? 'rgba(16,185,129,0.08)' : 'rgba(239,68,68,0.08)', border: `1px solid ${ok ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)'}`, color: ok ? '#6ee7b7' : '#fca5a5' }}>
+      {ok ? <CheckCircle2 size={13} className="shrink-0 mt-0.5" /> : <AlertCircle size={13} className="shrink-0 mt-0.5" />}
+      <span>{texto}</span>
+    </div>
+  );
+}
+
+// ─────────────── MODAL: EDITAR / CRIAR UTILIZADOR ───────────────
+function UserModal({ user, onClose, onSaved }: { user: any | null; onClose: () => void; onSaved: () => void }) {
+  const isNew = !user;
+  const [form, setForm] = useState({
+    name: user?.name || '',
+    email: user?.email || '',
+    role: user?.role || 'operational',
+    isActive: user?.is_active !== 0,
+    novaSenha: '',
+    confirmar: '',
+  });
+  const [loading, setLoading] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; texto: string } | null>(null);
+  const [mostrarSenha, setMostrarSenha] = useState(false);
+
+  const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }));
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setMsg(null);
+    if (form.novaSenha && form.novaSenha !== form.confirmar) {
+      setMsg({ ok: false, texto: 'As senhas não coincidem.' });
+      return;
+    }
+    if (isNew && !form.novaSenha) {
+      setMsg({ ok: false, texto: 'A senha é obrigatória para um novo utilizador.' });
+      return;
+    }
+    setLoading(true);
+    try {
+      let res;
+      if (isNew) {
+        res = await electron?.ipcRenderer.invoke('root:create-user', {
+          name: form.name,
+          email: form.email,
+          role: form.role,
+          senha: form.novaSenha,
+        });
+      } else {
+        res = await electron?.ipcRenderer.invoke('root:update-user', {
+          userId: user.id,
+          name: form.name,
+          email: form.email,
+          role: form.role,
+          isActive: form.isActive,
+          novaSenha: form.novaSenha || undefined,
+        });
+      }
+      if (res?.success) {
+        setMsg({ ok: true, texto: isNew ? `Utilizador "${form.name}" criado com sucesso.` : `Dados de "${form.name}" atualizados.` });
+        setTimeout(() => { onSaved(); onClose(); }, 1200);
+      } else {
+        setMsg({ ok: false, texto: res?.message || 'Erro desconhecido.' });
+      }
+    } catch (err: any) {
+      setMsg({ ok: false, texto: err.message });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fieldClass = "w-full h-10 px-3 rounded-[5px] text-[13px] outline-none transition-all";
+  const fieldStyle = { background: '#1a1a1a', border: '1px solid #2a2a2a', color: '#e5e5e5' };
+  const labelClass = "block text-[10px] font-bold uppercase tracking-widest mb-1.5";
+  const labelStyle = { color: 'rgba(255,255,255,0.35)' };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)' }}>
+      <div className="w-full max-w-[480px] rounded-[8px] overflow-hidden shadow-2xl" style={{ background: '#141414', border: '1px solid #2a2a2a' }}>
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: '1px solid #1f1f1f' }}>
+          <div className="flex items-center gap-2.5">
+            {isNew ? <Plus size={16} className="text-red-400" /> : <Edit2 size={16} className="text-red-400" />}
+            <p className="text-[14px] font-black text-white">
+              {isNew ? 'Novo Utilizador' : `Editar: ${user.name}`}
+            </p>
+          </div>
+          <button onClick={onClose} className="w-7 h-7 rounded-full flex items-center justify-center hover:bg-white/10 transition-colors" style={{ color: 'rgba(255,255,255,0.4)' }}>
+            <X size={14} />
+          </button>
+        </div>
+
+        {/* Form */}
+        <form onSubmit={handleSave} className="p-5 space-y-4">
+          {/* Nome */}
+          <div>
+            <label className={labelClass} style={labelStyle}>Nome de Utilizador</label>
+            <input
+              type="text"
+              value={form.name}
+              onChange={e => set('name', e.target.value)}
+              placeholder="Ex: Receção, Treinador João, ..."
+              className={fieldClass}
+              style={fieldStyle}
+              required
+            />
+            <p className="text-[10px] mt-1" style={{ color: 'rgba(255,255,255,0.2)' }}>
+              Este é o nome usado para entrar no sistema (sem @).
+            </p>
+          </div>
+
+          {/* Email */}
+          <div>
+            <label className={labelClass} style={labelStyle}>Email (identificador interno)</label>
+            <div className="relative">
+              <Mail size={13} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'rgba(255,255,255,0.2)' }} />
+              <input
+                type="email"
+                value={form.email}
+                onChange={e => set('email', e.target.value)}
+                placeholder="utilizador@academia.com"
+                className={`${fieldClass} pl-9`}
+                style={fieldStyle}
+                required
+              />
+            </div>
+          </div>
+
+          {/* Role + IsActive (só edição) */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={labelClass} style={labelStyle}>Função</label>
+              <select
+                value={form.role}
+                onChange={e => set('role', e.target.value)}
+                className={fieldClass}
+                style={{ ...fieldStyle, cursor: 'pointer' }}
+              >
+                <option value="admin">Admin</option>
+                <option value="operational">Operador</option>
+              </select>
+            </div>
+            {!isNew && (
+              <div>
+                <label className={labelClass} style={labelStyle}>Estado</label>
+                <button
+                  type="button"
+                  onClick={() => set('isActive', !form.isActive)}
+                  className="w-full h-10 rounded-[5px] text-[12px] font-bold flex items-center justify-center gap-2 transition-all"
+                  style={{
+                    background: form.isActive ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)',
+                    border: `1px solid ${form.isActive ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)'}`,
+                    color: form.isActive ? '#6ee7b7' : '#fca5a5',
+                  }}
+                >
+                  {form.isActive ? <UserCheck size={13} /> : <UserX size={13} />}
+                  {form.isActive ? 'Ativo' : 'Inativo'}
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Divisor senha */}
+          <div style={{ borderTop: '1px solid #1f1f1f', paddingTop: '16px' }}>
+            <p className={labelClass} style={labelStyle}>{isNew ? 'Senha' : 'Nova Senha (opcional)'}</p>
+          </div>
+
+          <div className="space-y-3">
+            <div className="relative">
+              <Lock size={13} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'rgba(255,255,255,0.2)' }} />
+              <input
+                type={mostrarSenha ? 'text' : 'password'}
+                value={form.novaSenha}
+                onChange={e => set('novaSenha', e.target.value)}
+                placeholder={isNew ? 'Mínimo 6 caracteres' : 'Deixar vazio para não alterar'}
+                className={`${fieldClass} pl-9 pr-10`}
+                style={fieldStyle}
+                minLength={6}
+                required={isNew}
+              />
+              <button type="button" onClick={() => setMostrarSenha(!mostrarSenha)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 transition-colors"
+                style={{ color: 'rgba(255,255,255,0.25)' }}>
+                {mostrarSenha ? <EyeOff size={13} /> : <Eye size={13} />}
+              </button>
+            </div>
+            {form.novaSenha && (
+              <div className="relative">
+                <Lock size={13} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'rgba(255,255,255,0.2)' }} />
+                <input
+                  type={mostrarSenha ? 'text' : 'password'}
+                  value={form.confirmar}
+                  onChange={e => set('confirmar', e.target.value)}
+                  placeholder="Confirmar nova senha"
+                  className={`${fieldClass} pl-9`}
+                  style={{ ...fieldStyle, borderColor: form.confirmar && form.confirmar !== form.novaSenha ? '#7f1d1d' : '#2a2a2a' }}
+                />
+              </div>
+            )}
+          </div>
+
+          {msg && <Msg ok={msg.ok} texto={msg.texto} />}
+
+          <div className="flex items-center gap-2.5 pt-1">
+            <button
+              type="submit"
+              disabled={loading}
+              className="flex-1 flex items-center justify-center gap-2 h-10 rounded-[5px] font-bold text-[13px] transition-all disabled:opacity-50"
+              style={{ background: 'linear-gradient(135deg,#7f0000,#b91c1c)', color: 'white', border: '1px solid rgba(185,28,28,0.5)' }}
+            >
+              {loading ? <RefreshCw size={13} className="animate-spin" /> : <Save size={13} />}
+              {loading ? 'A guardar...' : (isNew ? 'Criar Utilizador' : 'Guardar Alterações')}
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="h-10 px-4 rounded-[5px] text-[13px] font-semibold transition-all"
+              style={{ background: '#1f1f1f', color: 'rgba(255,255,255,0.5)', border: '1px solid #2a2a2a' }}
+            >
+              Cancelar
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────── MAIN COMPONENT ───────────────
 export default function RootPanel({ onLogout }: RootPanelProps) {
   const [tab, setTab] = useState<RootTab>('usuarios');
   const blink = useBlink();
@@ -31,15 +259,7 @@ export default function RootPanel({ onLogout }: RootPanelProps) {
   const [quickAccessIds, setQuickAccessIds] = useState<number[]>(() => {
     try { return JSON.parse(localStorage.getItem('nl_quick_access_users') || '[]'); } catch { return []; }
   });
-
-  // Reset senha
-  const [resetEmail, setResetEmail] = useState('');
-  const [resetSenha, setResetSenha] = useState('');
-  const [resetVerificar, setResetVerificar] = useState('');
-  const [mostrarSenha, setMostrarSenha] = useState(false);
-  const [resetMsg, setResetMsg] = useState<{ ok: boolean; texto: string } | null>(null);
-  const [resetLoading, setResetLoading] = useState(false);
-  const [selectedUser, setSelectedUser] = useState<any>(null);
+  const [editUser, setEditUser] = useState<any | null | 'new'>(null); // null=fechado, 'new'=criar, object=editar
 
   // Logs
   const [logs, setLogs] = useState<any[]>([]);
@@ -52,16 +272,6 @@ export default function RootPanel({ onLogout }: RootPanelProps) {
 
   // Sistema
   const [sysInfo, setSysInfo] = useState<any>(null);
-
-  useEffect(() => {
-    electron?.ipcRenderer.invoke('window:resize', 1080, 720, true);
-    loadUsers();
-  }, []);
-
-  useEffect(() => {
-    if (tab === 'logs') loadLogs();
-    if (tab === 'sistema') loadSysInfo();
-  }, [tab]);
 
   const loadUsers = async () => {
     setUsersLoading(true);
@@ -86,8 +296,20 @@ export default function RootPanel({ onLogout }: RootPanelProps) {
       const alunos = await electron?.ipcRenderer.invoke('get-alunos');
       const pagamentos = await electron?.ipcRenderer.invoke('get-pagamentos');
       setSysInfo({ configs, logsCount: logsAll?.length || 0, alunosCount: alunos?.length || 0, pagamentosCount: pagamentos?.length || 0 });
-    } catch(e) {}
+    } catch (err) {
+      console.error('Erro ao carregar informações do sistema:', err);
+    }
   };
+
+  useEffect(() => {
+    electron?.ipcRenderer.invoke('window:resize', 1080, 720, true);
+    loadUsers();
+  }, []);
+
+  useEffect(() => {
+    if (tab === 'logs') loadLogs();
+    if (tab === 'sistema') loadSysInfo();
+  }, [tab]);
 
   const toggleQuickAccess = (userId: number) => {
     setQuickAccessIds(prev => {
@@ -95,19 +317,6 @@ export default function RootPanel({ onLogout }: RootPanelProps) {
       localStorage.setItem('nl_quick_access_users', JSON.stringify(next));
       return next;
     });
-  };
-
-  const handleResetSenha = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!resetEmail || !resetSenha) return;
-    if (resetSenha !== resetVerificar) { setResetMsg({ ok: false, texto: 'As senhas não coincidem.' }); return; }
-    setResetLoading(true); setResetMsg(null);
-    try {
-      const res = await electron?.ipcRenderer.invoke('root:reset-password', { email: resetEmail, novaSenha: resetSenha });
-      setResetMsg({ ok: res.success, texto: res.success ? `✓ Senha de ${resetEmail} redefinida.` : (res.message || 'Erro.') });
-      if (res.success) { setResetSenha(''); setResetVerificar(''); }
-    } catch (err: any) { setResetMsg({ ok: false, texto: err.message }); }
-    finally { setResetLoading(false); }
   };
 
   const handleExport = async (tipo: string) => {
@@ -123,20 +332,27 @@ export default function RootPanel({ onLogout }: RootPanelProps) {
   const logsFiltrados = logsFilter === 'todos' ? logs : logs.filter(l => l.tipo === logsFilter);
 
   const TABS = [
-    { id: 'usuarios',   label: 'Utilizadores',    icon: <Users size={13} /> },
-    { id: 'senhas',     label: 'Senhas',          icon: <Key size={13} /> },
-    { id: 'relatorios', label: 'Relatórios',      icon: <FileBarChart size={13} /> },
-    { id: 'logs',       label: 'Logs',            icon: <Activity size={13} /> },
-    { id: 'sistema',    label: 'Sistema',         icon: <Database size={13} /> },
+    { id: 'usuarios',   label: 'Utilizadores', icon: <Users size={13} /> },
+    { id: 'relatorios', label: 'Relatórios',   icon: <FileBarChart size={13} /> },
+    { id: 'logs',       label: 'Logs',         icon: <Activity size={13} /> },
+    { id: 'sistema',    label: 'Sistema',      icon: <Database size={13} /> },
   ] as const;
 
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden" style={{ fontFamily: 'system-ui, -apple-system, sans-serif', background: '#0a0a0a', color: '#e5e5e5' }}>
 
-      {/* ══ BARRA SUPERIOR — Estilo Terminal Root GNOME ══ */}
+      {/* Modal de edição/criação */}
+      {editUser !== null && (
+        <UserModal
+          user={editUser === 'new' ? null : editUser}
+          onClose={() => setEditUser(null)}
+          onSaved={loadUsers}
+        />
+      )}
+
+      {/* ══ BARRA SUPERIOR ══ */}
       <header style={{ background: 'linear-gradient(90deg, #7f0000 0%, #b91c1c 40%, #991b1b 100%)', borderBottom: '1px solid #450a0a', boxShadow: '0 2px 20px rgba(185,28,28,0.4)' }}
               className="h-[48px] flex items-center px-5 gap-4 shrink-0">
-        {/* Left: NEXT-Lab brand */}
         <div className="flex items-center gap-2.5">
           <div className="w-7 h-7 rounded-[4px] bg-white/15 border border-white/20 flex items-center justify-center overflow-hidden">
             <img src={NEXT_LAB_ICON} alt="NEXT Lab" className="w-5 h-5 object-contain" style={{ filter: 'brightness(0) invert(1)' }} />
@@ -147,7 +363,6 @@ export default function RootPanel({ onLogout }: RootPanelProps) {
           </div>
         </div>
 
-        {/* Center: Terminal identity */}
         <div className="flex-1 flex items-center justify-center gap-2">
           <Terminal size={13} className="text-red-200/80" />
           <span className="text-[12px] font-mono font-bold text-white/90 tracking-wider">root@nextlab</span>
@@ -157,7 +372,6 @@ export default function RootPanel({ onLogout }: RootPanelProps) {
           <span className="inline-block w-[7px] h-[14px] bg-white/80 ml-0.5" style={{ opacity: blink ? 1 : 0 }} />
         </div>
 
-        {/* Right: Status + Logout */}
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/30 border border-white/10">
             <span className="w-1.5 h-1.5 rounded-full bg-green-400 shadow-[0_0_6px_rgba(74,222,128,0.8)]" />
@@ -212,16 +426,32 @@ export default function RootPanel({ onLogout }: RootPanelProps) {
               <div className="flex items-center justify-between mb-5">
                 <div>
                   <h2 className="text-[18px] font-black text-white mb-0.5">Utilizadores do Sistema</h2>
-                  <p className="text-[12px] text-white/30">Gerir contas, quick access e estado de cada utilizador.</p>
+                  <p className="text-[12px]" style={{ color: 'rgba(255,255,255,0.3)' }}>
+                    Clique em Editar para modificar nome, email, função ou senha de qualquer conta.
+                  </p>
                 </div>
-                <button onClick={loadUsers} disabled={usersLoading} className="flex items-center gap-1.5 h-8 px-3 rounded-[4px] text-[11px] font-bold transition-all" style={{ background: '#1f1f1f', color: 'rgba(255,255,255,0.5)', border: '1px solid #2a2a2a' }}>
-                  <RefreshCw size={12} className={usersLoading ? 'animate-spin' : ''} /> Atualizar
-                </button>
+                <div className="flex items-center gap-2">
+                  <button onClick={loadUsers} disabled={usersLoading}
+                    className="flex items-center gap-1.5 h-8 px-3 rounded-[4px] text-[11px] font-bold transition-all"
+                    style={{ background: '#1f1f1f', color: 'rgba(255,255,255,0.5)', border: '1px solid #2a2a2a' }}>
+                    <RefreshCw size={12} className={usersLoading ? 'animate-spin' : ''} /> Atualizar
+                  </button>
+                  <button onClick={() => setEditUser('new')}
+                    className="flex items-center gap-1.5 h-8 px-3 rounded-[4px] text-[11px] font-bold transition-all"
+                    style={{ background: 'rgba(185,28,28,0.2)', color: '#fca5a5', border: '1px solid rgba(185,28,28,0.3)' }}>
+                    <Plus size={12} /> Novo Utilizador
+                  </button>
+                </div>
               </div>
 
               {usersLoading ? (
                 <div className="flex items-center justify-center py-20 text-white/20">
                   <RefreshCw size={20} className="animate-spin mr-2" /> A carregar...
+                </div>
+              ) : users.length === 0 ? (
+                <div className="text-center py-20" style={{ color: 'rgba(255,255,255,0.15)' }}>
+                  <Users size={32} className="mx-auto mb-3 opacity-30" />
+                  <p className="text-[13px]">Nenhum utilizador encontrado.</p>
                 </div>
               ) : (
                 <div className="space-y-2">
@@ -230,7 +460,7 @@ export default function RootPanel({ onLogout }: RootPanelProps) {
                     const initials = (u.name || '?').slice(0, 2).toUpperCase();
                     const hue = (u.name?.charCodeAt(0) || 0) * 37 % 360;
                     return (
-                      <div key={u.id} className="rounded-[6px] p-4 flex items-center gap-4" style={{ background: '#1a1a1a', border: '1px solid #252525' }}>
+                      <div key={u.id} className="rounded-[6px] p-4 flex items-center gap-4" style={{ background: '#1a1a1a', border: '1px solid #252525', opacity: u.is_active === 0 ? 0.55 : 1 }}>
                         {/* Avatar */}
                         <div className="w-10 h-10 rounded-[6px] flex items-center justify-center font-black text-[13px] shrink-0"
                              style={{ background: `hsl(${hue},45%,18%)`, color: `hsl(${hue},60%,70%)`, border: `1px solid hsl(${hue},45%,25%)` }}>
@@ -238,31 +468,40 @@ export default function RootPanel({ onLogout }: RootPanelProps) {
                         </div>
                         {/* Info */}
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <p className="text-[13px] font-bold text-white truncate">{u.name}</p>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="text-[13px] font-bold text-white">{u.name}</p>
                             <span className="px-1.5 py-0.5 rounded-[3px] text-[9px] font-black uppercase tracking-wider shrink-0"
                                   style={{ background: u.role === 'admin' ? 'rgba(59,130,246,0.15)' : 'rgba(255,255,255,0.05)', color: u.role === 'admin' ? '#93c5fd' : 'rgba(255,255,255,0.3)', border: `1px solid ${u.role === 'admin' ? 'rgba(59,130,246,0.2)' : 'rgba(255,255,255,0.08)'}` }}>
                               {u.role === 'admin' ? 'Admin' : 'Operador'}
                             </span>
-                            {!u.is_active && <span className="px-1.5 py-0.5 rounded-[3px] text-[9px] font-black uppercase tracking-wider" style={{ background: 'rgba(239,68,68,0.1)', color: '#fca5a5', border: '1px solid rgba(239,68,68,0.2)' }}>Inativo</span>}
+                            {u.is_active === 0 && (
+                              <span className="px-1.5 py-0.5 rounded-[3px] text-[9px] font-black uppercase tracking-wider" style={{ background: 'rgba(239,68,68,0.1)', color: '#fca5a5', border: '1px solid rgba(239,68,68,0.2)' }}>
+                                Inativo
+                              </span>
+                            )}
                           </div>
                           <p className="text-[11px] mt-0.5 truncate" style={{ color: 'rgba(255,255,255,0.3)' }}>{u.email}</p>
-                          <p className="text-[10px] mt-0.5" style={{ color: 'rgba(255,255,255,0.2)' }}>Último login: {u.last_login_at ? u.last_login_at.slice(0, 16) : 'Nunca'}</p>
+                          <p className="text-[10px] mt-0.5" style={{ color: 'rgba(255,255,255,0.2)' }}>
+                            Último login: {u.last_login_at ? u.last_login_at.slice(0, 16) : 'Nunca'}
+                          </p>
                         </div>
                         {/* Actions */}
                         <div className="flex items-center gap-2 shrink-0">
                           {/* Quick Access toggle */}
-                          <button onClick={() => toggleQuickAccess(u.id)}
-                            title={isQA ? 'Remover Quick Access' : 'Ativar Quick Access (login sem senha)'}
-                            className="flex items-center gap-1.5 h-7 px-2.5 rounded-[4px] text-[10px] font-bold transition-all"
-                            style={{ background: isQA ? 'rgba(234,179,8,0.15)' : 'rgba(255,255,255,0.04)', color: isQA ? '#fde047' : 'rgba(255,255,255,0.3)', border: `1px solid ${isQA ? 'rgba(234,179,8,0.25)' : 'rgba(255,255,255,0.08)'}` }}>
-                            <Zap size={10} /> {isQA ? 'Quick ✓' : 'Quick'}
-                          </button>
-                          {/* Reset senha rápido */}
-                          <button onClick={() => { setTab('senhas'); setResetEmail(u.email); }}
+                          {u.is_active !== 0 && (
+                            <button onClick={() => toggleQuickAccess(u.id)}
+                              title={isQA ? 'Remover Quick Access' : 'Ativar Quick Access (login sem senha)'}
+                              className="flex items-center gap-1.5 h-7 px-2.5 rounded-[4px] text-[10px] font-bold transition-all"
+                              style={{ background: isQA ? 'rgba(234,179,8,0.15)' : 'rgba(255,255,255,0.04)', color: isQA ? '#fde047' : 'rgba(255,255,255,0.3)', border: `1px solid ${isQA ? 'rgba(234,179,8,0.25)' : 'rgba(255,255,255,0.08)'}` }}>
+                              <Zap size={10} /> {isQA ? 'Quick ✓' : 'Quick'}
+                            </button>
+                          )}
+                          {/* Editar */}
+                          <button
+                            onClick={() => setEditUser(u)}
                             className="flex items-center gap-1.5 h-7 px-2.5 rounded-[4px] text-[10px] font-bold transition-all"
                             style={{ background: 'rgba(185,28,28,0.12)', color: '#fca5a5', border: '1px solid rgba(185,28,28,0.2)' }}>
-                            <Key size={10} /> Reset Senha
+                            <Edit2 size={10} /> Editar
                           </button>
                         </div>
                       </div>
@@ -271,7 +510,7 @@ export default function RootPanel({ onLogout }: RootPanelProps) {
                 </div>
               )}
 
-              {/* Quick Access info box */}
+              {/* Quick Access info */}
               {quickAccessIds.length > 0 && (
                 <div className="mt-4 p-3 rounded-[5px] flex items-start gap-2" style={{ background: 'rgba(234,179,8,0.05)', border: '1px solid rgba(234,179,8,0.15)' }}>
                   <Zap size={13} className="mt-0.5 shrink-0" style={{ color: '#fde047' }} />
@@ -280,84 +519,6 @@ export default function RootPanel({ onLogout }: RootPanelProps) {
                   </p>
                 </div>
               )}
-            </div>
-          )}
-
-          {/* ── TAB: SENHAS ── */}
-          {tab === 'senhas' && (
-            <div className="p-6 max-w-[520px]">
-              <h2 className="text-[18px] font-black text-white mb-0.5">Redefinir Senha</h2>
-              <p className="text-[12px] mb-6" style={{ color: 'rgba(255,255,255,0.3)' }}>Define uma nova senha para qualquer utilizador desta academia.</p>
-
-              {/* Quick select user */}
-              {users.length > 0 && (
-                <div className="mb-5">
-                  <label className="block text-[10px] font-bold uppercase tracking-widest mb-2" style={{ color: 'rgba(255,255,255,0.3)' }}>Selecionar Utilizador</label>
-                  <div className="flex flex-wrap gap-2">
-                    {users.map(u => (
-                      <button key={u.id} onClick={() => setResetEmail(u.email)}
-                        className="flex items-center gap-1.5 h-8 px-3 rounded-[4px] text-[11px] font-semibold transition-all"
-                        style={{ background: resetEmail === u.email ? 'rgba(185,28,28,0.25)' : 'rgba(255,255,255,0.04)', color: resetEmail === u.email ? '#fca5a5' : 'rgba(255,255,255,0.4)', border: `1px solid ${resetEmail === u.email ? 'rgba(185,28,28,0.4)' : 'rgba(255,255,255,0.08)'}` }}>
-                        {u.name}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              <form onSubmit={handleResetSenha} className="space-y-4">
-                {/* Email */}
-                <div>
-                  <label className="block text-[10px] font-bold uppercase tracking-widest mb-1.5" style={{ color: 'rgba(255,255,255,0.3)' }}>Email</label>
-                  <div className="relative">
-                    <Mail size={13} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'rgba(255,255,255,0.2)' }} />
-                    <input type="email" value={resetEmail} onChange={e => setResetEmail(e.target.value)}
-                      placeholder="utilizador@academia.com"
-                      className="w-full h-10 pl-9 pr-3 rounded-[5px] text-[13px] outline-none transition-all"
-                      style={{ background: '#1f1f1f', border: '1px solid #2a2a2a', color: '#e5e5e5' }} required />
-                  </div>
-                </div>
-                {/* Nova senha */}
-                <div>
-                  <label className="block text-[10px] font-bold uppercase tracking-widest mb-1.5" style={{ color: 'rgba(255,255,255,0.3)' }}>Nova Senha</label>
-                  <div className="relative">
-                    <Lock size={13} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'rgba(255,255,255,0.2)' }} />
-                    <input type={mostrarSenha ? 'text' : 'password'} value={resetSenha} onChange={e => setResetSenha(e.target.value)}
-                      placeholder="Mínimo 6 caracteres"
-                      className="w-full h-10 pl-9 pr-10 rounded-[5px] text-[13px] outline-none"
-                      style={{ background: '#1f1f1f', border: '1px solid #2a2a2a', color: '#e5e5e5' }} required minLength={6} />
-                    <button type="button" onClick={() => setMostrarSenha(!mostrarSenha)} className="absolute right-3 top-1/2 -translate-y-1/2 transition-colors" style={{ color: 'rgba(255,255,255,0.2)' }}>
-                      {mostrarSenha ? <EyeOff size={13} /> : <Eye size={13} />}
-                    </button>
-                  </div>
-                </div>
-                {/* Confirmar */}
-                <div>
-                  <label className="block text-[10px] font-bold uppercase tracking-widest mb-1.5" style={{ color: 'rgba(255,255,255,0.3)' }}>Confirmar Senha</label>
-                  <div className="relative">
-                    <Lock size={13} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'rgba(255,255,255,0.2)' }} />
-                    <input type={mostrarSenha ? 'text' : 'password'} value={resetVerificar} onChange={e => setResetVerificar(e.target.value)}
-                      placeholder="Repetir nova senha"
-                      className="w-full h-10 pl-9 pr-3 rounded-[5px] text-[13px] outline-none"
-                      style={{ background: '#1f1f1f', border: `1px solid ${resetVerificar && resetVerificar !== resetSenha ? '#7f1d1d' : '#2a2a2a'}`, color: '#e5e5e5' }} required />
-                  </div>
-                </div>
-
-                {resetMsg && (
-                  <div className="p-3 rounded-[5px] flex items-start gap-2 text-[12px]"
-                       style={{ background: resetMsg.ok ? 'rgba(16,185,129,0.08)' : 'rgba(239,68,68,0.08)', border: `1px solid ${resetMsg.ok ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)'}`, color: resetMsg.ok ? '#6ee7b7' : '#fca5a5' }}>
-                    {resetMsg.ok ? <CheckCircle2 size={13} className="shrink-0 mt-0.5" /> : <AlertCircle size={13} className="shrink-0 mt-0.5" />}
-                    {resetMsg.texto}
-                  </div>
-                )}
-
-                <button type="submit" disabled={resetLoading}
-                  className="flex items-center gap-2 h-10 px-5 rounded-[5px] font-bold text-[13px] transition-all disabled:opacity-50"
-                  style={{ background: 'linear-gradient(135deg,#7f0000,#b91c1c)', color: 'white', border: '1px solid rgba(185,28,28,0.5)' }}>
-                  {resetLoading ? <RefreshCw size={13} className="animate-spin" /> : <RotateCcw size={13} />}
-                  {resetLoading ? 'A processar...' : 'Redefinir Senha'}
-                </button>
-              </form>
             </div>
           )}
 
@@ -387,13 +548,7 @@ export default function RootPanel({ onLogout }: RootPanelProps) {
                   </div>
                 ))}
               </div>
-              {relMsg && (
-                <div className="mt-4 p-3 rounded-[5px] flex items-start gap-2 text-[12px]"
-                     style={{ background: relMsg.ok ? 'rgba(16,185,129,0.06)' : 'rgba(239,68,68,0.06)', border: `1px solid ${relMsg.ok ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)'}`, color: relMsg.ok ? '#6ee7b7' : '#fca5a5' }}>
-                  {relMsg.ok ? <CheckCircle2 size={13} className="shrink-0 mt-0.5" /> : <AlertCircle size={13} className="shrink-0 mt-0.5" />}
-                  <span className="break-all">{relMsg.texto}</span>
-                </div>
-              )}
+              {relMsg && <div className="mt-4"><Msg ok={relMsg.ok} texto={relMsg.texto} /></div>}
             </div>
           )}
 
