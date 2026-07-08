@@ -62,13 +62,15 @@ function createWindow() {
 
   if (devServerUrl) {
     win.loadURL(devServerUrl);
-    win.webContents.openDevTools({ mode: 'detach' });
+    if (process.env.NEXTLEVEL_OPEN_DEVTOOLS === '1') {
+      win.webContents.openDevTools({ mode: 'detach' });
+    }
     return;
   }
 
   if (fs.existsSync(distPath)) {
     win.loadFile(distPath);
-    if (!app.isPackaged) {
+    if (!app.isPackaged && process.env.NEXTLEVEL_OPEN_DEVTOOLS === '1') {
       win.webContents.openDevTools({ mode: 'detach' });
     }
     return;
@@ -114,6 +116,9 @@ app.whenReady().then(() => {
   }
 
   db = new Database(dbPath);
+  db.pragma('journal_mode = WAL');
+  db.pragma('synchronous = NORMAL');
+  db.pragma('cache_size = -64000');
 
   const normalizeEmail = (email = '') => String(email).trim().toLowerCase();
   const normalizeName = (name = '') => String(name).trim();
@@ -236,6 +241,75 @@ app.whenReady().then(() => {
   const registrarLog = (acao, detalhes) => {
     const stmt = db.prepare('INSERT INTO logs (acao, detalhes, data_hora, user_name) VALUES (?, ?, ?, ?)');
     stmt.run(acao, detalhes, new Date().toLocaleString('pt-PT'), currentUserName);
+  };
+
+  const normalizeDuplicateName = (name = '') =>
+    String(name || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toLowerCase();
+
+  const normalizeDuplicatePhone = (phone = '') => String(phone || '').replace(/\D/g, '');
+
+  const verifyAdminPassword = (payload = {}) => {
+    const password = String(payload.password || payload.adminPassword || '');
+    const userId = Number(payload.userId || payload.adminId || 0);
+    const emailOrName = normalizeEmail(payload.email || payload.username || payload.adminEmail || '');
+
+    if (!password) return { ok: false, message: 'Senha do administrador obrigatória.' };
+
+    let user = null;
+    if (userId) {
+      user = db.prepare("SELECT * FROM users WHERE id = ? AND role = 'admin' AND is_active = 1").get(userId);
+    }
+    if (!user && emailOrName) {
+      user = db.prepare(`
+        SELECT * FROM users
+        WHERE is_active = 1 AND role = 'admin' AND (LOWER(email) = ? OR LOWER(name) = ?)
+      `).get(emailOrName, emailOrName);
+    }
+
+    if (!user) return { ok: false, message: 'Administrador não encontrado ou sem permissão.' };
+    if (!verifyPassword(password, user)) return { ok: false, message: 'Senha do administrador inválida.' };
+    return { ok: true, user };
+  };
+
+  const findDuplicateGroups = () => {
+    const rows = db.prepare('SELECT * FROM alunos WHERE deleted = 0 ORDER BY nome COLLATE NOCASE ASC').all();
+    const byName = new Map();
+    const byPhone = new Map();
+
+    rows.forEach((row) => {
+      const nameKey = normalizeDuplicateName(row.nome);
+      const phoneKey = normalizeDuplicatePhone(row.telefone);
+      if (nameKey) {
+        if (!byName.has(nameKey)) byName.set(nameKey, []);
+        byName.get(nameKey).push(row);
+      }
+      if (phoneKey) {
+        if (!byPhone.has(phoneKey)) byPhone.set(phoneKey, []);
+        byPhone.get(phoneKey).push(row);
+      }
+    });
+
+    const groups = new Map();
+    const addGroup = (kind, key, items) => {
+      if (items.length < 2) return;
+      const ids = [...new Set(items.map((item) => item.id))].sort();
+      const groupKey = ids.join('|');
+      if (!groups.has(groupKey)) {
+        groups.set(groupKey, { key, reason: kind, alunos: ids.map((id) => rows.find((row) => row.id === id)).filter(Boolean) });
+      } else {
+        const current = groups.get(groupKey);
+        current.reason = current.reason.includes(kind) ? current.reason : `${current.reason} + ${kind}`;
+      }
+    };
+
+    byName.forEach((items, key) => addGroup('nome', key, items));
+    byPhone.forEach((items, key) => addGroup('telefone', key, items));
+    return [...groups.values()].sort((a, b) => b.alunos.length - a.alunos.length);
   };
 
   db.exec(`
@@ -761,7 +835,6 @@ app.whenReady().then(() => {
         // Reabrir DB
         const Database = require('better-sqlite3');
         db = new Database(dbPath);
-
         try { registrarLog('Restauração', 'Backup restaurado com sucesso!'); } catch(e) {}
         return { success: true };
       } catch (err) {
@@ -899,19 +972,68 @@ app.whenReady().then(() => {
     return { success: true };
   });
 
-  ipcMain.handle('db:reset', async () => {
+  ipcMain.handle('db:reset', async () => ({
+    success: false,
+    message: 'Reset direto desativado. Use o reset operacional com senha do administrador.',
+  }));
+
+  ipcMain.handle('db:find-duplicates', async () => {
     try {
-      db.transaction(() => {
+      const groups = findDuplicateGroups();
+      return { success: true, groups, totalGroups: groups.length, totalRows: groups.reduce((sum, group) => sum + group.alunos.length, 0) };
+    } catch (err) {
+      console.error('Erro ao procurar duplicados:', err);
+      return { success: false, message: err.message };
+    }
+  });
+
+  ipcMain.handle('db:delete-duplicate', async (event, payload) => {
+    try {
+      const alunoId = String(payload?.alunoId || payload?.id || '');
+      if (!alunoId) return { success: false, message: 'Aluno inválido.' };
+
+      const aluno = db.prepare('SELECT id, nome FROM alunos WHERE id = ? AND deleted = 0').get(alunoId);
+      if (!aluno) return { success: false, message: 'Aluno não encontrado ou já removido.' };
+
+      db.prepare('UPDATE alunos SET deleted = 1 WHERE id = ?').run(alunoId);
+      registrarLog('Duplicados', `Registo duplicado movido para a lixeira: ${aluno.nome} (${aluno.id})`);
+      return { success: true, groups: findDuplicateGroups() };
+    } catch (err) {
+      console.error('Erro ao remover duplicado:', err);
+      return { success: false, message: err.message };
+    }
+  });
+
+  ipcMain.handle('db:reset-operational-data', async (event, payload) => {
+    try {
+      if (String(payload?.confirmation || '').trim().toUpperCase() !== 'RESETAR') {
+        return { success: false, message: 'Confirmação inválida. Escreva RESETAR para continuar.' };
+      }
+
+      const auth = verifyAdminPassword(payload || {});
+      if (!auth.ok) return { success: false, message: auth.message };
+
+      const tx = db.transaction(() => {
+        const stats = {
+          pagamentos: db.prepare('SELECT COUNT(*) as total FROM pagamentos').get().total || 0,
+          notas: db.prepare('SELECT COUNT(*) as total FROM notas_contacto').get().total || 0,
+          alunos: db.prepare('SELECT COUNT(*) as total FROM alunos').get().total || 0,
+          logs: db.prepare('SELECT COUNT(*) as total FROM logs').get().total || 0,
+        };
+
         db.prepare('DELETE FROM pagamentos').run();
         db.prepare('DELETE FROM notas_contacto').run();
         db.prepare('DELETE FROM alunos').run();
         db.prepare('DELETE FROM logs').run();
-        // Manter utilizadores e configurações para não quebrar o acesso
-      })();
-      registrarLog('Sistema', 'Reset total de dados efetuado.');
-      return { success: true };
+        return stats;
+      });
+
+      const stats = tx();
+      currentUserName = auth.user.name || currentUserName;
+      registrarLog('Reset Seguro', `Dados operacionais resetados por ${auth.user.name}: ${JSON.stringify(stats)}`);
+      return { success: true, stats };
     } catch (err) {
-      console.error('Erro ao resetar banco de dados:', err);
+      console.error('Erro no reset seguro:', err);
       return { success: false, message: err.message };
     }
   });
@@ -932,14 +1054,33 @@ app.whenReady().then(() => {
 
     let inseridos = 0;
     let erros = 0;
+    let ignorados = 0;
     const detalhesErro = [];
+    const detalhesIgnorados = [];
     const hoje = new Date().toISOString().split('T')[0];
+    const existingRows = db.prepare('SELECT id, nome, telefone FROM alunos WHERE deleted = 0').all();
+    const existingNames = new Set(existingRows.map((row) => normalizeDuplicateName(row.nome)).filter(Boolean));
+    const existingPhones = new Set(existingRows.map((row) => normalizeDuplicatePhone(row.telefone)).filter(Boolean));
+    const importedNames = new Set();
+    const importedPhones = new Set();
 
     // Cada aluno é inserido de forma independente para que falhas individuais
     // (ex: ID duplicado) não comprometam os restantes
     for (let i = 0; i < alunosToImport.length; i++) {
       const aluno = alunosToImport[i];
       try {
+        const nomeKey = normalizeDuplicateName(aluno.nome);
+        const phoneKey = normalizeDuplicatePhone(aluno.telefone);
+        const isDuplicate =
+          (phoneKey && (existingPhones.has(phoneKey) || importedPhones.has(phoneKey))) ||
+          (nomeKey && (existingNames.has(nomeKey) || importedNames.has(nomeKey)));
+
+        if (isDuplicate && !aluno.forceImport) {
+          ignorados++;
+          detalhesIgnorados.push(`${aluno.nome || `Linha ${i + 1}`}: possível duplicado por ${phoneKey && (existingPhones.has(phoneKey) || importedPhones.has(phoneKey)) ? 'telefone' : 'nome'}`);
+          continue;
+        }
+
         stmt.run(
           aluno.id,
           aluno.nome,
@@ -954,6 +1095,8 @@ app.whenReady().then(() => {
           aluno.categoria || 'Geral'
         );
         inseridos++;
+        if (nomeKey) importedNames.add(nomeKey);
+        if (phoneKey) importedPhones.add(phoneKey);
       } catch (e) {
         console.error(`[import-alunos] Erro no aluno ${i + 1} (${aluno.nome}):`, e.message);
         detalhesErro.push(`${aluno.nome}: ${e.message}`);
@@ -961,9 +1104,9 @@ app.whenReady().then(() => {
       }
     }
 
-    console.log(`[import-alunos] Concluído: ${inseridos} inseridos, ${erros} erros`);
-    try { registrarLog('Importação', `${inseridos} alunos importados (${erros} erros).`); } catch(e) {}
-    return { success: true, result: { inseridos, erros, detalhesErro } };
+    console.log(`[import-alunos] Concluído: ${inseridos} inseridos, ${ignorados} ignorados, ${erros} erros`);
+    try { registrarLog('Importação', `${inseridos} alunos importados, ${ignorados} duplicados ignorados (${erros} erros).`); } catch(e) {}
+    return { success: true, result: { inseridos, ignorados, erros, detalhesErro, detalhesIgnorados } };
   });
 
   ipcMain.handle('finalizar-importados', async () => {
@@ -1040,20 +1183,29 @@ app.whenReady().then(() => {
   // Garantir diretório para empresa.json
   const empresaDir = path.dirname(EMPRESA_FILE);
   if (!fs.existsSync(empresaDir)) fs.mkdirSync(empresaDir, { recursive: true });
-  if (!fs.existsSync(LICENSES_FILE)) {
-    const defaultLicenses = {
-      licencas: [
-        {
-          licenca: "NEXTLEVEL-VITALICIO-2026",
-          tipo: "vitalicio",
-          email: "cliente@nextlevel.cv",
-          dataEmissao: "2026-07-06",
-          dataExpiracao: null,
-          status: "ativa"
-        }
-      ]
-    };
-    fs.writeFileSync(LICENSES_FILE, JSON.stringify(defaultLicenses, null, 2));
+  const defaultLicense = {
+    licenca: "NEXTLEVEL-VITALICIO-2026",
+    tipo: "vitalicio",
+    email: "cliente@nextlevel.cv",
+    dataEmissao: "2026-07-06",
+    dataExpiracao: null,
+    status: "ativa"
+  };
+
+  try {
+    let licensesData = { licencas: [] };
+    if (fs.existsSync(LICENSES_FILE)) {
+      licensesData = JSON.parse(fs.readFileSync(LICENSES_FILE, 'utf-8'));
+      if (!Array.isArray(licensesData.licencas)) licensesData.licencas = [];
+    }
+
+    const hasDefaultLicense = licensesData.licencas.some((license) => license?.licenca === defaultLicense.licenca);
+    if (!hasDefaultLicense) {
+      licensesData.licencas.push(defaultLicense);
+      fs.writeFileSync(LICENSES_FILE, JSON.stringify(licensesData, null, 2));
+    }
+  } catch (err) {
+    console.error('Erro ao preparar ficheiro de licenças:', err.message);
   }
 
   ipcMain.handle('license:validate-external', async (event, key) => {

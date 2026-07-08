@@ -122,7 +122,7 @@ interface RowData {
 
 interface Props {
   onClose: () => void;
-  onSuccess: (resumo: { inseridos: number; erros: number }) => void;
+  onSuccess: (resumo: { inseridos: number; erros: number; ignorados?: number }) => void;
   electron: any;
   categorias: string[];
 }
@@ -150,7 +150,7 @@ export default function ImportarDadosModal({ onClose, onSuccess, electron, categ
   const [defaultStatus, setDefaultStatus] = useState('importado');
 
   // Passo 4 — resultado
-  const [resultado, setResultado] = useState<{ inseridos: number; erros: number } | null>(null);
+  const [resultado, setResultado] = useState<{ inseridos: number; erros: number; ignorados?: number } | null>(null);
   const [loading, setLoading] = useState(false);
 
   const fileRef = useRef<HTMLInputElement>(null);
@@ -310,13 +310,22 @@ export default function ImportarDadosModal({ onClose, onSuccess, electron, categ
         throw new Error(res?.message || 'Resposta inválida do servidor.');
       }
 
-      const { inseridos, erros, detalhesErro } = res.result;
+      const { inseridos, ignorados = 0, erros, detalhesErro, detalhesIgnorados } = res.result;
 
-      if (erros > 0 && detalhesErro?.length) {
-        alert(`Importação parcial!\n✅ Inseridos: ${inseridos}\n❌ Erros: ${erros}\n\n${detalhesErro.slice(0, 5).join('\n')}`);
+      if ((erros > 0 && detalhesErro?.length) || (ignorados > 0 && detalhesIgnorados?.length)) {
+        const partes = [
+          `✅ Inseridos: ${inseridos}`,
+          `⏭️ Duplicados ignorados: ${ignorados}`,
+          `❌ Erros: ${erros}`,
+        ];
+        const detalhes = [
+          ...(detalhesIgnorados || []).slice(0, 5),
+          ...(detalhesErro || []).slice(0, 5),
+        ];
+        alert(`Importação concluída com revisão!\n${partes.join('\n')}\n\n${detalhes.join('\n')}`);
       }
 
-      setResultado({ inseridos, erros });
+      setResultado({ inseridos, ignorados, erros });
       setLoading(false);
       setStep(4);
     } catch (err: any) {
@@ -569,6 +578,12 @@ export default function ImportarDadosModal({ onClose, onSuccess, electron, categ
                   <div className="bg-red-50 px-6 py-4 rounded-[8px] border border-red-100 text-left">
                     <p className="text-[11px] font-bold text-red-600 uppercase mb-1">Falhas</p>
                     <p className="text-[32px] font-black text-red-700">{resultado.erros}</p>
+                  </div>
+                )}
+                {(resultado.ignorados || 0) > 0 && (
+                  <div className="bg-amber-50 px-6 py-4 rounded-[8px] border border-amber-100 text-left">
+                    <p className="text-[11px] font-bold text-amber-600 uppercase mb-1">Duplicados ignorados</p>
+                    <p className="text-[32px] font-black text-amber-700">{resultado.ignorados}</p>
                   </div>
                 )}
               </div>

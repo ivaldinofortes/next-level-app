@@ -1,9 +1,17 @@
 // @ts-nocheck
-import { useState, useEffect, useRef, useMemo, type CSSProperties } from 'react';
-import RootPanel from './RootPanel';
-import ImportarDadosModal from './ImportarDadosModal';
+import { useState, useEffect, useRef, useMemo, useCallback, type CSSProperties, lazy, Suspense } from 'react';
+import Header from './components/Header';
+import HomePage from './components/HomePage';
+import GestaoPage from './components/GestaoPage';
+import RelatoriosPage from './components/RelatoriosPage';
+import ContactosPage from './components/ContactosPage';
+import ConfiguracoesPage from './components/ConfiguracoesPage';
+
+const RootPanel = lazy(() => import('./RootPanel'));
+const ImportarDadosModal = lazy(() => import('./ImportarDadosModal'));
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import * as XLSX from 'xlsx';
 import { 
   Users, CreditCard, Smartphone, Plus, RefreshCw, FileText,
   Search, Eye, EyeOff, Trash2, Edit, Pause, Ban,
@@ -20,7 +28,6 @@ import {
   Star, FileBarChart, Zap, Activity, Printer, ArrowLeft, Hash, ArrowRight, History, Banknote,
   Minimize2, Maximize2, Pencil, Send
 } from 'lucide-react';
-import * as XLSX from 'xlsx';
 import {
   buildCoverageWindow,
   calculateDayBalance,
@@ -488,14 +495,15 @@ const GlobalStyles = ({ theme }: { theme: 'light' | 'dark' | 'claude' }) => {
       /* ── Card ── */
       .nl-card {
         background: var(--bg-surface);
-        border-radius: 6px;
-        box-shadow: 0 1px 2px rgba(9,30,66,0.06), 0 0 0 1px rgba(9,30,66,0.05);
+        border-radius: var(--radius-md);
+        box-shadow: var(--shadow-sm);
         padding: var(--spacing-lg);
-        transition: box-shadow var(--transition-base), background-color var(--transition-base);
+        transition: box-shadow var(--transition-base), background-color var(--transition-base), transform var(--transition-base);
         border: 1px solid var(--border-light);
       }
       .nl-card:hover {
-        box-shadow: 0 2px 8px rgba(9,30,66,0.09), 0 0 0 1px rgba(9,30,66,0.06);
+        box-shadow: var(--shadow-md);
+        transform: translateY(-1px);
       }
 
       /* ── Buttons ── */
@@ -504,17 +512,17 @@ const GlobalStyles = ({ theme }: { theme: 'light' | 'dark' | 'claude' }) => {
         align-items: center;
         justify-content: center;
         gap: 6px;
-        padding: 6px 12px;
-        border-radius: 5px;
-        font-size: 13px;
-        font-weight: 600;
+        padding: 6px 14px;
+        border-radius: var(--radius-sm);
+        font-size: 12px;
+        font-weight: 700;
         cursor: pointer;
         transition: background-color var(--transition-fast), box-shadow var(--transition-fast),
                     transform var(--transition-fast), border-color var(--transition-fast);
         border: 1px solid transparent;
         outline: none;
         white-space: nowrap;
-        letter-spacing: 0.005em;
+        letter-spacing: 0.01em;
       }
       .nl-btn:active { transform: scale(0.97); }
 
@@ -522,11 +530,11 @@ const GlobalStyles = ({ theme }: { theme: 'light' | 'dark' | 'claude' }) => {
         background: var(--color-primary);
         color: white;
         border-color: var(--color-primary);
-        box-shadow: 0 1px 3px rgba(0,101,255,0.24);
+        box-shadow: 0 1px 3px var(--shadow-primary);
       }
       .nl-btn-primary:hover {
         background: var(--color-primary-hover);
-        box-shadow: 0 3px 8px rgba(0,101,255,0.32);
+        box-shadow: 0 4px 12px var(--shadow-primary);
       }
 
       .nl-btn-secondary {
@@ -553,7 +561,7 @@ const GlobalStyles = ({ theme }: { theme: 'light' | 'dark' | 'claude' }) => {
       .nl-input {
         background: var(--bg-input);
         border: 1px solid var(--border);
-        border-radius: 5px;
+        border-radius: var(--radius-sm);
         padding: 8px 12px;
         font-size: 13px;
         font-weight: 400;
@@ -564,10 +572,10 @@ const GlobalStyles = ({ theme }: { theme: 'light' | 'dark' | 'claude' }) => {
       }
       .nl-input:focus {
         border-color: var(--color-primary);
-        box-shadow: 0 0 0 2px rgba(0,101,255,0.10);
+        box-shadow: 0 0 0 3px var(--shadow-primary-focus);
         background: var(--bg-surface);
       }
-      .nl-input::placeholder { color: var(--text-tertiary); opacity: 0.75; }
+      .nl-input::placeholder { color: var(--text-tertiary); opacity: 0.65; }
 
       /* ── Badges ── */
       .badge {
@@ -586,6 +594,20 @@ const GlobalStyles = ({ theme }: { theme: 'light' | 'dark' | 'claude' }) => {
       .badge-warning { background: #FFF7D6; color: #974F0C; border: 1px solid #FFE380; }
       .badge-info    { background: #DEEBFF; color: #0052CC; border: 1px solid #B3D4FF; }
       .badge-neutral { background: var(--color-secondary-lighter); color: var(--text-secondary); border: 1px solid var(--border); }
+
+      /* ── Accent color utilities ── */
+      .text-accent-teal   { color: var(--color-accent-teal); }
+      .text-accent-violet { color: var(--color-accent-violet); }
+      .text-accent-rose   { color: var(--color-accent-rose); }
+      .text-accent-amber  { color: var(--color-accent-amber); }
+      .bg-accent-teal     { background: var(--color-accent-teal); }
+      .bg-accent-violet   { background: var(--color-accent-violet); }
+      .bg-accent-rose     { background: var(--color-accent-rose); }
+      .bg-accent-amber    { background: var(--color-accent-amber); }
+      .border-accent-teal   { border-color: var(--color-accent-teal); }
+      .border-accent-violet { border-color: var(--color-accent-violet); }
+      .border-accent-rose   { border-color: var(--color-accent-rose); }
+      .border-accent-amber  { border-color: var(--color-accent-amber); }
 
       /* ── Status pill (compact) ── */
       .status-pill {
@@ -631,18 +653,18 @@ const GlobalStyles = ({ theme }: { theme: 'light' | 'dark' | 'claude' }) => {
       .nl-glass {
         background: var(--bg-header);
         border-bottom: 1px solid var(--border);
-        box-shadow: 0 1px 3px rgba(9,30,66,0.06);
+        box-shadow: var(--shadow-sm);
       }
 
       .nl-modal-overlay {
-        background: rgba(9, 30, 66, 0.48);
-        backdrop-filter: blur(3px);
+        background: rgba(15, 23, 42, 0.50);
+        backdrop-filter: blur(4px);
       }
       .nl-modal {
         background: var(--bg-surface);
         border: 1px solid var(--border);
-        border-radius: 8px;
-        box-shadow: 0 16px 48px rgba(9,30,66,0.18);
+        border-radius: var(--radius-lg);
+        box-shadow: var(--shadow-xl);
       }
 
       .nl-table thead { background: var(--color-secondary-lighter); }
@@ -653,13 +675,13 @@ const GlobalStyles = ({ theme }: { theme: 'light' | 'dark' | 'claude' }) => {
       .nl-alert { display:flex; align-items:flex-start; gap:12px; padding:11px 14px; border-radius:6px; border:1px solid; }
       .nl-alert-icon { width:30px; height:30px; min-width:30px; border-radius:6px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
       .nl-alert-success  { background:#F0FDF4; border-color:#BBF7D0; color:#166534; }
-      .nl-alert-success  .nl-alert-icon { background:#DCFCE7; color:#16A34A; }
+      .nl-alert-success  .nl-alert-icon { background:#DCFCE7; color:#059669; }
       .nl-alert-warning  { background:#FFFBEB; border-color:#FDE68A; color:#92400E; }
       .nl-alert-warning  .nl-alert-icon { background:#FEF3C7; color:#D97706; }
       .nl-alert-error    { background:#FEF2F2; border-color:#FECACA; color:#991B1B; }
       .nl-alert-error    .nl-alert-icon { background:#FEE2E2; color:#DC2626; }
-      .nl-alert-info     { background:#EFF6FF; border-color:#BFDBFE; color:#1E40AF; }
-      .nl-alert-info     .nl-alert-icon { background:#DBEAFE; color:#2563EB; }
+      .nl-alert-info     { background:#F0F9FF; border-color:#BAE6FD; color:#075985; }
+      .nl-alert-info     .nl-alert-icon { background:#E0F2FE; color:#0284C7; }
       .nl-alert-title    { font-size:12px; font-weight:700; line-height:1.3; }
       .nl-alert-body     { font-size:11px; opacity:.75; margin-top:1px; line-height:1.4; }
 
@@ -805,26 +827,30 @@ function App() {
   const [mostrarFormEdicao, setMostrarFormEdicao] = useState(false);
   const [alunoEdicao, setAlunoEdicao] = useState<Aluno | null>(null);
   const [filtroStatus, setFiltroStatus] = useState<'todos' | 'divida' | 'cobertos' | 'importados'>('todos');
+  const [mostrarFiltroListaAlunos, setMostrarFiltroListaAlunos] = useState(false);
+  const [mostrarOrdenacaoListaAlunos, setMostrarOrdenacaoListaAlunos] = useState(false);
+  const [ordenacaoListaAlunos, setOrdenacaoListaAlunos] = useState<StudentSortMode>('inteligente');
   const [menuAlunoAberto, setMenuAlunoAberto] = useState<string | null>(null);
+  const [mostrarCalendarioMeses, setMostrarCalendarioMeses] = useState(false);
   const [pesquisa, setPesquisa] = useState('');
   const [pesquisaDirectorio, setPesquisaDirectorio] = useState('');
   const [modoListaContactos, setModoListaContactos] = useState<'normal' | 'compacto'>('normal');
   const [ordenacaoDirectorio, setOrdenacaoDirectorio] = useState<StudentSortMode>('alfabetica');
   const [filtroDirectorioStatus, setFiltroDirectorioStatus] = useState<DirectoryFilterStatus>('todos');
-  const [bannerAcademia, setBannerAcademia] = useState(localStorage.getItem('nl_banner_academia') || DEFAULT_ACADEMY_BANNER);
-  const [appLogo, setAppLogo] = useState(localStorage.getItem('nl_app_logo') || APP_ICON_PATH);
+  const [bannerAcademia, setBannerAcademia] = useState(() => localStorage.getItem('nl_banner_academia') || DEFAULT_ACADEMY_BANNER);
+  const [appLogo, setAppLogo] = useState(() => localStorage.getItem('nl_app_logo') || APP_ICON_PATH);
   
   // Estados para Configurações
   const [mostrarSettings, setMostrarSettings] = useState(false);
-  const [nomeAcademia, setNomeAcademia] = useState(localStorage.getItem('nl_nome_academia') || 'NEXTLevel');
+  const [nomeAcademia, setNomeAcademia] = useState(() => localStorage.getItem('nl_nome_academia') || 'NEXTLevel');
   const [subtituloAcademia, setSubtituloAcademia] = useState(() => {
     const saved = localStorage.getItem('nl_subtitulo_academia');
     if (!saved || saved === LEGACY_HOME_SUBTITLE) return DEFAULT_HOME_SUBTITLE;
     return saved;
   });
-  const [moradaAcademia, setMoradaAcademia] = useState(localStorage.getItem('nl_morada_academia') || 'Avenida Principal, Mindelo');
-  const [emailAcademia, setEmailAcademia] = useState(localStorage.getItem('nl_email_academia') || 'contacto@nextlevel.cv');
-  const [telefoneAcademia, setTelefoneAcademia] = useState(localStorage.getItem('nl_telefone_academia') || '+238 000 00 00');
+  const [moradaAcademia, setMoradaAcademia] = useState(() => localStorage.getItem('nl_morada_academia') || 'Avenida Principal, Mindelo');
+  const [emailAcademia, setEmailAcademia] = useState(() => localStorage.getItem('nl_email_academia') || 'contacto@nextlevel.cv');
+  const [telefoneAcademia, setTelefoneAcademia] = useState(() => localStorage.getItem('nl_telefone_academia') || '+238 000 00 00');
   const [categorias, setCategorias] = useState<string[]>([]);
   const [novaCategoria, setNovaCategoria] = useState('');
 
@@ -858,6 +884,8 @@ function App() {
   const [duplicadosEncontrados, setDuplicadosEncontrados] = useState<Aluno[][]>([]);
   const [mostrarMenuAcoes, setMostrarMenuAcoes] = useState(false);
   const menuAcoesRef = useRef<HTMLDivElement>(null);
+  const notificacoesRef = useRef<HTMLDivElement>(null);
+  const contextMenuRef = useRef<HTMLDivElement>(null);
 
   // Estados para Modal de Perfil do Aluno (Painel Unificado com Abas)
   const [mostrarPerfilModal, setMostrarPerfilModal] = useState(false);
@@ -899,6 +927,9 @@ function App() {
 
   // Estados para Auditoria e Segurança
   const [logs, setLogs] = useState<any[]>([]);
+  const [carregandoDuplicados, setCarregandoDuplicados] = useState(false);
+  const [resetSeguroForm, setResetSeguroForm] = useState({ password: '', confirmation: '' });
+  const [resetSeguroLoading, setResetSeguroLoading] = useState(false);
 
   // Sessão / utilizadores
   type UserRole = 'admin' | 'operational' | 'root';
@@ -931,7 +962,7 @@ function App() {
 
   // Novos Estados Profissionais
   const [isLoggedIn, setIsLoggedIn] = useState(!!sessionUser);
-  const [loginForm, setLoginForm] = useState({ username: localStorage.getItem('nl_last_username') || '', password: '' });
+  const [loginForm, setLoginForm] = useState(() => ({ username: localStorage.getItem('nl_last_username') || '', password: '' }));
   const [loginError, setLoginError] = useState('');
   const [appTheme, setAppTheme] = useState<'light' | 'dark' | 'claude'>(() => {
     const saved = localStorage.getItem('nl_app_theme') || localStorage.getItem('nl_gnome_theme');
@@ -944,8 +975,8 @@ function App() {
   const [carregandoLogin, setCarregandoLogin] = useState(false);
   const [online, setOnline] = useState(navigator.onLine);
   const [sincronizando, setSincronizando] = useState(false);
-  const [zoomLista, setZoomLista] = useState(Number(localStorage.getItem('nl_zoom_lista')) || 90); 
-  const [fontSizeLista, setFontSizeLista] = useState(Number(localStorage.getItem('nl_font_size_lista')) || 13);
+  const [zoomLista, setZoomLista] = useState(() => Number(localStorage.getItem('nl_zoom_lista')) || 90); 
+  const [fontSizeLista, setFontSizeLista] = useState(() => Number(localStorage.getItem('nl_font_size_lista')) || 13);
   const [desktopNotificationsEnabled, setDesktopNotificationsEnabled] = useState(true);
   const [notifPagamentos, setNotifPagamentos] = useState(true);
   const [notifMatriculas, setNotifMatriculas] = useState(true);
@@ -1015,7 +1046,7 @@ function App() {
   const [mesRelatorio, setMesRelatorio] = useState(new Date().toLocaleString('pt-PT', { month: 'long' }).toLowerCase());
   const [anoRelatorio, setAnoRelatorio] = useState(new Date().getFullYear());
   const [mostrarListaMatriculas, setMostrarListaMatriculas] = useState(false);
-  const [notificacoes, setNotificacoes] = useState<Notificacao[]>(JSON.parse(localStorage.getItem('nl_notificacoes') || '[]'));
+  const [notificacoes, setNotificacoes] = useState<Notificacao[]>(() => JSON.parse(localStorage.getItem('nl_notificacoes') || '[]'));
   const [mostrarNotificacoes, setMostrarNotificacoes] = useState(false);
   const [mostrarResolverPendencias, setMostrarResolverPendencias] = useState(false);
   const [alunoParaResolver, setAlunoParaResolver] = useState<any>(null);
@@ -1152,6 +1183,36 @@ function App() {
     setConfirmDialog((prev) => ({ ...prev, visible: false }));
   };
 
+  const fecharCamadaAtiva = () => {
+    if (confirmDialog.visible) { fecharConfirmacao(); return true; }
+    if (mostrarCalendarioMeses) { setMostrarCalendarioMeses(false); return true; }
+    if (mostrarFiltroListaAlunos) { setMostrarFiltroListaAlunos(false); return true; }
+    if (mostrarOrdenacaoListaAlunos) { setMostrarOrdenacaoListaAlunos(false); return true; }
+    if (mostrarUserMenu) { setMostrarUserMenu(false); return true; }
+    if (mostrarMenuAcoes) { setMostrarMenuAcoes(false); return true; }
+    if (contextMenu) { setContextMenu(null); return true; }
+    if (mostrarNotificacoes) { setMostrarNotificacoes(false); return true; }
+    if (mostrarDropdownRecentes) { setMostrarDropdownRecentes(false); return true; }
+    if (mostrarSobreDoc) { setMostrarSobreDoc(false); return true; }
+    if (utilizadorEmEdicao) { setUtilizadorEmEdicao(null); return true; }
+    if (mostrarFormNovoUtilizador) { setMostrarFormNovoUtilizador(false); return true; }
+    if (mostrarBoasVindas) { setMostrarBoasVindas(false); setAlunoBoasVindas(null); setMsgBoasVindas(''); return true; }
+    if (mostrarCobrancaRapida) { setMostrarCobrancaRapida(false); setAlunoParaCobrancaRapida(null); setCobrancaPagamentoSucesso(false); setCobrancaUltimoPagamentoInfo(null); return true; }
+    if (mostrarPerfilModal) { setMostrarPerfilModal(false); setMostrarHistoricoPerfil(false); setAlunoPerfil(null); setPerfilPagamentoSucesso(false); return true; }
+    if (mostrarRelatorioMensal) { setMostrarRelatorioMensal(false); return true; }
+    if (mostrarModalDuplicados) { setMostrarModalDuplicados(false); return true; }
+    if (mostrarResolverPendencias) { setMostrarResolverPendencias(false); return true; }
+    if (mostrarFormEdicao) { setMostrarFormEdicao(false); setAlunoEdicao(null); setNovoAluno(novoAlunoDefault); return true; }
+    if (mostrarForm) { setMostrarForm(false); return true; }
+    if (mostrarImportar) { setMostrarImportar(false); return true; }
+    if (mostrarModalExport) { setMostrarModalExport(false); return true; }
+    if (mostrarModalPagamento) { setMostrarModalPagamento(false); return true; }
+    if (alunoSelecionado) { setAlunoSelecionado(null); return true; }
+    if (mostrarSettings) { setMostrarSettings(false); return true; }
+    if (mostrarConfigModal) { setMostrarConfigModal(false); return true; }
+    return false;
+  };
+
   // Função para calcular progresso, status e cores inteligentes (Inteligência Termométrica)
   const calcularStatusVencimento = (vencimentoStr: string) => {
     try {
@@ -1243,7 +1304,7 @@ function App() {
       valor: String(normalizeAmount(aluno.plano) || ''),
       dataPagamento: formatInputDate(),
       metodo: DEFAULT_PAYMENT_METHOD,
-      mesReferencia: mesFinanceiro,
+      mesReferencia: mesAtualNome,
     });
     carregarNotas(aluno.id);
     setMostrarPerfilModal(true);
@@ -1334,6 +1395,37 @@ function App() {
 
     return new Date(anoFinanceiro, mesFinanceiroIndex + 1, 0);
   })();
+  const mesAtualNome = MONTH_OPTIONS[hojeReferencia.getMonth()];
+  const anoAtual = hojeReferencia.getFullYear();
+  const periodoAtualSelecionado = anoFinanceiro === anoAtual && mesFinanceiroIndex === hojeReferencia.getMonth();
+  const periodoSelecionadoPassado = !periodoAtualSelecionado && (
+    anoFinanceiro < anoAtual || (anoFinanceiro === anoAtual && mesFinanceiroIndex < hojeReferencia.getMonth())
+  );
+  const periodoSelecionadoLabel = `${mesFinanceiro.charAt(0).toUpperCase() + mesFinanceiro.slice(1)} ${anoFinanceiro}`;
+  const subtituloPeriodoSelecionado = periodoAtualSelecionado
+    ? 'Mês atual'
+    : periodoSelecionadoPassado
+      ? 'Mês passado'
+      : 'Período futuro';
+  const diasNoPeriodoSelecionado = mesFinanceiroIndex >= 0 ? new Date(anoFinanceiro, mesFinanceiroIndex + 1, 0).getDate() : 31;
+  const diaProgressoPeriodo = periodoAtualSelecionado
+    ? hojeReferencia.getDate()
+    : periodoSelecionadoPassado
+      ? diasNoPeriodoSelecionado
+      : 0;
+  const progressoPeriodoPercentual = Math.min(100, Math.max(0, (diaProgressoPeriodo / Math.max(diasNoPeriodoSelecionado, 1)) * 100));
+  const irParaMesAtualOperacional = (mostrarAviso = false) => {
+    setAnoFinanceiro(anoAtual);
+    setMesFinanceiro(mesAtualNome);
+    if (mostrarAviso) {
+      showToast(`Ação operacional movida para ${mesAtualNome} ${anoAtual}.`);
+    }
+    return { mes: mesAtualNome, ano: anoAtual };
+  };
+  const prepararAcaoOperacionalNoMesAtual = () => {
+    if (periodoAtualSelecionado) return { mes: mesFinanceiro, ano: anoFinanceiro };
+    return irParaMesAtualOperacional(true);
+  };
 
   const resumosFinanceiros = useMemo(() => {
     return alunos.map((aluno) => {
@@ -1440,49 +1532,6 @@ function App() {
   const cobrancasCriticas = useMemo(() => alunosAtivos.filter(({ resumo }) => ['hoje', 'critico'].includes(resumo.status)).length, [alunosAtivos]);
   const mesAtualOperacional = `${hojeReferencia.getFullYear()}-${String(hojeReferencia.getMonth() + 1).padStart(2, '0')}`;
   const backupMensalPendente = backupReminderEnabled && ultimoBackupMes !== mesAtualOperacional;
-  const homeAlerts = [
-    {
-      id: 'vence-hoje',
-      label: 'Vencem hoje',
-      value: cobrancasParaHoje,
-      detail: cobrancasParaHoje > 0 ? 'pedem acção agora' : 'sem urgências hoje',
-      tone: cobrancasParaHoje > 0 ? 'border-[#F6D3CF] bg-[#FFF1F0] text-[#B91C1C]' : 'border-[var(--border)] bg-[var(--color-secondary-lighter)]/35 text-[var(--text-secondary)]',
-      action: () => {
-        setAba('gestao');
-        setFiltroStatus('divida');
-      },
-    },
-    {
-      id: 'inscritos-hoje',
-      label: 'Inscritos hoje',
-      value: alunosInscritosHoje,
-      detail: alunosInscritosHoje > 0 ? 'novas entradas no sistema' : 'sem novas matrículas hoje',
-      tone: alunosInscritosHoje > 0 ? 'border-[#D7E6FF] bg-[#F2F7FF] text-[#1D4ED8]' : 'border-[var(--border)] bg-[var(--color-secondary-lighter)]/35 text-[var(--text-secondary)]',
-      action: () => setAba('gestao'),
-    },
-    {
-      id: 'atrasados',
-      label: 'Em atraso',
-      value: alunosEmDivida.length,
-      detail: alunosEmDivida.length > 0 ? 'alunos com cobrança vencida' : 'nenhum aluno em atraso',
-      tone: alunosEmDivida.length > 0 ? 'border-[#F6D3CF] bg-[#FFF1F0] text-[#B91C1C]' : 'border-[var(--border)] bg-[var(--color-secondary-lighter)]/35 text-[var(--text-secondary)]',
-      action: () => {
-        setAba('gestao');
-        setFiltroStatus('divida');
-      },
-    },
-    {
-      id: 'backup',
-      label: 'Backup mensal',
-      value: backupMensalPendente ? 1 : 0,
-      detail: backupMensalPendente ? 'dossier deste mês ainda por exportar' : 'rotina mensal em dia',
-      tone: backupMensalPendente ? 'border-[#F3DFC1] bg-[#FFF7E8] text-[#B45309]' : 'border-[var(--border)] bg-[var(--color-secondary-lighter)]/35 text-[var(--text-secondary)]',
-      action: () => {
-        setAba('configuracoes');
-        setConfigAba('operacao');
-      },
-    },
-  ];
   const novosInscritosRecentes = [...alunos]
     .sort((left, right) => {
       const leftDate = parseFlexibleDate(left.data_matricula)?.getTime();
@@ -1586,7 +1635,7 @@ function App() {
     }
   }, [alunos.length, alunosEmDivida.length, mesFinanceiro]);
 
-  const historicoMensalFiltrado = resumosHistoricoMensal
+  const historicoMensalFiltrado = useMemo(() => resumosHistoricoMensal
     .filter(({ aluno, resumo }) => {
       const statusMatch = filtroStatus === 'todos'
         || (filtroStatus === 'divida' && (resumo.status === 'atrasado' || resumo.status === 'hoje'))
@@ -1604,6 +1653,21 @@ function App() {
       return statusMatch && pesquisaMatch;
     })
     .sort((left, right) => {
+      if (ordenacaoListaAlunos === 'alfabetica') {
+        return left.aluno.nome.localeCompare(right.aluno.nome, 'pt-PT');
+      }
+      if (ordenacaoListaAlunos === 'inscricao_recente') {
+        const leftDate = parseFlexibleDate(left.aluno.data_matricula)?.getTime() || 0;
+        const rightDate = parseFlexibleDate(right.aluno.data_matricula)?.getTime() || 0;
+        if (leftDate !== rightDate) return rightDate - leftDate;
+        return left.aluno.nome.localeCompare(right.aluno.nome, 'pt-PT');
+      }
+      if (ordenacaoListaAlunos === 'inscricao_antiga') {
+        const leftDate = parseFlexibleDate(left.aluno.data_matricula)?.getTime() || 0;
+        const rightDate = parseFlexibleDate(right.aluno.data_matricula)?.getTime() || 0;
+        if (leftDate !== rightDate) return leftDate - rightDate;
+        return left.aluno.nome.localeCompare(right.aluno.nome, 'pt-PT');
+      }
       const prioridadeLeft = prioridadeResumoAlunos[left.resumo.status as keyof typeof prioridadeResumoAlunos] ?? 99;
       const prioridadeRight = prioridadeResumoAlunos[right.resumo.status as keyof typeof prioridadeResumoAlunos] ?? 99;
       if (prioridadeLeft !== prioridadeRight) return prioridadeLeft - prioridadeRight;
@@ -1612,11 +1676,11 @@ function App() {
         return left.resumo.daysUntilCharge - right.resumo.daysUntilCharge;
       }
       return left.aluno.nome.localeCompare(right.aluno.nome, 'pt-PT');
-    });
+    }), [resumosHistoricoMensal, filtroStatus, pesquisa, ordenacaoListaAlunos]);
 
-  const alunosNovosNoPeriodo = resumosHistoricoMensal.filter((item) => item.entrouNesteMes);
-  const alunosMigradosNoPeriodo = resumosHistoricoMensal.filter((item) => !item.entrouNesteMes);
-  const alunosComCobrancaNoPeriodo = resumosHistoricoMensal.filter(({ resumo }) => resumo.status === 'atrasado' || resumo.status === 'hoje');
+  const alunosNovosNoPeriodo = useMemo(() => resumosHistoricoMensal.filter((item) => item.entrouNesteMes), [resumosHistoricoMensal]);
+  const alunosMigradosNoPeriodo = useMemo(() => resumosHistoricoMensal.filter((item) => !item.entrouNesteMes), [resumosHistoricoMensal]);
+  const alunosComCobrancaNoPeriodo = useMemo(() => resumosHistoricoMensal.filter(({ resumo }) => resumo.status === 'atrasado' || resumo.status === 'hoje'), [resumosHistoricoMensal]);
 
   useEffect(() => {
     if (!isLoggedIn) return;
@@ -1702,11 +1766,15 @@ function App() {
           const expiry = configs.license_expiry || '';
           setLicencaDados({ chave: key, expiracao: expiry, tipo: configs.tipo_licenca || '' });
 
-          if (!key || !expiry) {
+          if (!key) {
             setLicencaAtiva(false);
           } else {
-            // Se tiver expiracao, validar data
-            if (expiry.includes('/')) {
+            const normalizedExpiry = String(expiry || '').trim().toLowerCase();
+            const isLifetimeLicense = !normalizedExpiry || normalizedExpiry === 'vitalícia' || normalizedExpiry === 'vitalicia';
+
+            if (isLifetimeLicense) {
+              setLicencaAtiva(true);
+            } else if (expiry.includes('/')) {
               const [d, m, y] = expiry.split('/').map(Number);
               const dataExp = new Date(y, m - 1, d);
               if (dataExp < new Date()) setLicencaAtiva(false);
@@ -1727,7 +1795,7 @@ function App() {
     }
   };
 
-  const atualizarAplicacao = async () => {
+  const atualizarAplicacao = useCallback(async () => {
     setSincronizando(true);
 
     try {
@@ -1746,7 +1814,7 @@ function App() {
       setSincronizando(false);
       showToast(error?.message || 'Não foi possível atualizar a aplicação.');
     }
-  };
+  }, [setSincronizando, carregarConfiguracoes, showToast]);
 
 
   useEffect(() => {
@@ -1755,45 +1823,78 @@ function App() {
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
 
-    // Listener Global para tecla ESC
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        setAlunoSelecionado(null);
-        setMostrarForm(false);
-        setMostrarFormEdicao(false);
-        setMostrarSettings(false);
-        setMostrarModalPagamento(false);
-        setAlunoPerfil(null);
-        setMostrarModalExport(false);
-        fecharConfirmacao();
+        if (fecharCamadaAtiva()) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
+        return;
       }
+
       const mod = e.metaKey || e.ctrlKey;
       if (mod && e.key === 'r') { e.preventDefault(); setAba('relatorios_detalhado'); }
       if (mod && e.key === ',') { e.preventDefault(); setAba('configuracoes'); }
       if (mod && e.key === 'j') { e.preventDefault(); setAba('contactos'); }
     };
-    window.addEventListener('keydown', handleKeyDown);
 
-    return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-      window.removeEventListener('keydown', handleKeyDown);
-    };
-  }, []);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [
+    confirmDialog.visible,
+    mostrarCalendarioMeses,
+    mostrarFiltroListaAlunos,
+    mostrarOrdenacaoListaAlunos,
+    mostrarUserMenu,
+    mostrarMenuAcoes,
+    contextMenu,
+    mostrarNotificacoes,
+    mostrarDropdownRecentes,
+    mostrarSobreDoc,
+    utilizadorEmEdicao,
+    mostrarFormNovoUtilizador,
+    mostrarBoasVindas,
+    mostrarCobrancaRapida,
+    mostrarPerfilModal,
+    mostrarRelatorioMensal,
+    mostrarModalDuplicados,
+    mostrarResolverPendencias,
+    mostrarFormEdicao,
+    mostrarForm,
+    mostrarImportar,
+    mostrarModalExport,
+    mostrarModalPagamento,
+    alunoSelecionado,
+    mostrarSettings,
+    mostrarConfigModal,
+  ]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (menuAcoesRef.current && !menuAcoesRef.current.contains(event.target as Node)) {
         setMostrarMenuAcoes(false);
       }
+      if (notificacoesRef.current && !notificacoesRef.current.contains(event.target as Node)) {
+        setMostrarNotificacoes(false);
+      }
+      if (contextMenuRef.current && !contextMenuRef.current.contains(event.target as Node)) {
+        setContextMenu(null);
+      }
     };
-    if (mostrarMenuAcoes) {
+    if (mostrarMenuAcoes || mostrarNotificacoes || contextMenu) {
       document.addEventListener('mousedown', handleClickOutside);
     }
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [mostrarMenuAcoes]);
+  }, [mostrarMenuAcoes, mostrarNotificacoes, contextMenu]);
 
   // Recarregar dados apenas quando a ligação é restaurada (não no arranque)
   const isFirstOnlineRef = useRef(true);
@@ -1888,21 +1989,40 @@ function App() {
 
   const resetarBancoDeDados = async () => {
     if (!electron) return;
+    if (sessionUser?.role !== 'admin') {
+      showToast('❌ Apenas administradores podem resetar dados.');
+      return;
+    }
+    if (resetSeguroForm.confirmation.trim().toUpperCase() !== 'RESETAR') {
+      showToast('❌ Escreva RESETAR para confirmar.');
+      return;
+    }
+    if (!resetSeguroForm.password) {
+      showToast('❌ Informe a senha do administrador.');
+      return;
+    }
+
+    setResetSeguroLoading(true);
     try {
-      const res = await electron.ipcRenderer.invoke('db:reset');
+      const res = await electron.ipcRenderer.invoke('db:reset-operational-data', {
+        userId: sessionUser.id,
+        email: sessionUser.email,
+        password: resetSeguroForm.password,
+        confirmation: resetSeguroForm.confirmation,
+      });
       if (res.success) {
-        showToast('✅ Dados de teste removidos com sucesso.');
+        showToast('✅ Dados operacionais resetados com segurança.');
         adicionarNotificacao('Limpeza de Sistema', 'Todos os dados de alunos e pagamentos foram removidos.', 'info');
-        // Resetar também flag de setup para permitir novo wizard se necessário
-        await guardarConfiguracao('setup_completed', '0');
+        setResetSeguroForm({ password: '', confirmation: '' });
         await carregarConfiguracoes();
-        window.location.reload();
       } else {
         throw new Error(res.message);
       }
     } catch (err) {
       console.error('Erro no reset:', err);
-      showToast('❌ Erro ao limpar base de dados.');
+      showToast(`❌ ${err?.message || 'Erro ao limpar base de dados.'}`);
+    } finally {
+      setResetSeguroLoading(false);
     }
   };
 
@@ -1968,9 +2088,9 @@ function App() {
     }
 
     try {
-      const selectedMonthName = pagamentoForm.mesReferencia || mesFinanceiro;
+      const selectedMonthName = mesAtualNome;
       const targetMonthIndex = MONTH_OPTIONS.indexOf(selectedMonthName);
-      const targetYear = anoFinanceiro;
+      const targetYear = anoAtual;
 
       const dueDay = (() => {
         const date = parseFlexibleDate(alunoParaPagamento.vencimento) || parseFlexibleDate(alunoParaPagamento.data_matricula) || new Date();
@@ -2209,6 +2329,13 @@ function App() {
     }
     if (!novoAluno.plano || normalizeAmount(novoAluno.plano) <= 0) {
       showToast('❌ Valor do plano inválido.');
+      return;
+    }
+    const dataMatriculaSelecionada = parseDate(novoAluno.data_matricula);
+    if (!isSameMonthAndYear(dataMatriculaSelecionada, hojeReferencia.getMonth(), anoAtual)) {
+      setNovoAluno((prev) => ({ ...prev, data_matricula: formatInputDate(hojeReferencia) }));
+      irParaMesAtualOperacional();
+      showToast('A matrícula deve ser registada no mês atual. Confirme a data e tente novamente.');
       return;
     }
 
@@ -2481,7 +2608,22 @@ function App() {
     }
   };
 
-  const buscarDuplicados = () => {
+  const buscarDuplicados = async () => {
+    if (electron) {
+      try {
+        setCarregandoDuplicados(true);
+        const res = await electron.ipcRenderer.invoke('db:find-duplicates');
+        if (!res?.success) throw new Error(res?.message || 'Falha ao procurar duplicados.');
+        setDuplicadosEncontrados((res.groups || []).map((group: any) => group.alunos || []));
+        setMostrarModalDuplicados(true);
+        return;
+      } catch (err: any) {
+        showToast(`❌ ${err?.message || 'Erro ao procurar duplicados.'}`);
+      } finally {
+        setCarregandoDuplicados(false);
+      }
+    }
+
     const grupos: Aluno[][] = [];
     const visitados = new Set<string>();
     for (const aluno of alunos) {
@@ -2596,7 +2738,7 @@ function App() {
   ];
   const obterTomPastel = (index: number) => coresPasteis[index % coresPasteis.length];
 
-  const alunosFiltradosOrdenados = resumosFinanceiros
+  const alunosFiltradosOrdenados = useMemo(() => resumosFinanceiros
     .filter(({ aluno, resumo }) => {
       const statusMatch = filtroStatus === 'todos'
         || (filtroStatus === 'divida' && (resumo.status === 'atrasado' || resumo.status === 'hoje'))
@@ -2620,10 +2762,10 @@ function App() {
         return left.resumo.daysUntilCharge - right.resumo.daysUntilCharge;
       }
       return left.aluno.nome.localeCompare(right.aluno.nome, 'pt-PT');
-    });
+    }), [resumosFinanceiros, filtroStatus, pesquisa]);
 
   // alunosDirectorio uses the same period-filtered base as the Alunos page
-  const alunosDirectorio = ordenarAlunosPorModo(
+  const alunosDirectorio = useMemo(() => ordenarAlunosPorModo(
     alunosNoPeriodo.filter((aluno) => {
       const statusMatch =
         filtroDirectorioStatus === 'todos'
@@ -2644,7 +2786,7 @@ function App() {
       return statusMatch && pesquisaMatch;
     }),
     ordenacaoDirectorio
-  );
+  ), [alunosNoPeriodo, filtroDirectorioStatus, pesquisaDirectorio, ordenacaoDirectorio]);
 
   // Cálculos das Métricas
   const totalAlunos = alunos.length;
@@ -2672,7 +2814,7 @@ function App() {
         valor: String(normalizeAmount(alunoSeguro.plano) || ''),
         dataPagamento: formatInputDate(),
         metodo: DEFAULT_PAYMENT_METHOD,
-        mesReferencia: mesFinanceiro,
+        mesReferencia: mesAtualNome,
       });
       setMostrarCobrancaRapida(true);
     } else {
@@ -3024,13 +3166,19 @@ function App() {
     setCarregandoLogin(false);
   };
 
-  const handleLogout = () => {
+  const handleLogout = useCallback(() => {
     localStorage.removeItem('nl_session_user');
     sessionStorage.removeItem('nl_session_user');
     setSessionUser(null);
     setIsLoggedIn(false);
     setAba('home');
-  };
+  }, []);
+
+  const onMatricular = useCallback(() => {
+    prepararAcaoOperacionalNoMesAtual();
+    setNovoAluno({ ...novoAlunoDefault, data_matricula: formatInputDate(hojeReferencia) });
+    setMostrarForm(true);
+  }, [prepararAcaoOperacionalNoMesAtual, novoAlunoDefault, formatInputDate, hojeReferencia, setNovoAluno, setMostrarForm]);
 
   // ── Setup Wizard Logic (Fase 3) ──────────────────────────────────
   useEffect(() => {
@@ -3469,9 +3617,9 @@ function App() {
                  onClick={async () => {
                    if (!chaveReativacao) return;
                    const res = await electron?.ipcRenderer.invoke('license:validate-external', chaveReativacao);
-                   if (res.success && res.ativa) {
+                   if (res.success && res.license) {
                      await electron?.ipcRenderer.invoke('update-configuracao', 'license_key', chaveReativacao);
-                     await electron?.ipcRenderer.invoke('update-configuracao', 'license_expiry', res.expiracao);
+                     await electron?.ipcRenderer.invoke('update-configuracao', 'license_expiry', res.license.dataExpiracao || 'Vitalícia');
                      await carregarConfiguracoes();
                      setLicencaAtiva(true);
                      showToast('Sistema reativado com sucesso!');
@@ -3823,13 +3971,15 @@ function App() {
   // Painel Root Técnico (acesso exclusivo root@nextlab.com)
   if (sessionUser?.role === 'root') {
     return (
-      <RootPanel
-        onLogout={() => {
-          localStorage.removeItem('nl_session_user');
-          setSessionUser(null);
-          setIsLoggedIn(false);
-        }}
-      />
+      <Suspense fallback={<div className="flex h-screen items-center justify-center bg-[#0a0a0a] text-white/50 text-[12px] font-bold">A carregar painel root...</div>}>
+        <RootPanel
+          onLogout={() => {
+            localStorage.removeItem('nl_session_user');
+            setSessionUser(null);
+            setIsLoggedIn(false);
+          }}
+        />
+      </Suspense>
     );
   }
 
@@ -3841,179 +3991,28 @@ function App() {
       <GlobalStyles theme={appTheme} />
       
       {/* Header */}
-      <header className="h-[56px] flex items-center justify-between px-5 shrink-0 bg-[var(--bg-header)] border-b border-[var(--border)] z-[100]" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
-        {/* Left: Branding */}
-        <div className="flex items-center gap-3 w-[220px] shrink-0">
-          <div className="w-7 h-7 rounded-[5px] flex items-center justify-center overflow-hidden shrink-0" style={{ background: 'var(--color-primary-light)', border: '1px solid var(--border)' }}>
-            <img src={appLogo} alt="Logo" className="w-4.5 h-4.5 object-contain" />
-          </div>
-          <div className="flex flex-col min-w-0">
-            <span className="text-[12px] font-bold tracking-tight nl-text uppercase leading-tight truncate">{nomeAcademia}</span>
-            <span className="text-[9px] font-medium nl-text-muted uppercase tracking-[0.1em] opacity-50">{COMPANY_NAME}</span>
-          </div>
-        </div>
-
-        {/* Center: Navigation — 3 primary tabs only */}
-        <div className="flex-1 flex items-center justify-center">
-          <nav className="flex items-center gap-1 p-1 rounded-[5px] bg-[var(--color-secondary-lighter)] border border-[var(--border-light)]">
-            {[
-              { id: 'home',      label: 'Painel',    icon: <Layout size={14} /> },
-              { id: 'gestao',    label: 'Alunos',    icon: <Users size={14} /> },
-            ].map((nav) => (
-              <button
-                key={nav.id}
-                onClick={() => setAba(nav.id as any)}
-                className={`flex items-center justify-center gap-2 px-5 py-1.5 rounded-[3px] text-[12px] font-semibold transition-all ${
-                  aba === nav.id
-                    ? 'bg-[var(--color-primary)] text-white shadow-[0_1px_4px_rgba(0,101,255,0.3)]'
-                    : 'nl-text-muted hover:bg-[var(--bg-surface)] hover:text-[var(--text-primary)]'
-                }`}
-              >
-                {nav.icon}
-                <span>{nav.label}</span>
-              </button>
-            ))}
-          </nav>
-        </div>
-
-        {/* Right: Context actions + Profile */}
-        <div className="flex items-center gap-1.5 min-w-[220px] justify-end">
-          {/* Page chip for secondary pages */}
-          {(aba === 'relatorios_detalhado' || aba === 'configuracoes' || aba === 'contactos') && (
-            <div className="flex items-center gap-2 mr-1">
-              <button
-                onClick={() => setAba('home')}
-                className="flex items-center gap-1 text-[11px] font-semibold nl-text-muted hover:text-[var(--color-primary)] transition-colors"
-                title="Voltar ao Painel"
-              >
-                <ChevronLeft size={13} />
-              </button>
-              <span className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11px] font-bold ${
-                aba === 'relatorios_detalhado'
-                  ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
-                  : aba === 'contactos'
-                  ? 'bg-violet-50 border-violet-200 text-violet-700'
-                  : 'bg-slate-100 border-slate-200 text-slate-600'
-              }`}>
-                {aba === 'relatorios_detalhado' ? <FileBarChart size={11} /> : aba === 'contactos' ? <BookUser size={11} /> : <Settings size={11} />}
-                {aba === 'relatorios_detalhado' ? 'Relatório' : aba === 'contactos' ? 'Contactos' : 'Ajustes'}
-              </span>
-            </div>
-          )}
-          {aba === 'gestao' && (
-            <div className="flex items-center gap-1.5 mr-1">
-              <button 
-                onClick={() => setMostrarRelatorioMensal(true)} 
-                className={`nl-btn !h-8 !px-3 !text-[12px] flex items-center gap-2 transition-all ${
-                  relatorioMensalDisponivel 
-                    ? '!bg-emerald-600 !text-white shadow-lg shadow-emerald-600/20 ring-1 ring-emerald-400' 
-                    : 'nl-btn-secondary'
-                }`} 
-                title="Relatório Mensal"
-              >
-                {relatorioMensalDisponivel ? <Star size={14} className="text-amber-300 fill-amber-300 animate-pulse" /> : <FileText size={14} />}
-                Relatório
-              </button>
-              <button onClick={() => setMostrarImportar(true)} className="nl-icon-btn !w-8 !h-8 shadow-sm" title="Importar Dados (Excel)">
-                <FileSpreadsheet size={15} className="text-emerald-600" />
-              </button>
-              <button onClick={() => { setNovoAluno(novoAlunoDefault); setMostrarForm(true); }} className="nl-btn nl-btn-primary !h-8 !px-3 !text-[12px]">
-                <Plus size={14} /> Matricular
-              </button>
-            </div>
-          )}
-
-          <button onClick={atualizarAplicacao} className="nl-icon-btn" title="Atualizar">
-            <RotateCw size={16} className={sincronizando ? 'animate-spin' : ''} />
-          </button>
-          <button onClick={() => setMostrarNotificacoes(!mostrarNotificacoes)} className="nl-icon-btn relative" title="Notificações">
-            <Bell size={16} />
-            {notificacoesNaoLidas > 0 && (
-              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-[var(--color-error)] rounded-full border-2 border-[var(--bg-header)]" />
-            )}
-          </button>
-
-          <div className="w-px h-5 bg-[var(--border)] mx-0.5" />
-
-          {/* User Avatar & Dropdown */}
-          <div className="relative">
-            <button
-              onClick={() => setMostrarUserMenu(!mostrarUserMenu)}
-              className={`w-9 h-9 rounded-full flex items-center justify-center text-white font-black text-[13px] border-2 border-[var(--bg-app)] shadow-sm hover:scale-105 transition-all ${
-                aba === 'relatorios_detalhado' ? 'ring-2 ring-emerald-400' :
-                aba === 'configuracoes' ? 'ring-2 ring-slate-400' :
-                aba === 'contactos' ? 'ring-2 ring-violet-400' :
-                'ring-1 ring-[var(--border)]'
-              }`}
-              style={{ background: 'linear-gradient(135deg, var(--color-primary) 0%, #0747A6 100%)' }}
-              title={aba === 'relatorios_detalhado' ? 'Relatório activo' : aba === 'configuracoes' ? 'Ajustes activos' : aba === 'contactos' ? 'Contactos activos' : 'Menu'}
-            >
-              {(sessionUser?.name || 'U').charAt(0).toUpperCase()}
-            </button>
-
-            {mostrarUserMenu && (
-              <>
-                <div className="fixed inset-0 z-[100]" onClick={() => setMostrarUserMenu(false)} />
-                <div className="absolute right-0 mt-2 w-[240px] bg-white rounded-[6px] shadow-[0_8px_32px_rgba(0,0,0,0.10)] border border-[#DFE1E6] py-2 z-[110] animate-fade-in">
-                  <div className="px-4 py-2.5 border-b border-[#F4F5F7] mb-1">
-                    <p className="text-[13px] font-bold nl-text leading-tight">{sessionUser?.name}</p>
-                    <p className="text-[10px] font-bold nl-text-muted uppercase tracking-widest mt-0.5">{sessionUser?.role === 'admin' ? 'Administrador' : 'Operador'}</p>
-                  </div>
-
-                  <div className="px-1.5 space-y-0.5">
-                    {sessionUser?.role === 'admin' && (
-                      <>
-                        <p className="px-3 pt-1.5 pb-0.5 text-[9px] font-black uppercase tracking-[0.18em] text-slate-400">Ferramentas</p>
-                        <button
-                          onClick={() => { setAba('relatorios_detalhado'); setMostrarUserMenu(false); }}
-                          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-[4px] hover:bg-emerald-50 text-[13px] font-semibold text-emerald-700 transition-colors group"
-                        >
-                          <FileBarChart size={15} className="text-emerald-500 shrink-0" />
-                          <span className="flex-1 text-left">Relatório</span>
-                          <kbd className="text-[9px] font-mono text-slate-300 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200 group-hover:bg-emerald-100 group-hover:text-emerald-500 group-hover:border-emerald-200 transition-colors">⌘R</kbd>
-                        </button>
-                        <button
-                          onClick={() => { setAba('configuracoes'); setMostrarUserMenu(false); }}
-                          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-[4px] hover:bg-[#F4F5F7] text-[13px] font-semibold nl-text transition-colors group"
-                        >
-                          <Settings size={15} className="text-slate-400 shrink-0" />
-                          <span className="flex-1 text-left">Ajustes do Sistema</span>
-                          <kbd className="text-[9px] font-mono text-slate-300 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200 group-hover:bg-slate-200 group-hover:text-slate-500 transition-colors">⌘,</kbd>
-                        </button>
-                        <button
-                          onClick={() => { setAba('contactos'); setMostrarUserMenu(false); }}
-                          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-[4px] hover:bg-violet-50 text-[13px] font-semibold text-violet-700 transition-colors group"
-                        >
-                          <BookUser size={15} className="text-violet-500 shrink-0" />
-                          <span className="flex-1 text-left">Contactos (CRM)</span>
-                          <kbd className="text-[9px] font-mono text-slate-300 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200 group-hover:bg-violet-100 group-hover:text-violet-500 group-hover:border-violet-200 transition-colors">⌘J</kbd>
-                        </button>
-                        <div className="h-px bg-[#F4F5F7] my-1 mx-2" />
-                      </>
-                    )}
-
-                    <button
-                      onClick={() => { setMostrarSobreDoc(true); setMostrarUserMenu(false); }}
-                      className="w-full flex items-center gap-2.5 px-3 py-2 rounded-[4px] hover:bg-[#F4F5F7] text-[13px] font-medium nl-text transition-colors"
-                    >
-                      <Info size={15} className="text-slate-400" /> Sobre o NEXTLevel
-                    </button>
-
-                    <div className="h-px bg-[#F4F5F7] my-1 mx-2" />
-
-                    <button
-                      onClick={handleLogout}
-                      className="w-full flex items-center gap-2.5 px-3 py-2 rounded-[4px] hover:bg-red-50 text-[13px] font-medium text-red-600 transition-colors"
-                    >
-                      <LogOut size={15} /> Terminar Sessão
-                    </button>
-                  </div>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      </header>
+      <Header
+        nomeAcademia={nomeAcademia}
+        COMPANY_NAME={COMPANY_NAME}
+        COMPANY_WEBSITE={COMPANY_WEBSITE}
+        appLogo={appLogo}
+        APP_ICON_PATH={APP_ICON_PATH}
+        aba={aba}
+        setAba={setAba}
+        sessionUser={sessionUser}
+        onLogout={handleLogout}
+        notificacoesNaoLidas={notificacoesNaoLidas}
+        mostrarNotificacoes={mostrarNotificacoes}
+        setMostrarNotificacoes={setMostrarNotificacoes}
+        sincronizando={sincronizando}
+        onRefreshApp={atualizarAplicacao}
+        relatorioMensalDisponivel={relatorioMensalDisponivel}
+        mostrarUserMenu={mostrarUserMenu}
+        setMostrarUserMenu={setMostrarUserMenu}
+        setMostrarSobreDoc={setMostrarSobreDoc}
+        onMatricular={onMatricular}
+        setMostrarRelatorioMensal={setMostrarRelatorioMensal}
+      />
 
       {/* Container Principal */}
       <main className={`flex-1 overflow-hidden relative flex flex-col ${aba === 'gestao' || aba === 'contactos' || aba === 'configuracoes' ? 'px-0 pb-0 pt-0' : 'p-5 pt-3'}`}>
@@ -4027,2205 +4026,240 @@ function App() {
           </div>
         )}
         {aba === 'home' && (
-          <div className="animate-slide-up h-full w-full overflow-y-auto custom-scrollbar">
-            <div className="mx-auto space-y-4 px-3 pt-4 pb-6" style={{ maxWidth: `${larguraListas}px` }}>
-
-              {/* ── Banner ─────────────────────────────────────────────── */}
-              <div className="relative overflow-hidden rounded-[6px] border border-[var(--border)] shadow-[0_4px_16px_rgba(15,23,42,0.08)]" style={{ minHeight: '180px' }}>
-                <img src={bannerAcademia || DEFAULT_ACADEMY_BANNER} alt="Banner da academia" className="absolute inset-0 w-full h-full object-cover" />
-                <div className="absolute inset-0" style={{ background: 'linear-gradient(108deg, rgba(0,0,0,0.64) 0%, rgba(0,0,0,0.30) 46%, rgba(0,0,0,0.10) 70%)' }} />
-                <div className="relative z-10 flex flex-col justify-center p-6" style={{ minHeight: '180px' }}>
-                  
-                  {/* Botão Alterar - Canto Superior Direito */}
-                  <div className="absolute top-4 right-4">
-                    <label className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-2.5 py-1 text-[9px] font-bold text-white/70 border border-white/10 cursor-pointer hover:bg-white/20 transition-all backdrop-blur-sm">
-                      <Camera size={11} /> Alterar
-                      <input type="file" accept="image/*" className="hidden" onChange={handleUploadBanner} />
-                    </label>
-                  </div>
-
-                  {/* Conteúdo Principal (Centralizado Verticalmente) */}
-                  <div className="flex items-center justify-between w-full">
-                    
-                    {/* Identidade (Lado Esquerdo) */}
-                    <div className="flex items-center gap-4 animate-slide-up">
-                      <div className="h-14 w-14 rounded-lg bg-white/10 backdrop-blur-md p-2.5 border border-white/20 shadow-xl overflow-hidden flex items-center justify-center shrink-0">
-                        <img src={appLogo || APP_ICON_PATH} alt="Logo" className="w-full h-full object-contain" />
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-[9px] font-black uppercase tracking-[0.3em] text-white/40 mb-1 leading-none">Academia · Gestão Local</p>
-                        <div className="flex items-baseline gap-2">
-                          <h1 className="text-[32px] font-black text-white leading-tight tracking-tighter drop-shadow-lg truncate">{nomeAcademia}</h1>
-                        </div>
-                        <p className="text-[12px] font-medium text-white/50 truncate max-w-[400px]">{subtituloAcademia}</p>
-                      </div>
-                    </div>
-
-                    {/* Relógio (Lado Direito) */}
-                    <div className="text-right animate-slide-up pr-4">
-                      <p className="text-[34px] font-black text-white leading-none tracking-tighter drop-shadow-md" style={{ fontVariantNumeric: 'tabular-nums' }}>
-                        {agora.toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' })}
-                      </p>
-                      <p className="text-[10px] font-bold text-white/40 uppercase tracking-widest mt-1.5">
-                        {agora.toLocaleDateString('pt-PT', { weekday: 'long', day: '2-digit', month: 'long' })}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Minicards (Stats) - Canto Inferior Direito (Translúcidos) */}
-                  <div className="absolute bottom-4 right-4 flex gap-1.5">
-                    {[
-                      { icon: <Users size={11} />, text: `${alunosAtivos.length} Activos` },
-                      { icon: <Clock size={11} />, text: `${cobrancasParaHoje} Hoje` },
-                      { icon: <Landmark size={11} />, text: formatCve(receitaPrevista) },
-                    ].map((p, i) => (
-                      <span key={i} className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-black/30 backdrop-blur-md px-2.5 py-1 text-[9px] font-black text-white/70 shadow-lg transition-all hover:bg-black/50">
-                        <span className="text-white/40">{p.icon}</span>
-                        <span className="uppercase tracking-widest">{p.text}</span>
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              {/* ── Sumário de situação (substitui os 4 cards) ───────────── */}
-              {(() => {
-                const itens = [
-                  {
-                    icon: <Users size={14} />,
-                    label: 'Alunos activos',
-                    value: alunosAtivos.length,
-                    valueLabel: String(alunosAtivos.length),
-                    note: alunosNovosNoPeriodo.length > 0 ? `+${alunosNovosNoPeriodo.length} novos em ${mesFinanceiro}` : 'Sem novas entradas',
-                    color: '#1B6ABF',
-                    action: () => setAba('gestao'),
-                  },
-                  {
-                    icon: <AlertCircle size={14} />,
-                    label: 'Em dívida',
-                    value: alunosEmDivida.length,
-                    valueLabel: String(alunosEmDivida.length),
-                    note: alunosEmDivida.length > 0 ? formatCve(previsaoRecuperacao) + ' em atraso' : 'Tudo regularizado',
-                    color: alunosEmDivida.length > 0 ? '#C0392B' : '#1A7A48',
-                    action: () => { setAba('gestao'); setFiltroStatus('divida'); },
-                  },
-                  {
-                    icon: <Clock size={14} />,
-                    label: 'Vencem hoje',
-                    value: cobrancasParaHoje,
-                    valueLabel: String(cobrancasParaHoje),
-                    note: cobrancasCriticas > 0 ? `${cobrancasCriticas} em estado crítico` : 'Sem urgências imediatas',
-                    color: cobrancasParaHoje > 0 ? '#C26B00' : '#1A7A48',
-                    action: () => { setAba('gestao'); setFiltroStatus('divida'); },
-                  },
-                ];
-                return (
-                  <div
-                    className="rounded-[6px] border border-[var(--border)] bg-[var(--bg-surface)] shadow-[0_1px_4px_rgba(0,0,0,0.05)]"
-                    style={{ minHeight: '88px' }}
-                  >
-                    {/* Cabeçalho */}
-                    <div className="flex items-center gap-2 px-5 pt-4 pb-3 border-b border-[var(--border)]">
-                      <BarChart2 size={12} className="text-[var(--color-primary)] opacity-60" />
-                      <p className="text-[10px] font-bold uppercase tracking-[0.25em] text-[var(--color-primary)] opacity-60">Situação actual</p>
-                    </div>
-
-                    {/* Lista de itens */}
-                    <div className="flex items-stretch divide-x divide-[var(--border)]">
-                      {itens.map((item, idx) => (
-                        <button
-                          key={idx}
-                          type="button"
-                          onClick={item.action}
-                          className="flex-1 flex items-center gap-3 px-5 py-4 text-left hover:bg-[var(--bg-app)] transition-colors duration-150 group"
-                        >
-                          {/* Ícone */}
-                          <div
-                            className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition-transform duration-150 group-hover:scale-110"
-                            style={{ background: `${item.color}15`, color: item.color }}
-                          >
-                            {item.icon}
-                          </div>
-
-                          {/* Texto */}
-                          <div className="min-w-0">
-                            <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-secondary)] leading-none mb-1">
-                              {item.label}
-                            </p>
-                            <div className="flex items-baseline gap-2">
-                              <span
-                                className="text-[22px] font-black leading-none tabular-nums"
-                                style={{ color: item.color }}
-                              >
-                                {item.valueLabel}
-                              </span>
-                            </div>
-                            <p className="text-[10px] text-[var(--text-secondary)] mt-1 leading-tight truncate max-w-[160px]">
-                              {item.note}
-                            </p>
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })()}
-
-              {/* ── Alert strip — avisos contextuais padronizados ─── */}
-              {(relatorioMensalDisponivel || alunosImportados.length > 0 || (alunosEmDivida.length > 3)) && (
-                <div className="space-y-2">
-                  {relatorioMensalDisponivel && (
-                    <div className="nl-alert nl-alert-info">
-                      <div className="nl-alert-icon"><FileBarChart size={15} /></div>
-                      <div className="flex-1 min-w-0">
-                        <p className="nl-alert-title">Relatório de {relatorioMensalDisponivel} disponível</p>
-                        <p className="nl-alert-body">Aceda ao dossier de desempenho para exportar em PDF ou Excel.</p>
-                      </div>
-                      <button onClick={() => setAba('relatorios_detalhado')} className="shrink-0 text-[10px] font-black uppercase tracking-wider text-blue-700 bg-blue-100 hover:bg-blue-200 border border-blue-200 px-2.5 py-1 rounded-[4px] transition-colors self-start mt-0.5">
-                        Ver →
-                      </button>
-                    </div>
-                  )}
-                  {alunosImportados.length > 0 && (
-                    <div className="nl-alert nl-alert-warning">
-                      <div className="nl-alert-icon"><FileSpreadsheet size={15} /></div>
-                      <div className="flex-1 min-w-0">
-                        <p className="nl-alert-title">{alunosImportados.length} {alunosImportados.length === 1 ? 'aluno importado aguarda' : 'alunos importados aguardam'} revisão</p>
-                        <p className="nl-alert-body">Confirme os dados antes de activar as cobranças automáticas.</p>
-                      </div>
-                      <button onClick={() => { setAba('gestao'); setFiltroStatus('importados'); }} className="shrink-0 text-[10px] font-black uppercase tracking-wider text-amber-800 bg-amber-100 hover:bg-amber-200 border border-amber-200 px-2.5 py-1 rounded-[4px] transition-colors self-start mt-0.5">
-                        Rever →
-                      </button>
-                    </div>
-                  )}
-                  {alunosEmDivida.length > 3 && !alunosImportados.length && (
-                    <div className="nl-alert nl-alert-error">
-                      <div className="nl-alert-icon"><AlertCircle size={15} /></div>
-                      <div className="flex-1 min-w-0">
-                        <p className="nl-alert-title">{alunosEmDivida.length} alunos com cobrança em atraso</p>
-                        <p className="nl-alert-body">{formatCve(previsaoRecuperacao)} em montante por recuperar este mês.</p>
-                      </div>
-                      <button onClick={() => { setAba('gestao'); setFiltroStatus('divida'); }} className="shrink-0 text-[10px] font-black uppercase tracking-wider text-red-800 bg-red-100 hover:bg-red-200 border border-red-200 px-2.5 py-1 rounded-[4px] transition-colors self-start mt-0.5">
-                        Ver →
-                      </button>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* ── Acesso Rápido + Inscrições recentes ─────────────────── */}
-              <div className="grid gap-4 lg:grid-cols-2">
-
-                {/* Acesso Rápido — ícones flutuantes inteligentes */}
-                <div className="rounded-[6px] border border-[var(--border)] bg-[var(--bg-surface)] p-5 shadow-[0_2px_8px_rgba(9,30,66,0.06)]">
-                  <div className="flex items-center justify-between mb-5">
-                    <div>
-                      <p className="text-[10px] font-bold uppercase tracking-[0.25em] text-[var(--color-primary)]/50 mb-0.5">Acesso rápido</p>
-                      <h3 className="text-[15px] font-bold nl-text">Centro de Operações</h3>
-                    </div>
-                    <div className="flex items-center gap-1.5 bg-emerald-50 border border-emerald-200 rounded-full px-2.5 py-1">
-                      <div className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                      <span className="text-[10px] font-semibold text-emerald-700">Online</span>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-5 gap-1">
-                    {([
-                      {
-                        id: 'alunos',
-                        label: 'Alunos',
-                        sublabel: `${alunosAtivos.length} activos`,
-                        icon: <Users size={30} />,
-                        color: '#2563EB',
-                        badge: null as string | number | null,
-                        pulse: false,
-                        action: () => setAba('gestao'),
-                      },
-                      {
-                        id: 'cobrancas',
-                        label: 'Cobranças',
-                        sublabel: alunosEmDivida.length > 0 ? `${alunosEmDivida.length} em dívida` : 'Em dia',
-                        icon: <Wallet size={30} />,
-                        color: alunosEmDivida.length > 0 ? '#DC2626' : '#16A34A',
-                        badge: cobrancasParaHoje > 0 ? cobrancasParaHoje : null,
-                        pulse: cobrancasParaHoje > 0,
-                        action: () => { setAba('gestao'); setFiltroStatus('divida'); },
-                      },
-                      {
-                        id: 'contactos',
-                        label: 'Contactos',
-                        sublabel: alunosImportados.length > 0 ? `${alunosImportados.length} p/ rever` : `${alunos.length} inscritos`,
-                        icon: <BookUser size={30} />,
-                        color: alunosImportados.length > 0 ? '#D97706' : '#7C3AED',
-                        badge: alunosImportados.length > 0 ? alunosImportados.length : null,
-                        pulse: alunosImportados.length > 0,
-                        action: () => setAba('contactos'),
-                      },
-                      {
-                        id: 'relatorio',
-                        label: 'Relatório',
-                        sublabel: relatorioMensalDisponivel ? `${relatorioMensalDisponivel} pronto` : 'Dossier',
-                        icon: <FileBarChart size={30} />,
-                        color: relatorioMensalDisponivel ? '#0D9488' : '#64748B',
-                        badge: relatorioMensalDisponivel ? '!' : null,
-                        pulse: !!relatorioMensalDisponivel,
-                        action: () => setAba('relatorios_detalhado'),
-                      },
-                      {
-                        id: 'config',
-                        label: 'Ajustes',
-                        sublabel: 'Configurações',
-                        icon: <Settings size={30} />,
-                        color: '#64748B',
-                        badge: null,
-                        pulse: false,
-                        action: () => setAba('configuracoes'),
-                      },
-                    ] as const).map((item) => (
-                      <button
-                        key={item.id}
-                        type="button"
-                        onClick={item.action}
-                        className="group flex flex-col items-center gap-2 py-4 px-1 rounded-[6px] transition-all active:scale-95 hover:bg-[var(--color-secondary-lighter)]/50"
-                      >
-                        <div className="relative flex items-center justify-center">
-                          {/* anel de pulso para alertas */}
-                          {item.pulse && (
-                            <span className="absolute inset-0 rounded-full animate-ping opacity-20" style={{ background: item.color }} />
-                          )}
-                          <div
-                            className="transition-all group-hover:scale-110"
-                            style={{ color: item.color }}
-                          >
-                            {item.icon}
-                          </div>
-                          {item.badge !== null && (
-                            <span className="absolute -top-2 -right-2.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-red-500 px-1 text-[8px] font-black text-white shadow border border-[var(--bg-surface)]">
-                              {item.badge}
-                            </span>
-                          )}
-                        </div>
-                        <div className="text-center">
-                          <p className="text-[11px] font-semibold nl-text leading-tight">{item.label}</p>
-                          <p className="text-[9px] nl-text-muted mt-0.5 leading-tight">{item.sublabel}</p>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Inscrições recentes */}
-                <div className="rounded-[6px] border border-[var(--border)] bg-[var(--bg-surface)] shadow-[0_2px_8px_rgba(9,30,66,0.05)] flex flex-col overflow-hidden">
-                  <div className="flex items-center justify-between px-4 pt-4 pb-3 border-b border-[var(--border-light)]">
-                    <div>
-                      <p className="text-[9px] font-bold uppercase tracking-[0.22em] text-[var(--text-secondary)] mb-0.5">Actualização em tempo real</p>
-                      <h3 className="text-[14px] font-bold nl-text">Últimas inscrições</h3>
-                    </div>
-                    <button type="button" onClick={() => setAba('gestao')}
-                      className="text-[11px] font-semibold text-[var(--color-primary)] hover:underline underline-offset-2 transition-all shrink-0">
-                      Ver todos →
-                    </button>
-                  </div>
-                  <div className="flex-1 overflow-y-auto custom-scrollbar">
-                    {novosInscritosRecentes.length === 0 ? (
-                      <div className="flex flex-col items-center justify-center py-10 gap-2 opacity-40">
-                        <Users size={24} className="nl-text-muted" />
-                        <p className="text-[12px] font-medium nl-text-muted">Sem alunos registados</p>
-                      </div>
-                    ) : novosInscritosRecentes.map((aluno, idx) => {
-                      const dataMatricula = parseFlexibleDate(aluno.data_matricula);
-                      const hoje = new Date(); hoje.setHours(0,0,0,0);
-                      const isHoje = dataMatricula && dataMatricula.getTime() === hoje.getTime();
-                      const avatarBg = getAvatarColorByName(aluno.nome);
-                      const isLatest = idx === 0;
-                      if (isLatest) {
-                        return (
-                          <button key={aluno.id} type="button"
-                            onClick={() => abrirPerfilAluno(aluno)}
-                            className="w-full text-left px-4 py-3.5 border-b border-[var(--border-light)] transition-colors hover:brightness-[0.97]"
-                            style={{ background: 'linear-gradient(135deg, #EEF4FF 0%, #E8F5E9 100%)' }}>
-                            <div className="flex items-center gap-3">
-                              <div className="relative shrink-0">
-                                <div className={`w-10 h-10 rounded-full flex items-center justify-center text-[13px] font-black text-white overflow-hidden shadow-md ${avatarBg}`}>
-                                  {aluno.foto_path
-                                    ? <img src={`local-resource://${aluno.foto_path}`} className="w-full h-full object-cover" />
-                                    : getAlunoIniciais(aluno)}
-                                </div>
-                                <span className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full bg-amber-400 border-2 border-white flex items-center justify-center shadow-sm">
-                                  <Star size={7} className="text-white fill-white" />
-                                </span>
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-1.5 mb-0.5">
-                                  <p className="text-[13px] font-black text-slate-800 truncate leading-tight">{aluno.nome}</p>
-                                  {isHoje && <span className="text-[8px] font-bold text-emerald-700 bg-emerald-100 border border-emerald-200 px-1.5 py-0.5 rounded-[3px] shrink-0">Hoje</span>}
-                                  {isImportedStatus(aluno.status) && <span className="text-[8px] font-bold text-amber-700 bg-amber-100 border border-amber-200 px-1.5 py-0.5 rounded-[3px] shrink-0">Importado</span>}
-                                </div>
-                                <p className="text-[10px] text-slate-500 font-medium">{aluno.categoria || 'Geral'}</p>
-                              </div>
-                              <div className="text-right shrink-0">
-                                <span className="text-[9px] font-black text-blue-600 bg-blue-100 border border-blue-200 px-2 py-0.5 rounded-[3px] uppercase tracking-wide block mb-1">Último</span>
-                                <span className="text-[10px] font-medium text-slate-500 tabular-nums">
-                                  {dataMatricula ? formatPtDate(dataMatricula) : '—'}
-                                </span>
-                              </div>
-                            </div>
-                          </button>
-                        );
-                      }
-                      return (
-                        <button key={aluno.id} type="button"
-                          onClick={() => abrirPerfilAluno(aluno)}
-                          className="w-full flex items-center gap-3 px-4 py-2.5 transition-colors text-left border-b border-[var(--border-light)] last:border-0 hover:bg-[var(--color-secondary-lighter)]/40">
-                          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-black text-white shrink-0 overflow-hidden ${avatarBg}`}>
-                            {aluno.foto_path
-                              ? <img src={`local-resource://${aluno.foto_path}`} className="w-full h-full object-cover" />
-                              : getAlunoIniciais(aluno)}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-1.5">
-                              <p className="text-[12px] font-semibold nl-text truncate leading-tight">{aluno.nome}</p>
-                              {isHoje && <span className="text-[8px] font-bold text-emerald-700 bg-emerald-100 border border-emerald-200 px-1.5 py-0.5 rounded-[3px] shrink-0">Hoje</span>}
-                              {isImportedStatus(aluno.status) && <span className="text-[8px] font-bold text-amber-700 bg-amber-100 border border-amber-200 px-1.5 py-0.5 rounded-[3px] shrink-0">Importado</span>}
-                            </div>
-                            <p className="text-[10px] nl-text-muted">{aluno.categoria || 'Geral'}</p>
-                          </div>
-                          <span className="text-[10px] font-medium nl-text-muted shrink-0 tabular-nums">
-                            {dataMatricula ? formatPtDate(dataMatricula) : <span className="text-amber-600">—</span>}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-              </div>
-            </div>
-          </div>
+          <HomePage
+            bannerAcademia={bannerAcademia}
+            DEFAULT_ACADEMY_BANNER={DEFAULT_ACADEMY_BANNER}
+            appLogo={appLogo}
+            APP_ICON_PATH={APP_ICON_PATH}
+            nomeAcademia={nomeAcademia}
+            subtituloAcademia={subtituloAcademia}
+            agora={agora}
+            alunosAtivos={alunosAtivos}
+            alunosEmDivida={alunosEmDivida}
+            totalRecebidoPeriodo={totalRecebidoPeriodo}
+            alunos={alunos}
+            previsaoRecuperacao={previsaoRecuperacao}
+            alunosImportados={alunosImportados}
+            relatorioMensalDisponivel={relatorioMensalDisponivel}
+            setAba={setAba}
+            setFiltroStatus={setFiltroStatus}
+            setMostrarForm={setMostrarForm}
+            setMostrarImportar={setMostrarImportar}
+            setNovoAluno={setNovoAluno}
+            novoAlunoDefault={novoAlunoDefault}
+            hojeReferencia={hojeReferencia}
+            prepararAcaoOperacionalNoMesAtual={prepararAcaoOperacionalNoMesAtual}
+            novosInscritosRecentes={novosInscritosRecentes}
+            abrirPerfilAluno={abrirPerfilAluno}
+          />
         )}
 
-        {aba === 'relatorios_detalhado' && (() => {
-          const mesIdxRel = MONTH_OPTIONS.indexOf(mesRelatorio);
-          const refRelatorio = new Date(anoRelatorio, mesIdxRel + 1, 0);
-          const geradoEm = new Date().toLocaleString('pt-PT');
-
-          const alunosPeriodoRel = [...alunos]
-            .filter(a => { const e = parseFlexibleDate(a.data_matricula); return e ? e.getTime() <= refRelatorio.getTime() : true; })
-            .sort((a, b) => a.nome.localeCompare(b.nome));
-
-          const resumosRel = alunosPeriodoRel.map(aluno => ({ aluno, resumo: getStudentStatusForMonth(aluno, pagamentos, anoRelatorio, mesIdxRel, hojeReferencia) }));
-
-          const totalInscritos = alunosPeriodoRel.length;
-          const pagosCount   = resumosRel.filter(r => r.resumo.status === 'pago').length;
-          const emDiaCount   = resumosRel.filter(r => ['alerta','pendente','critico','hoje'].includes(r.resumo.status)).length;
-          const atrasadosCount = resumosRel.filter(r => r.resumo.status === 'atrasado').length;
-          const inativosCount  = resumosRel.filter(r => ['pausado','suspenso','bloqueado'].includes(r.resumo.status)).length;
-
-          const receitaMes   = pagamentos.filter(p => isPaymentInsideMonth(p, mesRelatorio, anoRelatorio)).reduce((s, p) => s + normalizeAmount(p.valor), 0);
-          const previsaoMes  = alunosPeriodoRel.filter(a => isOperationallyActive(a.status)).reduce((s, a) => s + normalizeAmount(a.plano), 0);
-          const pendenteMes  = Math.max(0, previsaoMes - receitaMes);
-
-          const dadosBarra = MONTH_OPTIONS
-            .map((mes, idx) => { if (isFutureMonth(idx, anoRelatorio, new Date())) return null; const total = pagamentos.filter(p => isPaymentInsideMonth(p, mes, anoRelatorio)).reduce((s, p) => s + normalizeAmount(p.valor), 0); return { mes: mes.slice(0,3), total, ativo: mes === mesRelatorio }; })
-            .filter(Boolean) as { mes: string; total: number; ativo: boolean }[];
-          const maxBarra = Math.max(...dadosBarra.map(d => d.total), 1);
-
-          const donutSegments = [
-            { label: 'Em dia',   count: emDiaCount,    color: '#2563EB' },
-            { label: 'Pago',     count: pagosCount,    color: '#16A34A' },
-            { label: 'Atrasado', count: atrasadosCount, color: '#DC2626' },
-            { label: 'Pausado',  count: inativosCount,  color: '#94A3B8' },
-          ].filter(s => s.count > 0);
-          const donutTotal = donutSegments.reduce((s, seg) => s + seg.count, 0);
-          const donutR = 42; const donutCx = 65; const donutCy = 65;
-          const donutC = 2 * Math.PI * donutR;
-          let donutAngle = 0;
-          const donutArcs = donutSegments.map(seg => { const pct = seg.count / donutTotal; const len = pct * donutC; const startAngle = donutAngle - 90; donutAngle += pct * 360; return { ...seg, len, startAngle }; });
-
-          return (
-            <div className="animate-slide-up h-full w-full flex flex-col overflow-hidden">
-              {/* ── Barra de período ── */}
-              <div className="sticky top-0 z-20 shrink-0 border-b border-blue-100 bg-[#EEF4FF]">
-                <div className={`overflow-x-auto transition-all ${timelineFinanceiraMinimizada ? 'py-1' : 'py-1.5'}`}>
-                  <div className="flex min-w-[1100px] items-center gap-4 px-6">
-                    <span className="text-[11px] font-extrabold nl-text tracking-tight whitespace-nowrap shrink-0">Período</span>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <button onClick={() => setAnoRelatorio(p => p - 1)} className="flex h-7 w-7 items-center justify-center rounded-full border border-[var(--border-light)] text-[var(--text-secondary)] hover:border-[var(--color-primary)]/30 hover:text-[var(--color-primary)] transition-colors"><ChevronLeft size={14} /></button>
-                      <div className="rounded-full border border-[var(--border-light)] bg-[var(--bg-surface)] px-3 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--text-secondary)]">{anoRelatorio}</div>
-                      <button onClick={() => setAnoRelatorio(p => p + 1)} className="flex h-7 w-7 items-center justify-center rounded-full border border-[var(--border-light)] text-[var(--text-secondary)] hover:border-[var(--color-primary)]/30 hover:text-[var(--color-primary)] transition-colors"><ChevronRight size={14} /></button>
-                    </div>
-                    <div className="relative flex-1 min-w-[520px]">
-                      <div className="absolute left-0 right-0 top-1/2 h-px -translate-y-1/2 bg-[#D9E2F2]" />
-                      <div className="relative flex items-center justify-between gap-1">
-                        {MONTH_OPTIONS.map((mes, index) => {
-                          if (isFutureMonth(index, anoRelatorio, new Date())) return null;
-                          const ativo = mesRelatorio === mes;
-                          const atual = anoRelatorio === new Date().getFullYear() && index === new Date().getMonth();
-                          return (
-                            <button key={mes} onClick={() => setMesRelatorio(mes)}
-                              className={`group flex min-w-[70px] flex-col items-center rounded-[5px] px-1.5 transition-all ${timelineFinanceiraMinimizada ? 'gap-0 py-0.5' : 'gap-0.5 py-1'}`}
-                              title={`${mes} ${anoRelatorio}`}>
-                              <span className={`h-3 w-3 rounded-full border transition-all ${ativo ? 'border-[var(--color-primary)] bg-[var(--color-primary)] shadow-[0_0_0_3px_rgba(37,99,235,0.12)]' : atual ? 'border-[#2563EB] bg-white' : 'border-[var(--border)] bg-[var(--bg-surface)] group-hover:border-[var(--color-primary)]/45'}`} />
-                              <div className={`transition-all ${timelineFinanceiraMinimizada ? 'h-0 overflow-hidden opacity-0' : 'opacity-100'}`}>
-                                <p className={`text-[9px] font-bold uppercase tracking-[0.12em] ${ativo ? 'text-[var(--color-primary)]' : 'text-[var(--text-secondary)]'}`}>{mes.slice(0,3)}</p>
-                              </div>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <button onClick={() => window.print()} className="inline-flex h-7 items-center gap-1.5 rounded-full border border-[var(--border-light)] px-3 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--text-secondary)] hover:bg-white/60 transition-colors"><Printer size={12} /> Imprimir</button>
-                      <button onClick={() => exportarRelatorioExcel()} className="inline-flex h-7 items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 text-[10px] font-bold uppercase tracking-[0.12em] text-emerald-700 hover:bg-emerald-100 transition-colors"><Download size={12} /> Excel</button>
-                      <button type="button" onClick={() => setTimelineFinanceiraMinimizada(prev => !prev)}
-                        className="inline-flex h-7 items-center gap-1.5 rounded-full border border-[var(--border-light)] px-3 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--text-secondary)] transition-colors hover:bg-white/60"
-                        title={timelineFinanceiraMinimizada ? 'Expandir' : 'Minimizar'}>
-                        <ChevronDown size={13} className={`transition-transform ${timelineFinanceiraMinimizada ? '-rotate-90' : 'rotate-0'}`} />
-                        {timelineFinanceiraMinimizada ? 'Expandir' : 'Minimizar'}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* ── Corpo — folha de relatório ── */}
-              <div className="flex-1 overflow-y-auto custom-scrollbar bg-[var(--bg-app)] px-8 py-8">
-                <div className="mx-auto" style={{ maxWidth: `${larguraListas}px` }}>
-                  <div className="bg-white rounded-[3px] shadow-[0_6px_40px_rgba(15,23,42,0.13),0_1px_4px_rgba(15,23,42,0.07)]">
-
-                    {/* Cabeçalho do documento */}
-                    <div className="px-12 pt-10 pb-6 border-b-2 border-[#1E3A5F]">
-                      <div className="flex items-start justify-between mb-5">
-                        <div className="flex items-center gap-4">
-                          <img src={appLogo} alt="" className="w-11 h-11 object-contain" />
-                          <div>
-                            <h1 className="text-[22px] font-black tracking-tight leading-tight uppercase" style={{ color: '#0F1F35' }}>{nomeAcademia}</h1>
-                            <p className="text-[10px] font-bold uppercase tracking-[0.18em]" style={{ color: '#526070' }}>Sistema de Gestão · {COMPANY_NAME}</p>
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-[12px] font-black uppercase tracking-[0.1em]" style={{ color: '#1E3A5F' }}>Dossier de Desempenho</p>
-                          <p className="text-[10px] mt-0.5" style={{ color: '#526070' }}>Relatório Mensal de Mensalidades</p>
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-3 gap-6 pt-4 border-t border-[#D9E2EF]">
-                        <div><p className="text-[9px] font-black uppercase tracking-[0.16em] mb-1" style={{ color: '#1E3A5F' }}>Período</p><p className="text-[11px] font-semibold capitalize" style={{ color: '#0F1F35' }}>{mesRelatorio} {anoRelatorio}</p></div>
-                        <div><p className="text-[9px] font-black uppercase tracking-[0.16em] mb-1" style={{ color: '#1E3A5F' }}>Gerado em</p><p className="text-[11px] font-semibold" style={{ color: '#0F1F35' }}>{geradoEm}</p></div>
-                        <div><p className="text-[9px] font-black uppercase tracking-[0.16em] mb-1" style={{ color: '#1E3A5F' }}>Total no Período</p><p className="text-[11px] font-semibold" style={{ color: '#0F1F35' }}>{totalInscritos} aluno{totalInscritos !== 1 ? 's' : ''}</p></div>
-                      </div>
-                    </div>
-
-                    {/* KPIs */}
-                    <div className="px-12 py-6 border-b border-[#E2E8F0]" style={{ background: '#F8FAFD' }}>
-                      <div className="grid grid-cols-4 gap-4">
-                        {[
-                          { label: 'Total Inscritos', value: String(totalInscritos), sub: 'no período', bg: '#EBF0F8', fg: '#1E3A5F' },
-                          { label: 'Em dia / Pago', value: String(pagosCount + emDiaCount), sub: `${Math.round(((pagosCount + emDiaCount) / Math.max(totalInscritos, 1)) * 100)}% do total`, bg: '#DCFCE7', fg: '#166534' },
-                          { label: 'Em Atraso', value: String(atrasadosCount), sub: atrasadosCount === 0 ? 'Tudo em dia ✓' : 'requerem atenção', bg: atrasadosCount > 0 ? '#FEE2E2' : '#DCFCE7', fg: atrasadosCount > 0 ? '#991B1B' : '#166534' },
-                          { label: 'Receita Cobrada', value: formatCve(receitaMes), sub: `Previsão: ${formatCve(previsaoMes)}`, bg: '#D1FAE5', fg: '#065F46' },
-                        ].map((kpi, i) => (
-                          <div key={i} className="rounded-[4px] border border-[#E2E8F0] p-4" style={{ background: kpi.bg }}>
-                            <p className="text-[9px] font-black uppercase tracking-[0.15em] mb-2" style={{ color: '#526070' }}>{kpi.label}</p>
-                            <p className="text-[20px] font-black leading-none truncate" style={{ color: kpi.fg }}>{kpi.value}</p>
-                            <p className="text-[9px] mt-1.5" style={{ color: '#526070' }}>{kpi.sub}</p>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Gráficos */}
-                    <div className="px-12 py-7 border-b border-[#E2E8F0]">
-                      <p className="text-[9px] font-black uppercase tracking-[0.22em] mb-5" style={{ color: '#526070' }}>Análise Gráfica</p>
-                      <div className="grid grid-cols-2 gap-10">
-                        {/* Donut */}
-                        <div>
-                          <p className="text-[10px] font-bold mb-4" style={{ color: '#1E3A5F' }}>Distribuição por Estado</p>
-                          <div className="flex items-center gap-6">
-                            <svg width="130" height="130" viewBox="0 0 130 130" style={{ flexShrink: 0 }}>
-                              <circle cx={donutCx} cy={donutCy} r={donutR} fill="none" stroke="#E2E8F0" strokeWidth={13} />
-                              {donutTotal > 0 && donutArcs.map((arc, i) => (
-                                <circle key={i} cx={donutCx} cy={donutCy} r={donutR} fill="none" stroke={arc.color} strokeWidth={13}
-                                  strokeDasharray={`${arc.len} ${donutC - arc.len}`} strokeDashoffset={0}
-                                  transform={`rotate(${arc.startAngle} ${donutCx} ${donutCy})`} strokeLinecap="butt" />
-                              ))}
-                              <text x={donutCx} y={donutCy - 6} textAnchor="middle" style={{ fontSize: '20px', fontWeight: 800, fill: '#0F1F35', fontFamily: 'system-ui' }}>{totalInscritos}</text>
-                              <text x={donutCx} y={donutCy + 11} textAnchor="middle" style={{ fontSize: '8px', fill: '#526070', fontWeight: 700, fontFamily: 'system-ui', letterSpacing: '0.08em' }}>ALUNOS</text>
-                            </svg>
-                            <div className="flex flex-col gap-3">
-                              {donutSegments.map((seg, i) => (
-                                <div key={i} className="flex items-center gap-2.5">
-                                  <span className="w-3 h-3 rounded-full shrink-0" style={{ background: seg.color }} />
-                                  <div>
-                                    <p className="text-[11px] font-black leading-none" style={{ color: seg.color }}>{seg.count}</p>
-                                    <p className="text-[9px] mt-0.5" style={{ color: '#526070' }}>{seg.label}</p>
-                                  </div>
-                                </div>
-                              ))}
-                              {donutTotal === 0 && <p className="text-[10px]" style={{ color: '#526070' }}>Sem dados</p>}
-                            </div>
-                          </div>
-                        </div>
-                        {/* Barras mensais */}
-                        <div>
-                          <p className="text-[10px] font-bold mb-4" style={{ color: '#1E3A5F' }}>Receita Mensal — {anoRelatorio}</p>
-                          <div className="flex items-end gap-1 h-[88px]">
-                            {dadosBarra.map((d, i) => {
-                              const h = maxBarra > 0 ? Math.max(3, (d.total / maxBarra) * 76) : 3;
-                              return (
-                                <div key={i} className="flex flex-col items-center gap-0.5 flex-1" title={`${d.mes}: ${formatCve(d.total)}`}>
-                                  <div className="w-full rounded-t-[2px] transition-all" style={{ height: `${h}px`, background: d.ativo ? '#1E3A5F' : '#93BBDC' }} />
-                                  <p className="text-[7px] font-bold uppercase" style={{ color: d.ativo ? '#1E3A5F' : '#8A9BB0' }}>{d.mes}</p>
-                                </div>
-                              );
-                            })}
-                          </div>
-                          <div className="flex justify-between mt-2 text-[8px]" style={{ color: '#8A9BB0' }}>
-                            <span>0</span>
-                            <span className="font-bold">{formatCve(maxBarra)} máx.</span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Tabela de alunos */}
-                    <div className="px-12 py-7 border-b border-[#E2E8F0]">
-                      <p className="text-[9px] font-black uppercase tracking-[0.22em] mb-5" style={{ color: '#526070' }}>Detalhe por Aluno — <span style={{ color: '#1E3A5F' }}>{mesRelatorio} {anoRelatorio}</span></p>
-                      <table className="w-full text-left border-collapse">
-                        <thead>
-                          <tr style={{ borderBottom: '2px solid #1E3A5F' }}>
-                            {['#', 'Nome do Aluno', 'Plano', 'Modalidade', 'Estado', 'Vencimento', 'Cobertura'].map((h, i) => (
-                              <th key={i} className="pb-2.5 text-[8px] font-black uppercase tracking-[0.14em]" style={{ color: '#1E3A5F', paddingRight: i < 6 ? '12px' : 0 }}>{h}</th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {resumosRel.length === 0 && (
-                            <tr><td colSpan={7} className="py-10 text-center text-[11px]" style={{ color: '#526070' }}>Nenhum aluno inscrito neste período</td></tr>
-                          )}
-                          {resumosRel.map(({ aluno, resumo }, idx) => {
-                            const tone = getBillingTone(resumo.status);
-                            return (
-                              <tr key={aluno.id} style={{ background: idx % 2 === 0 ? '#FFFFFF' : '#F8FAFD', borderBottom: '1px solid #EDF0F5' }}>
-                                <td className="py-2.5 pr-3 align-middle text-[10px] font-bold" style={{ color: '#8A9BB0' }}>{String(idx + 1).padStart(2,'0')}</td>
-                                <td className="py-2.5 pr-4 align-middle" style={{ width: '30%' }}>
-                                  <p className="text-[11px] font-bold leading-tight" style={{ color: '#0F1F35' }}>{aluno.nome}</p>
-                                  <p className="text-[9px]" style={{ color: '#8A9BB0' }}>{aluno.telefone || '—'}</p>
-                                </td>
-                                <td className="py-2.5 pr-4 align-middle text-[10px] font-semibold" style={{ color: '#1E3A5F' }}>{formatCve(aluno.plano)}</td>
-                                <td className="py-2.5 pr-4 align-middle">
-                                  <span className="px-1.5 py-0.5 rounded-[2px] text-[8px] font-bold uppercase tracking-wider" style={{ background: '#EBF0F8', color: '#1E3A5F' }}>{aluno.modalidade || 'Musc.'}</span>
-                                </td>
-                                <td className="py-2.5 pr-4 align-middle">
-                                  <div className="flex items-center gap-1.5">
-                                    <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: tone.color }} />
-                                    <span className="text-[10px] font-bold" style={{ color: tone.color }}>{getBillingBadgeLabel(resumo.status)}</span>
-                                  </div>
-                                </td>
-                                <td className="py-2.5 pr-4 align-middle text-[10px]" style={{ color: '#526070' }}>{resumo.nextChargeDate || '—'}</td>
-                                <td className="py-2.5 align-middle">
-                                  <div className="h-1.5 w-14 overflow-hidden rounded-full mb-0.5" style={{ background: '#E2E8F0' }}>
-                                    <div className="h-full rounded-full" style={{ width: `${getTimelineMetricWidth(resumo, aluno.status)}%`, background: tone.color }} />
-                                  </div>
-                                  <p className="text-[8px]" style={{ color: '#8A9BB0' }}>{resumo.coverageEnd || '—'}</p>
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-
-                    {/* Resumo Financeiro */}
-                    <div className="px-12 py-7 border-b border-[#E2E8F0]" style={{ background: '#F8FAFD' }}>
-                      <p className="text-[9px] font-black uppercase tracking-[0.22em] mb-5" style={{ color: '#526070' }}>Resumo Financeiro — {mesRelatorio} {anoRelatorio}</p>
-                      <div className="grid grid-cols-3 gap-6 mb-5">
-                        <div className="text-center">
-                          <p className="text-[9px] font-bold uppercase tracking-wider mb-1.5" style={{ color: '#526070' }}>Receita Prevista</p>
-                          <p className="text-[20px] font-black" style={{ color: '#1E3A5F' }}>{formatCve(previsaoMes)}</p>
-                          <p className="text-[9px] mt-1" style={{ color: '#8A9BB0' }}>Base: alunos activos</p>
-                        </div>
-                        <div className="text-center" style={{ borderLeft: '1px solid #E2E8F0', borderRight: '1px solid #E2E8F0' }}>
-                          <p className="text-[9px] font-bold uppercase tracking-wider mb-1.5" style={{ color: '#526070' }}>Receita Recebida</p>
-                          <p className="text-[20px] font-black" style={{ color: '#166534' }}>{formatCve(receitaMes)}</p>
-                          <p className="text-[9px] mt-1" style={{ color: '#8A9BB0' }}>{previsaoMes > 0 ? `${Math.round((receitaMes / previsaoMes) * 100)}% realizado` : '—'}</p>
-                        </div>
-                        <div className="text-center">
-                          <p className="text-[9px] font-bold uppercase tracking-wider mb-1.5" style={{ color: '#526070' }}>Por Cobrar</p>
-                          <p className="text-[20px] font-black" style={{ color: pendenteMes > 0 ? '#991B1B' : '#166534' }}>{formatCve(pendenteMes)}</p>
-                          <p className="text-[9px] mt-1" style={{ color: '#8A9BB0' }}>{pendenteMes === 0 ? '100% cobrado ✓' : `${atrasadosCount} em atraso`}</p>
-                        </div>
-                      </div>
-                      <div>
-                        <div className="flex justify-between text-[9px] mb-1.5" style={{ color: '#526070' }}>
-                          <span>Progresso de cobrança do mês</span>
-                          <span className="font-bold">{previsaoMes > 0 ? `${Math.round((receitaMes / previsaoMes) * 100)}%` : '—'}</span>
-                        </div>
-                        <div className="h-2 rounded-full overflow-hidden" style={{ background: '#E2E8F0' }}>
-                          <div className="h-full rounded-full transition-all" style={{ width: `${previsaoMes > 0 ? Math.min(100, (receitaMes / previsaoMes) * 100) : 0}%`, background: pendenteMes === 0 ? '#166534' : '#1E3A5F' }} />
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Rodapé do documento */}
-                    <div className="px-12 py-5 flex items-center justify-between" style={{ borderTop: '1px solid #E2E8F0' }}>
-                      <div className="flex items-center gap-2">
-                        <img src={NEXT_LAB_ICON} alt="" className="w-4 h-4" style={{ opacity: 0.35 }} />
-                        <p className="text-[9px]" style={{ color: '#8A9BB0' }}>{COMPANY_NAME} · {nomeAcademia}</p>
-                      </div>
-                      <p className="text-[9px] text-center" style={{ color: '#8A9BB0' }}>Gerado em {geradoEm} · Versão do momento da exportação</p>
-                      <p className="text-[9px] font-bold" style={{ color: '#1E3A5F' }}>Pág. 1 / 1</p>
-                    </div>
-
-                  </div>
-                </div>
-              </div>
-            </div>
-          );
-        })()}
+        {aba === 'relatorios_detalhado' && (
+          <RelatoriosPage
+            mesRelatorio={mesRelatorio}
+            setMesRelatorio={setMesRelatorio}
+            anoRelatorio={anoRelatorio}
+            setAnoRelatorio={setAnoRelatorio}
+            timelineFinanceiraMinimizada={timelineFinanceiraMinimizada}
+            setTimelineFinanceiraMinimizada={setTimelineFinanceiraMinimizada}
+            alunos={alunos}
+            pagamentos={pagamentos}
+            hojeReferencia={hojeReferencia}
+            larguraListas={larguraListas}
+            appLogo={appLogo}
+            nomeAcademia={nomeAcademia}
+            onExportarExcel={exportarRelatorioExcel}
+          />
+        )}
 
         {/* Module: Alunos */}
         {aba === 'gestao' && (
-          <div className="animate-slide-up h-full flex flex-col w-full overflow-hidden">
-            <div className="sticky top-0 z-20 overflow-hidden border-b border-blue-100 bg-[#EEF4FF]">
-              <div className="overflow-x-auto transition-all py-1.5">
-                <div className="flex min-w-[1180px] items-center gap-4 px-6">
-                  <div className="flex items-center gap-3 shrink-0">
-                    <span className="text-[11px] font-extrabold nl-text tracking-tight whitespace-nowrap">
-                      Arquivo por mês
-                    </span>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <button
-                        onClick={() => setAnoFinanceiro((prev) => prev - 1)}
-                        className="flex h-7 w-7 items-center justify-center rounded-full border border-[var(--border-light)] text-[var(--text-secondary)] transition-colors hover:border-[var(--color-primary)]/30 hover:text-[var(--color-primary)]"
-                        title="Ano anterior"
-                      >
-                        <ChevronLeft size={14} />
-                      </button>
-                      <div className="rounded-full border border-[var(--border-light)] bg-[var(--bg-surface)] px-3 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--text-secondary)]">
-                        {anoFinanceiro}
-                      </div>
-                      <button
-                        onClick={() => setAnoFinanceiro((prev) => prev + 1)}
-                        className="flex h-7 w-7 items-center justify-center rounded-full border border-[var(--border-light)] text-[var(--text-secondary)] transition-colors hover:border-[var(--color-primary)]/30 hover:text-[var(--color-primary)]"
-                        title="Próximo ano"
-                      >
-                        <ChevronRight size={14} />
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="relative flex-1 min-w-[520px]">
-                    <div className="absolute left-0 right-0 top-1/2 h-px -translate-y-1/2 bg-[#D9E2F2]" />
-                    <div className="relative flex items-center justify-between gap-1">
-                      {timelineMonths.map((month) => (
-                        <button
-                          key={month.id}
-                          onClick={() => setMesFinanceiro(month.label)}
-                          className={`group flex min-w-[76px] flex-col items-center rounded-[5px] px-1.5 transition-all ${
-                            timelineFinanceiraMinimizada ? 'gap-0 py-0.5' : 'gap-0.5 py-1'
-                          }`}
-                          title={`${month.label} ${anoFinanceiro} • ${month.count} aluno(s)`}
-                        >
-                          <span
-                            className={`h-3 w-3 rounded-full border transition-all ${
-                              month.active
-                                ? 'border-[var(--color-primary)] bg-[var(--color-primary)] shadow-[0_0_0_3px_rgba(37,99,235,0.12)]'
-                                : month.isCurrent
-                                  ? 'border-[#2563EB] bg-white'
-                                  : 'border-[var(--border)] bg-[var(--bg-surface)] group-hover:border-[var(--color-primary)]/45'
-                            }`}
-                          />
-                          <div className={`transition-all ${timelineFinanceiraMinimizada ? 'h-0 overflow-hidden opacity-0' : 'opacity-100'}`}>
-                            <p className={`text-[9px] font-bold uppercase tracking-[0.12em] ${month.active ? 'text-[var(--color-primary)]' : 'text-[var(--text-secondary)]'}`}>
-                              {month.shortLabel}
-                            </p>
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="flex shrink-0 items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setTimelineFinanceiraMinimizada((prev) => !prev)}
-                      className="inline-flex h-7 items-center gap-2 rounded-full border border-[var(--border-light)] px-3 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--text-secondary)] transition-colors hover:bg-[var(--color-secondary-lighter)]/45"
-                      title={timelineFinanceiraMinimizada ? 'Expandir linha do tempo' : 'Minimizar linha do tempo'}
-                    >
-                      <ChevronDown size={13} className={`transition-transform ${timelineFinanceiraMinimizada ? '-rotate-90' : 'rotate-0'}`} />
-                      {timelineFinanceiraMinimizada ? 'Expandir' : 'Minimizar'}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex-1 overflow-hidden px-6 py-6">
-              <div className="mx-auto h-full w-full" style={{ maxWidth: `${larguraListas}px` }}>
-                <div className="nl-card flex h-full overflow-hidden flex-col !rounded-[5px] !p-0 border border-[var(--border)] bg-[var(--bg-surface)] shadow-[0_20px_38px_rgba(15,23,42,0.08)]">
-                  {/* Tabela — toolbar lives INSIDE the scroll container so backdrop-blur sees content scroll behind it */}
-                  <div className="overflow-y-auto flex-1 custom-scrollbar nl-font-list" style={estiloTabelaAlunos}>
-                  <div className="border-b border-[var(--border-light)] px-4 py-2.5 sticky top-0 z-20" style={{ background: 'color-mix(in srgb, var(--bg-surface) 88%, transparent)', WebkitBackdropFilter: 'blur(8px)', backdropFilter: 'blur(8px)' }}>
-                    <div className="flex items-center gap-3 whitespace-nowrap">
-                      <div className="flex items-center rounded-[3px] border border-[var(--border-light)] bg-[var(--bg-surface)] p-0.5 shrink-0">
-                        {[
-                          { id: 'todos',      label: 'Todos' },
-                          { id: 'divida',     label: 'Em dívida' },
-                          { id: 'cobertos',   label: 'Cobertos' },
-                          { id: 'importados', label: 'Importados', count: alunosImportados.length },
-                        ].map(f => (
-                          <button
-                            key={f.id}
-                            type="button"
-                            onClick={() => setFiltroStatus(f.id as any)}
-                            className={`rounded-[2px] px-3 py-1 text-[10px] font-bold uppercase tracking-[0.1em] transition-all flex items-center gap-1.5 ${
-                              filtroStatus === f.id
-                                ? f.id === 'importados' ? 'bg-amber-500 text-white shadow-sm' : 'bg-[var(--color-primary)] text-white shadow-sm'
-                                : 'text-[var(--text-secondary)] hover:bg-slate-100'
-                            }`}
-                          >
-                            {f.label}
-                            {f.count !== undefined && f.count > 0 && (
-                              <span className={`inline-flex items-center justify-center w-4 h-4 rounded-full text-[9px] font-black ${filtroStatus === f.id ? 'bg-white/25' : 'bg-amber-100 text-amber-700'}`}>{f.count}</span>
-                            )}
-                          </button>
-                        ))}
-                      </div>
-
-                      <div className="flex-1 flex justify-center px-4">
-                        <div className="relative w-full max-w-[400px]">
-                          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-secondary)]" />
-                          <input
-                            type="text"
-                            placeholder="Buscar por nome ou telefone..."
-                            value={pesquisa}
-                            onChange={(e) => setPesquisa(e.target.value)}
-                            className="nl-input h-9 w-full !rounded-[3px] !pl-9 !pr-9 !bg-[var(--bg-surface)] !border-[var(--border-light)] text-[12px] shadow-sm"
-                          />
-                          {pesquisa && (
-                            <button
-                              type="button"
-                              onClick={() => setPesquisa('')}
-                              className="absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full text-[var(--text-tertiary)] transition-colors hover:bg-[var(--bg-surface)] hover:text-[var(--color-primary)]"
-                              title="Limpar pesquisa"
-                            >
-                              <X size={13} />
-                            </button>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="flex shrink-0 items-center gap-2">
-                        {[
-                          {
-                            label: `${mesFinanceiro} ${anoFinanceiro}`,
-                            tone: 'bg-[#F2F7FF] border-[#D7E6FF] text-[#1D4ED8]',
-                          },
-                          {
-                            label: 'Alunos',
-                            value: String(historicoMensalFiltrado.length),
-                            tone: 'bg-[#F2FBF5] border-[#D5EEDC] text-[#15803D]',
-                          },
-                          {
-                            label: 'Entradas',
-                            value: String(alunosNovosNoPeriodo.length),
-                            tone: 'bg-[#FFF7E8] border-[#F3DFC1] text-[#B45309]',
-                          },
-                        ].map((pill) => (
-                          <span
-                            key={pill.label}
-                            className={`inline-flex items-center gap-2 rounded-[4px] border px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.1em] ${pill.tone}`}
-                          >
-                            <span className="opacity-80">{pill.label}</span>
-                            {pill.value ? <span className="font-black tracking-tight normal-case">{pill.value}</span> : null}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Banner: dados importados aguardando revisão */}
-                  {alunosImportados.length > 0 && filtroStatus !== 'importados' && (
-                    <div className="flex items-center gap-3 px-4 py-2.5 bg-amber-50 border-b border-amber-200 shrink-0">
-                      <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse shrink-0" />
-                      <p className="text-[11px] font-bold text-amber-800 flex-1">
-                        {alunosImportados.length} {alunosImportados.length === 1 ? 'aluno importado aguarda' : 'alunos importados aguardam'} revisão
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() => setFiltroStatus('importados')}
-                        className="text-[10px] font-black uppercase tracking-wider text-amber-700 hover:text-amber-900 px-2 py-1 rounded bg-amber-100 hover:bg-amber-200 transition-colors border border-amber-300"
-                      >
-                        Ver
-                      </button>
-                      <button
-                        type="button"
-                        onClick={finalizarTodosImportados}
-                        className="text-[10px] font-black uppercase tracking-wider text-white bg-amber-500 hover:bg-amber-600 px-2 py-1 rounded transition-colors border border-amber-600 shadow-sm"
-                      >
-                        Finalizar todos
-                      </button>
-                    </div>
-                  )}
-
-                    {periodoSelecionadoFuturo ? (
-                      <div className="h-full flex flex-col items-center justify-center gap-3 opacity-50">
-                        <Calendar size={28} />
-                        <div className="text-center">
-                          <p className="text-[13px] font-semibold nl-text">Período ainda não iniciado</p>
-                          <p className="text-[11px] nl-text-muted mt-1">Os alunos serão migrados automaticamente quando {mesFinanceiro} {anoFinanceiro} chegar.</p>
-                        </div>
-                      </div>
-                    ) : historicoMensalFiltrado.length === 0 ? (
-                      <div className="h-full flex flex-col items-center justify-center gap-3 opacity-40">
-                        <Users size={28} />
-                        <div className="text-center">
-                          <p className="text-[13px] font-semibold nl-text">Nenhum aluno encontrado</p>
-                          <p className="text-[11px] nl-text-muted mt-1">Tente outro filtro ou período.</p>
-                        </div>
-                      </div>
-                    ) : (
-                      <table className="w-full text-left border-collapse">
-                        <thead className="bg-[var(--color-secondary-lighter)] text-[10px] font-semibold nl-text-muted uppercase tracking-[0.06em] sticky top-[56px] z-10 border-b border-[var(--border-light)]">
-                          <tr>
-                            <th style={{ padding: 'var(--list-row-py) var(--list-row-px)', width: '3%', textAlign: 'center' }}>#</th>
-                            <th style={{ padding: 'var(--list-row-py) var(--list-row-px)', width: '20%' }}>Aluno</th>
-                            <th style={{ padding: 'var(--list-row-py) var(--list-row-px)', width: '11%' }}>Telefone</th>
-                            <th style={{ padding: 'var(--list-row-py) var(--list-row-px)', width: '10%' }}>Mensalidade</th>
-                            <th style={{ padding: 'var(--list-row-py) var(--list-row-px)', width: '10%' }}>Próx. cobrança</th>
-                            <th style={{ padding: 'var(--list-row-py) var(--list-row-px)', width: '27%' }}>Estado</th>
-                            <th style={{ padding: 'var(--list-row-py) var(--list-row-px)', width: '10%' }}>Categoria</th>
-                            <th style={{ padding: 'var(--list-row-py) var(--list-row-px)', width: '9%', textAlign: 'center' }}>Ações</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {historicoMensalFiltrado.map(({ aluno, resumo, entrouNesteMes }, index) => {
-                            const isImported = isImportedStatus(aluno.status);
-                            const progressoDias = getTimelineMetricWidth(resumo, aluno.status);
-                            const paused = isPausedStatus(aluno.status);
-                            const blocked = isBlockedStatus(aluno.status);
-                            const isAtrasado = resumo.status === 'atrasado' || resumo.status === 'hoje';
-                            const isPago = resumo.status === 'pago';
-                            const isDentroDoPrazo = !isAtrasado && !isPago;
-
-                            const estadoCor = (() => {
-                              if (isImported)    return { dot: '#D97706', label: 'Importado', text: '#92400E', bg: '#FFFBEB', border: '#FDE68A' };
-                              if (blocked)       return { dot: '#B91C1C', label: 'Bloqueado', text: '#991B1B', bg: '#FEF2F2', border: '#FECACA' };
-                              if (paused)        return { dot: '#78350F', label: 'Pausado',   text: '#78350F', bg: '#FFF7ED', border: '#FED7AA' };
-                              if (isAtrasado)    return { dot: '#DC2626', label: resumo.status === 'hoje' ? 'Vence hoje' : 'Atrasado', text: '#B91C1C', bg: '#FEF2F2', border: '#FECACA' };
-                              if (isPago)        return { dot: '#16A34A', label: 'Em dia',    text: '#15803D', bg: '#F0FDF4', border: '#BBF7D0' };
-                              if (isDentroDoPrazo) return { dot: '#2563EB', label: 'No prazo',  text: '#1D4ED8', bg: '#EFF6FF', border: '#BFDBFE' };
-                              return             { dot: '#64748b', label: 'Regular',   text: '#475569', bg: '#F8FAFC', border: '#E2E8F0' };
-                            })();
-
-                            return (
-                              <tr
-                                key={`${periodoSelecionadoKey}-${aluno.id}`}
-                                className={`group border-b border-[var(--border-light)] transition-colors cursor-pointer ${isImported ? 'bg-amber-50 hover:bg-amber-100' : `rp-${index % 6}`}`}
-                                onClick={() => isImported ? abrirEdicao(aluno) : abrirPerfilAluno(aluno)}
-                                title={isImported ? 'Clique para editar e confirmar dados' : 'Clique para ver o perfil completo do aluno'}
-                              >
-                                {/* Nº */}
-                                <td className="align-middle text-center" style={{ padding: 'var(--list-row-py) var(--list-row-px)' }}>
-                                  <span className="text-[10px] font-medium nl-text-muted tabular-nums">{index + 1}</span>
-                                </td>
-                                {/* Aluno */}
-                                <td className="align-middle" style={{ padding: 'var(--list-row-py) var(--list-row-px)' }}>
-                                  <div className="flex items-center gap-2">
-                                    <div className="rounded-full bg-[var(--color-secondary-lighter)] flex items-center justify-center font-semibold nl-text-muted border border-[var(--border)] overflow-hidden shrink-0" style={{ width: 'var(--list-avatar-size)', height: 'var(--list-avatar-size)', fontSize: 'var(--list-font-secondary)' }}>
-                                      {aluno.foto_path ? <img src={`local-resource://${aluno.foto_path}`} className="w-full h-full object-cover" /> : getAlunoIniciais(aluno)}
-                                    </div>
-                                    <div className="flex min-w-0 flex-col">
-                                      <div className="flex items-center gap-1.5">
-                                        <p className="font-medium nl-text group-hover:text-[var(--color-primary)] transition-colors truncate" style={{ fontSize: 'var(--list-font-primary)' }}>{aluno.nome}</p>
-                                        {isImported && <span className="text-[8px] font-bold uppercase tracking-wider text-amber-700 bg-amber-100 border border-amber-300 px-1.5 py-0.5 rounded-[3px] shrink-0">importado</span>}
-                                        {!isImported && entrouNesteMes && <span className="text-[8px] font-bold uppercase tracking-wider text-[var(--color-primary)] bg-[var(--color-primary-light)] px-1.5 py-0.5 rounded-[3px] shrink-0">novo</span>}
-                                      </div>
-                                    </div>
-                                  </div>
-                                </td>
-                                {/* Telefone */}
-                                <td className="align-middle" style={{ padding: 'var(--list-row-py) var(--list-row-px)' }}>
-                                  <span className="nl-text-muted" style={{ fontSize: 'var(--list-font-secondary)' }}>{aluno.telefone || '—'}</span>
-                                </td>
-                                {/* Mensalidade — escudo */}
-                                <td className="align-middle" style={{ padding: 'var(--list-row-py) var(--list-row-px)' }}>
-                                  <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-[4px] border border-[var(--border)] bg-[var(--color-secondary-lighter)]/50">
-                                    <Shield size={10} className="nl-text-muted shrink-0 opacity-60" />
-                                    <span className="font-semibold nl-text whitespace-nowrap" style={{ fontSize: 'var(--list-font-secondary)' }}>{formatCve(aluno.plano)}</span>
-                                  </div>
-                                </td>
-                                {/* Próxima cobrança */}
-                                <td className="align-middle" style={{ padding: 'var(--list-row-py) var(--list-row-px)' }}>
-                                  <span className="nl-text-muted" style={{ fontSize: 'var(--list-font-secondary)' }}>{resumo.nextChargeDate || '—'}</span>
-                                </td>
-                                {/* Estado — pill badge + barra */}
-                                <td className="align-middle" style={{ padding: 'var(--list-row-py) var(--list-row-px)' }}>
-                                  <div className="flex items-center gap-2 min-w-0">
-                                    <span
-                                      className="inline-flex items-center gap-1.5 text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap shrink-0"
-                                      style={{ background: estadoCor.bg, color: estadoCor.text, border: `1px solid ${estadoCor.border}` }}
-                                    >
-                                      <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: estadoCor.dot }} />
-                                      {estadoCor.label}
-                                    </span>
-                                    {!paused && !blocked && !isImported && (
-                                      <div className="flex-1 min-w-0 flex flex-col gap-0.5">
-                                        <div className="h-1 w-full overflow-hidden rounded-full bg-[var(--color-secondary-lighter)]">
-                                          <div className={`h-full rounded-full transition-all duration-500 ${getTimelineMetricBarClass(resumo.status)}`} style={{ width: `${progressoDias}%` }} />
-                                        </div>
-                                        <p className="nl-text-muted truncate leading-none" style={{ fontSize: '9px' }}>{resumo.statusLabel}</p>
-                                      </div>
-                                    )}
-                                  </div>
-                                </td>
-                                {/* Categoria */}
-                                <td className="align-middle" style={{ padding: 'var(--list-row-py) var(--list-row-px)' }}>
-                                  <span className="nl-text-muted truncate" style={{ fontSize: 'var(--list-font-secondary)' }}>{aluno.categoria || '—'}</span>
-                                </td>
-                                {/* Acções */}
-                                <td className="align-middle" style={{ padding: 'var(--list-row-py) var(--list-row-px)' }} onClick={(e) => e.stopPropagation()}>
-                                  <div className="flex items-center justify-center gap-1">
-                                    <button onClick={(e) => { e.stopPropagation(); abrirPerfilAluno(aluno); }}
-                                      className="nl-icon-btn !w-6 !h-6 !rounded-[4px] hover:!bg-[var(--color-primary-light)] hover:!text-[var(--color-primary)] hover:!border-[var(--color-primary)]/20"
-                                      title="Ver perfil em Contactos">
-                                      <BookUser size={11} />
-                                    </button>
-                                  </div>
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    )}
-                  </div>
-
-                  {/* Barra de resumo financeiro — colada na base da lista */}
-                  {!periodoSelecionadoFuturo && historicoMensalFiltrado.length > 0 && (() => {
-                    const totalPago   = totalRecebidoPeriodo;
-                    const totalDivida = previsaoRecuperacao;
-                    const totalGeral  = Math.max(1, totalPago + totalDivida);
-                    const pctPago     = Math.round((totalPago   / totalGeral) * 100);
-                    const pctDivida   = Math.round((totalDivida / totalGeral) * 100);
-                    return (
-                      <div className="shrink-0 border-t border-[var(--border-light)] bg-[var(--color-secondary-lighter)]/30 px-4 py-2 flex items-center gap-4">
-                        {/* Barra segmentada */}
-                        <div className="flex-1 flex items-center gap-2">
-                          <div className="flex-1 h-1.5 rounded-full overflow-hidden bg-[var(--border-light)] flex">
-                            <div className="h-full bg-emerald-500 transition-all duration-700 rounded-l-full" style={{ width: `${pctPago}%` }} />
-                            <div className="h-full bg-red-400 transition-all duration-700 rounded-r-full" style={{ width: `${pctDivida}%` }} />
-                          </div>
-                        </div>
-                        {/* Valores */}
-                        <div className="flex items-center gap-4 shrink-0">
-                          <div className="flex items-center gap-1.5">
-                            <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
-                            <span className="text-[10px] nl-text-muted">Recebido</span>
-                            <span className="text-[10px] font-semibold text-emerald-700">{formatCve(totalPago)}</span>
-                          </div>
-                          <div className="flex items-center gap-1.5">
-                            <span className="w-2 h-2 rounded-full bg-red-400 shrink-0" />
-                            <span className="text-[10px] nl-text-muted">Em dívida</span>
-                            <span className="text-[10px] font-semibold text-red-600">{formatCve(totalDivida)}</span>
-                          </div>
-                          <div className="h-3 w-px bg-[var(--border)]" />
-                          <span className="text-[10px] nl-text-muted">{historicoMensalFiltrado.length} alunos · {mesFinanceiro} {anoFinanceiro}</span>
-                        </div>
-                      </div>
-                    );
-                  })()}
-                </div>
-              </div>
-            </div>
-          </div>
+          <GestaoPage
+            larguraListas={larguraListas}
+            mostrarFiltroListaAlunos={mostrarFiltroListaAlunos}
+            setMostrarFiltroListaAlunos={setMostrarFiltroListaAlunos}
+            mostrarOrdenacaoListaAlunos={mostrarOrdenacaoListaAlunos}
+            setMostrarOrdenacaoListaAlunos={setMostrarOrdenacaoListaAlunos}
+            mostrarCalendarioMeses={mostrarCalendarioMeses}
+            setMostrarCalendarioMeses={setMostrarCalendarioMeses}
+            periodoAtualSelecionado={periodoAtualSelecionado}
+            periodoSelecionadoLabel={periodoSelecionadoLabel}
+            subtituloPeriodoSelecionado={subtituloPeriodoSelecionado}
+            historicoMensalFiltrado={historicoMensalFiltrado}
+            alunosNovosNoPeriodo={alunosNovosNoPeriodo}
+            anoFinanceiro={anoFinanceiro}
+            setAnoFinanceiro={setAnoFinanceiro}
+            anoAtual={anoAtual}
+            mesFinanceiro={mesFinanceiro}
+            setMesFinanceiro={setMesFinanceiro}
+            hojeReferencia={hojeReferencia}
+            periodoSelecionadoKey={periodoSelecionadoKey}
+            filtroStatus={filtroStatus}
+            setFiltroStatus={setFiltroStatus}
+            ordenacaoListaAlunos={ordenacaoListaAlunos}
+            setOrdenacaoListaAlunos={setOrdenacaoListaAlunos}
+            pesquisa={pesquisa}
+            setPesquisa={setPesquisa}
+            alunosEmDivida={alunosEmDivida}
+            alunosImportados={alunosImportados}
+            totalRecebidoPeriodo={totalRecebidoPeriodo}
+            previsaoRecuperacao={previsaoRecuperacao}
+            progressoPeriodoPercentual={progressoPeriodoPercentual}
+            periodoSelecionadoPassado={periodoSelecionadoPassado}
+            diasNoPeriodoSelecionado={diasNoPeriodoSelecionado}
+            diaProgressoPeriodo={diaProgressoPeriodo}
+            periodoSelecionadoFuturo={periodoSelecionadoFuturo}
+            estiloTabelaAlunos={estiloTabelaAlunos}
+            setAlunoPerfil={setAlunoPerfil}
+            irParaMesAtualOperacional={irParaMesAtualOperacional}
+            abrirEdicao={abrirEdicao}
+            abrirPerfilAluno={abrirPerfilAluno}
+            finalizarTodosImportados={finalizarTodosImportados}
+            setAba={setAba}
+          />
         )}
 
         {/* Module: Finanças — removido, integrado em Alunos */}
 
         {/* Module: CRM / Contactos */}
-        {aba === 'contactos' && (() => {
-          const resumoContacto = alunoPerfil ? getStudentStatusForMonth(alunoPerfil, pagamentos, anoFinanceiro, mesFinanceiroIndex, hojeReferencia) : null;
-          const pagamentosAluno = alunoPerfil ? pagamentos.filter(p => (p.alunoId || p.aluno_id) === alunoPerfil.id).sort((a, b) => (b.id || 0) - (a.id || 0)) : [];
-
-          return (
-          <div className="flex flex-col h-full animate-slide-up w-full overflow-hidden bg-[var(--bg-surface)]">
-
-            {/* ── Barra de navegação por mês ── */}
-            <div className="sticky top-0 z-20 overflow-hidden border-b border-blue-100 bg-[#EEF4FF] shrink-0">
-              <div className="overflow-x-auto transition-all py-1.5">
-                <div className="flex min-w-[1180px] items-center gap-4 px-6">
-                  <div className="flex items-center gap-3 shrink-0">
-                    <span className="text-[11px] font-extrabold nl-text tracking-tight whitespace-nowrap">Arquivo por mês</span>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <button onClick={() => setAnoFinanceiro((prev) => prev - 1)} className="flex h-7 w-7 items-center justify-center rounded-full border border-[var(--border-light)] text-[var(--text-secondary)] transition-colors hover:border-[var(--color-primary)]/30 hover:text-[var(--color-primary)]" title="Ano anterior"><ChevronLeft size={14} /></button>
-                      <div className="rounded-full border border-[var(--border-light)] bg-[var(--bg-surface)] px-3 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--text-secondary)]">{anoFinanceiro}</div>
-                      <button onClick={() => setAnoFinanceiro((prev) => prev + 1)} className="flex h-7 w-7 items-center justify-center rounded-full border border-[var(--border-light)] text-[var(--text-secondary)] transition-colors hover:border-[var(--color-primary)]/30 hover:text-[var(--color-primary)]" title="Próximo ano"><ChevronRight size={14} /></button>
-                    </div>
-                  </div>
-                  <div className="relative flex-1 min-w-[520px]">
-                    <div className="absolute left-0 right-0 top-1/2 h-px -translate-y-1/2 bg-[#D9E2F2]" />
-                    <div className="relative flex items-center justify-between gap-1">
-                      {timelineMonths.map((month) => (
-                        <button key={month.id} onClick={() => setMesFinanceiro(month.label)}
-                          className={`group flex min-w-[76px] flex-col items-center rounded-[5px] px-1.5 transition-all ${timelineFinanceiraMinimizada ? 'gap-0 py-0.5' : 'gap-0.5 py-1'}`}
-                          title={`${month.label} ${anoFinanceiro} • ${month.count} aluno(s)`}>
-                          <span className={`h-3 w-3 rounded-full border transition-all ${month.active ? 'border-[var(--color-primary)] bg-[var(--color-primary)] shadow-[0_0_0_3px_rgba(37,99,235,0.12)]' : month.isCurrent ? 'border-[#2563EB] bg-white' : 'border-[var(--border)] bg-[var(--bg-surface)] group-hover:border-[var(--color-primary)]/45'}`} />
-                          <div className={`transition-all ${timelineFinanceiraMinimizada ? 'h-0 overflow-hidden opacity-0' : 'opacity-100'}`}>
-                            <p className={`text-[9px] font-bold uppercase tracking-[0.12em] ${month.active ? 'text-[var(--color-primary)]' : 'text-[var(--text-secondary)]'}`}>{month.shortLabel}</p>
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-2">
-                    <button type="button" onClick={() => setTimelineFinanceiraMinimizada((prev) => !prev)}
-                      className="inline-flex h-7 items-center gap-2 rounded-full border border-[var(--border-light)] px-3 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--text-secondary)] transition-colors hover:bg-[var(--color-secondary-lighter)]/45"
-                      title={timelineFinanceiraMinimizada ? 'Expandir linha do tempo' : 'Minimizar linha do tempo'}>
-                      <ChevronDown size={13} className={`transition-transform ${timelineFinanceiraMinimizada ? '-rotate-90' : 'rotate-0'}`} />
-                      {timelineFinanceiraMinimizada ? 'Expandir' : 'Minimizar'}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-          <div className="flex flex-1 overflow-hidden justify-center">
-          <div className="flex h-full w-full overflow-hidden" style={{ maxWidth: `${larguraListas}px` }}>
-
-            {/* ── Coluna esquerda: lista de contactos ── */}
-            <div className="flex flex-col border-r border-[var(--border)] bg-white shrink-0" style={{ width: `${larguraSidebarContactos}px` }}>
-
-              {/* Cabeçalho da lista */}
-              <div className="px-4 pt-5 pb-3 border-b border-[var(--border-light)]">
-                <div className="flex items-center justify-between mb-3">
-                  <div>
-                    <h2 className="text-[15px] font-bold nl-text tracking-tight">Contactos</h2>
-                    <p className="text-[11px] nl-text-muted mt-0.5">{alunosDirectorio.length} parceiros</p>
-                  </div>
-                  <button onClick={buscarDuplicados} title="Verificar duplicados" className="w-7 h-7 rounded-full flex items-center justify-center text-slate-400 hover:text-[var(--color-primary)] hover:bg-[var(--color-primary-light)] transition-all">
-                    <Sparkles size={13} />
-                  </button>
-                </div>
-
-                {/* Pesquisa */}
-                <div className="relative mb-3">
-                  <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                  <input
-                    type="text"
-                    placeholder="Pesquisar..."
-                    value={pesquisaDirectorio}
-                    onChange={(e) => setPesquisaDirectorio(e.target.value)}
-                    className="w-full h-8 pl-8 pr-3 text-[12px] rounded-[6px] border border-[var(--border-light)] bg-[var(--color-secondary-lighter)]/40 outline-none focus:border-[var(--color-primary)]/50 focus:bg-white transition-all placeholder:text-slate-400 nl-text"
-                  />
-                </div>
-
-                {/* Filtros de status */}
-                <div className="flex gap-1">
-                  {[
-                    { id: 'todos',      label: 'Todos' },
-                    { id: 'ativos',     label: 'Ativos' },
-                    { id: 'pausados',   label: 'Paus.' },
-                    { id: 'bloqueados', label: 'Bloq.' },
-                  ].map(item => (
-                    <button
-                      key={item.id}
-                      onClick={() => setFiltroDirectorioStatus(item.id as DirectoryFilterStatus)}
-                      className={`flex-1 py-1 rounded-[4px] text-[9px] font-bold uppercase tracking-wide transition-all ${
-                        filtroDirectorioStatus === item.id
-                          ? 'bg-[var(--color-primary)] text-white'
-                          : 'text-slate-500 hover:bg-slate-100'
-                      }`}
-                    >{item.label}</button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Lista */}
-              <div className="flex-1 overflow-y-auto custom-scrollbar">
-                {alunosDirectorio.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center h-full gap-2 opacity-40">
-                    <Users size={22} className="nl-text-muted" />
-                    <p className="text-[11px] font-semibold nl-text-muted">Sem resultados</p>
-                  </div>
-                ) : alunosDirectorio.map((aluno) => {
-                  const isSelected = alunoPerfil?.id === aluno.id;
-                  const resumoItem = getStudentStatusForMonth(aluno, pagamentos, anoFinanceiro, mesFinanceiroIndex, hojeReferencia);
-                  const dotColor = resumoItem.status === 'atrasado' || resumoItem.status === 'hoje'
-                    ? 'bg-red-500'
-                    : resumoItem.status === 'pago'
-                      ? 'bg-emerald-500'
-                      : isImportedStatus(aluno.status)
-                        ? 'bg-amber-400'
-                        : isPausedStatus(aluno.status)
-                          ? 'bg-slate-400'
-                          : isBlockedStatus(aluno.status)
-                            ? 'bg-red-800'
-                            : 'bg-blue-400';
-
-                  const iniciais = getAlunoIniciais(aluno);
-                  const avatarColor = getAvatarColorByName(aluno.nome);
-
-                  return (
-                    <button
-                      key={aluno.id}
-                      onClick={() => { setAlunoPerfil({ ...aluno, nome: getAlunoNomeSeguro(aluno) } as Aluno); carregarNotas(aluno.id); }}
-                      className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors border-b border-[var(--border-light)]/60 ${
-                        isSelected
-                          ? 'bg-[var(--color-primary-light)] border-l-2 border-l-[var(--color-primary)]'
-                          : 'hover:bg-slate-50 border-l-2 border-l-transparent'
-                      }`}
-                    >
-                      {/* Avatar circular */}
-                      <div className={`w-9 h-9 rounded-full flex items-center justify-center text-[12px] font-bold text-white shrink-0 overflow-hidden ${isSelected ? 'bg-[var(--color-primary)]' : avatarColor}`}>
-                        {aluno.foto_path
-                          ? <img src={`local-resource://${aluno.foto_path}`} className="w-full h-full object-cover" />
-                          : iniciais}
-                      </div>
-
-                      {/* Nome + telefone */}
-                      <div className="flex-1 min-w-0">
-                        <p className={`text-[13px] font-semibold truncate leading-tight ${isSelected ? 'text-[var(--color-primary)]' : 'nl-text'}`}>
-                          {aluno.nome}
-                        </p>
-                        <p className="text-[11px] nl-text-muted truncate leading-tight mt-0.5">
-                          {aluno.telefone || '—'}
-                        </p>
-                      </div>
-
-                      {/* Indicador de estado */}
-                      <span className={`w-2 h-2 rounded-full shrink-0 ${dotColor}`} />
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* ── Coluna direita: detalhe do contacto ── */}
-            <div className="flex-1 flex flex-col overflow-hidden">
-              {alunoPerfil && resumoContacto ? (() => {
-                const emAtraso = resumoContacto.status === 'atrasado';
-                const statusColor = emAtraso || resumoContacto.status === 'hoje'
-                  ? 'text-red-600 bg-red-50 border-red-200'
-                  : resumoContacto.status === 'pago'
-                    ? 'text-emerald-600 bg-emerald-50 border-emerald-200'
-                    : isImportedStatus(alunoPerfil.status)
-                      ? 'text-amber-600 bg-amber-50 border-amber-200'
-                      : 'text-blue-600 bg-blue-50 border-blue-200';
-
-                const iniciais = getAlunoIniciais(alunoPerfil);
-                const avatarColor = getAvatarColorByName(alunoPerfil.nome);
-
-                return (
-                  <>
-                    {/* ── Header do perfil ── */}
-                    <div className="px-8 py-5 border-b border-[var(--border-light)] bg-white flex items-center gap-5 shrink-0">
-                      {/* Avatar grande com upload */}
-                      <div className="relative group shrink-0">
-                        <div className={`w-14 h-14 rounded-full overflow-hidden flex items-center justify-center text-[18px] font-bold text-white ${avatarColor}`}>
-                          {alunoPerfil.foto_path
-                            ? <img src={`local-resource://${alunoPerfil.foto_path}`} className="w-full h-full object-cover" />
-                            : iniciais}
-                        </div>
-                        <label className="absolute inset-0 rounded-full bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 cursor-pointer transition-all">
-                          <Camera className="text-white" size={14} />
-                          <input type="file" className="hidden" accept="image/*" onChange={handleUploadFoto} />
-                        </label>
-                      </div>
-
-                      {/* Nome + meta */}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2.5 mb-1">
-                          <h2 className="text-[18px] font-bold nl-text tracking-tight leading-none truncate">{alunoPerfil.nome}</h2>
-                          <span className={`text-[9px] font-bold px-2 py-0.5 rounded-[4px] border uppercase tracking-wider shrink-0 ${statusColor}`}>
-                            {resumoContacto.statusLabel}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-3 text-[11px] nl-text-muted">
-                          <span className="flex items-center gap-1"><Phone size={11} className="opacity-50" />{alunoPerfil.telefone || '—'}</span>
-                          {alunoPerfil.email && <><span className="opacity-30">·</span><span className="flex items-center gap-1"><Mail size={11} className="opacity-50" />{alunoPerfil.email}</span></>}
-                          <span className="opacity-30">·</span>
-                          <span className="flex items-center gap-1"><Tag size={11} className="opacity-50" />{alunoPerfil.categoria || 'Geral'}</span>
-                        </div>
-                        {emAtraso && resumoContacto.monthsInDebt.length > 0 && (
-                          <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
-                            <span className="text-[9px] font-bold text-red-600 uppercase tracking-wide">Em dívida:</span>
-                            {resumoContacto.monthsInDebt.map(m => (
-                              <span key={m} className="text-[8px] font-bold bg-red-100 text-red-700 px-1.5 py-0.5 rounded uppercase">{m}</span>
-                            ))}
-                            {resumoContacto.monthsInDebt.length > 1 && (
-                              <button onClick={() => abrirResolverPendencias(alunoPerfil)} className="text-[8px] font-bold text-white bg-red-600 hover:bg-red-700 px-2 py-0.5 rounded uppercase transition-colors">Resolver tudo</button>
-                            )}
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Acções */}
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        <button onClick={() => enviarMensagemWhatsApp(alunoPerfil)} title="WhatsApp" className="w-8 h-8 rounded-full flex items-center justify-center text-emerald-600 hover:bg-emerald-50 border border-transparent hover:border-emerald-200 transition-all"><Smartphone size={14} /></button>
-                        <button onClick={() => window.open(`mailto:${alunoPerfil.email}`)} title="E-mail" className="w-8 h-8 rounded-full flex items-center justify-center nl-text-muted hover:bg-slate-100 border border-transparent hover:border-slate-200 transition-all"><Mail size={14} /></button>
-                        <div className="w-px h-5 bg-slate-200 mx-1" />
-                        <button onClick={() => abrirEdicao(alunoPerfil)} className="h-8 px-3 rounded-[6px] text-[11px] font-semibold nl-text border border-[var(--border)] bg-white hover:bg-slate-50 transition-colors flex items-center gap-1.5"><Edit size={12} /> Editar</button>
-                        <div className="relative" ref={menuAcoesRef}>
-                          <button onClick={() => setMostrarMenuAcoes(!mostrarMenuAcoes)} title="Mais opções" className={`w-8 h-8 rounded-full flex items-center justify-center nl-text-muted hover:bg-slate-100 border border-transparent hover:border-slate-200 transition-all ${mostrarMenuAcoes ? 'bg-slate-100' : ''}`}><MoreVertical size={14} /></button>
-                          {mostrarMenuAcoes && (
-                            <div className="absolute right-0 top-full mt-1 w-48 bg-white border border-[var(--border)] rounded-[8px] shadow-lg z-[110] overflow-hidden py-1">
-                              <button onClick={() => { setMostrarMenuAcoes(false); alterarStatus(alunoPerfil.id, isPausedStatus(alunoPerfil.status) ? 'ativo' : 'pausado'); }} className="w-full px-4 py-2.5 text-left text-[12px] font-medium nl-text hover:bg-slate-50 flex items-center gap-2.5 transition-colors">
-                                {isPausedStatus(alunoPerfil.status) ? <><RotateCw size={13} className="text-blue-500" /> Retomar</> : <><Pause size={13} className="text-amber-500" /> Pausar</>}
-                              </button>
-                              <button onClick={() => { setMostrarMenuAcoes(false); alterarStatus(alunoPerfil.id, isBlockedStatus(alunoPerfil.status) ? 'ativo' : 'bloqueado'); }} className="w-full px-4 py-2.5 text-left text-[12px] font-medium nl-text hover:bg-slate-50 flex items-center gap-2.5 transition-colors">
-                                {isBlockedStatus(alunoPerfil.status) ? <><Shield size={13} className="text-blue-500" /> Desbloquear</> : <><Ban size={13} className="text-red-500" /> Bloquear</>}
-                              </button>
-                              <div className="h-px bg-slate-100 my-1" />
-                              <button onClick={() => { setMostrarMenuAcoes(false); eliminarAluno(alunoPerfil.id); }} className="w-full px-4 py-2.5 text-left text-[12px] font-medium text-red-600 hover:bg-red-50 flex items-center gap-2.5 transition-colors">
-                                <Trash2 size={13} /> Eliminar
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* ── Corpo: info + finanças + notas ── */}
-                    <div className="flex-1 overflow-y-auto custom-scrollbar">
-                      <div className="grid grid-cols-[280px_1fr_260px] gap-0 h-full divide-x divide-[var(--border-light)]">
-
-                        {/* Coluna A: Dados pessoais */}
-                        <div className="p-6 flex flex-col gap-6 overflow-y-auto custom-scrollbar">
-                          <div>
-                            <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-3">Contacto</p>
-                            <div className="space-y-0 divide-y divide-[var(--border-light)]">
-                              {[
-                                { icon: <Phone size={12} />, label: 'Telemóvel', value: alunoPerfil.telefone || '—' },
-                                { icon: <Mail size={12} />, label: 'E-mail', value: alunoPerfil.email || '—' },
-                                { icon: <MapPin size={12} />, label: 'Morada', value: alunoPerfil.morada || '—' },
-                              ].map(row => (
-                                <div key={row.label} className="flex items-start gap-3 py-2.5">
-                                  <span className="text-slate-400 mt-0.5 shrink-0">{row.icon}</span>
-                                  <div className="min-w-0">
-                                    <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400 leading-none mb-0.5">{row.label}</p>
-                                    <p className="text-[12px] nl-text leading-tight break-words">{row.value}</p>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-
-                          <div>
-                            <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-3">Plano & Inscrição</p>
-                            <div className="space-y-0 divide-y divide-[var(--border-light)]">
-                              {[
-                                { icon: <Wallet size={12} />, label: 'Mensalidade', value: formatCve(alunoPerfil.plano) },
-                                { icon: <Tag size={12} />, label: 'Categoria', value: alunoPerfil.categoria || 'Geral' },
-                                { icon: <Calendar size={12} />, label: 'Inscrito em', value: alunoPerfil.data_matricula || '—' },
-                                { icon: <Hash size={12} />, label: 'Referência', value: `#${String(alunoPerfil.id).slice(-6)}` },
-                              ].map(row => (
-                                <div key={row.label} className="flex items-start gap-3 py-2.5">
-                                  <span className="text-slate-400 mt-0.5 shrink-0">{row.icon}</span>
-                                  <div className="min-w-0">
-                                    <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400 leading-none mb-0.5">{row.label}</p>
-                                    <p className="text-[12px] nl-text leading-tight">{row.value}</p>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-
-                          {(alunoPerfil.objetivos || alunoPerfil.alergias) && (
-                            <div className="space-y-2">
-                              {alunoPerfil.objetivos && (
-                                <div>
-                                  <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-1.5">Objectivos</p>
-                                  <p className="text-[12px] nl-text leading-relaxed">{alunoPerfil.objetivos}</p>
-                                </div>
-                              )}
-                              {alunoPerfil.alergias && (
-                                <div className="mt-3 px-3 py-2.5 rounded-[6px] bg-amber-50 border border-amber-200">
-                                  <p className="text-[9px] font-bold uppercase tracking-widest text-amber-600 mb-1">Alergias</p>
-                                  <p className="text-[12px] text-amber-900 leading-tight">{alunoPerfil.alergias}</p>
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Coluna B: Histórico financeiro */}
-                        <div className="flex flex-col overflow-hidden">
-                          <div className="px-6 py-4 border-b border-[var(--border-light)] flex items-center justify-between shrink-0">
-                            <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Cobranças</p>
-                          </div>
-
-                          {/* Resumo de billing */}
-                          <div className="px-6 py-4 grid grid-cols-2 gap-3 border-b border-[var(--border-light)] shrink-0">
-                            {[
-                              { label: 'Estado', value: resumoContacto.statusLabel },
-                              { label: 'Mensalidade', value: formatCve(alunoPerfil.plano) },
-                              { label: 'Próx. cobrança', value: resumoContacto.nextChargeDate || '—' },
-                              { label: 'Cobertura até', value: resumoContacto.coverageEnd || '—' },
-                            ].map(card => (
-                              <div key={card.label}>
-                                <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400 mb-0.5">{card.label}</p>
-                                <p className="text-[13px] font-bold nl-text leading-tight">{card.value}</p>
-                              </div>
-                            ))}
-                          </div>
-
-                          {/* Lista de pagamentos */}
-                          <div className="flex-1 overflow-y-auto custom-scrollbar">
-                            {pagamentosAluno.length === 0 ? (
-                              <div className="flex flex-col items-center justify-center h-40 gap-2 opacity-40">
-                                <CreditCard size={20} className="nl-text-muted" />
-                                <p className="text-[11px] font-semibold nl-text-muted">Sem pagamentos</p>
-                              </div>
-                            ) : pagamentosAluno.map((p, i) => (
-                              <div key={`${p.id}-${i}`} className="flex items-center justify-between px-6 py-3 border-b border-[var(--border-light)] hover:bg-slate-50 transition-colors">
-                                <div>
-                                  <p className="text-[12px] font-semibold nl-text leading-tight">{p?.data_pagamento || '—'}</p>
-                                  <p className="text-[10px] text-slate-400 mt-0.5">{p?.metodo_pagamento || '—'}</p>
-                                </div>
-                                <span className="text-[13px] font-bold text-emerald-700">{formatCve(p?.valor)}</span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-
-                        {/* Coluna C: Notas */}
-                        <div className="flex flex-col overflow-hidden">
-                          <div className="px-5 py-4 border-b border-[var(--border-light)] shrink-0">
-                            <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-3">Notas</p>
-                            <div className="flex gap-1.5">
-                              <input
-                                type="text"
-                                placeholder="Adicionar nota..."
-                                value={novaNota}
-                                onChange={(e) => setNovaNota(e.target.value)}
-                                onKeyDown={(e) => e.key === 'Enter' && adicionarNota()}
-                                className="flex-1 h-8 px-3 text-[11px] rounded-[6px] border border-[var(--border-light)] bg-[var(--color-secondary-lighter)]/40 outline-none focus:border-[var(--color-primary)]/50 focus:bg-white transition-all placeholder:text-slate-400 nl-text"
-                              />
-                              <button onClick={adicionarNota} className="w-8 h-8 rounded-[6px] bg-[var(--color-primary)] text-white flex items-center justify-center hover:opacity-90 transition-opacity shrink-0">
-                                <Plus size={13} />
-                              </button>
-                            </div>
-                          </div>
-
-                          <div className="flex-1 overflow-y-auto custom-scrollbar p-5 space-y-2">
-                            {notasContacto.length === 0 ? (
-                              <div className="flex flex-col items-center justify-center h-32 gap-2 opacity-40">
-                                <MessageSquare size={18} className="nl-text-muted" />
-                                <p className="text-[11px] font-semibold nl-text-muted">Nenhuma nota</p>
-                              </div>
-                            ) : notasContacto.map((nota, i) => (
-                              <div key={nota.id} className="group relative rounded-[6px] border border-[var(--border-light)] bg-white p-3 hover:shadow-sm transition-shadow">
-                                <p className="text-[12px] nl-text leading-relaxed pr-5">{nota.texto}</p>
-                                <p className="text-[9px] text-slate-400 mt-2">{nota.data_criacao}</p>
-                                <button onClick={() => eliminarNota(nota.id)} className="absolute top-2 right-2 w-5 h-5 rounded flex items-center justify-center text-slate-300 hover:text-red-500 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-all">
-                                  <Trash2 size={10} />
-                                </button>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-
-                      </div>
-                    </div>
-                  </>
-                );
-              })() : (
-                <div className="flex-1 flex flex-col items-center justify-center gap-3 opacity-40">
-                  <BookUser size={32} className="nl-text-muted" />
-                  <div className="text-center">
-                    <p className="text-[14px] font-semibold nl-text">Selecione um contacto</p>
-                    <p className="text-[12px] nl-text-muted mt-1">Escolha um parceiro na lista para ver o perfil</p>
-                  </div>
-                </div>
-              )}
-            </div>
-
-          </div>
-          </div>
-          </div>
-          );
-        })()}
+        {aba === 'contactos' && (
+          <ContactosPage
+            alunoPerfil={alunoPerfil}
+            setAlunoPerfil={setAlunoPerfil}
+            mesFinanceiroIndex={mesFinanceiroIndex}
+            anoFinanceiro={anoFinanceiro}
+            setAnoFinanceiro={setAnoFinanceiro}
+            mesFinanceiro={mesFinanceiro}
+            setMesFinanceiro={setMesFinanceiro}
+            timelineFinanceiraMinimizada={timelineFinanceiraMinimizada}
+            setTimelineFinanceiraMinimizada={setTimelineFinanceiraMinimizada}
+            pagamentos={pagamentos}
+            notasContacto={notasContacto}
+            carregarNotas={carregarNotas}
+            alunos={alunos}
+            hojeReferencia={hojeReferencia}
+            larguraListas={larguraListas}
+            larguraSidebarContactos={larguraSidebarContactos}
+            alunosDirectorio={alunosDirectorio}
+            pesquisaDirectorio={pesquisaDirectorio}
+            setPesquisaDirectorio={setPesquisaDirectorio}
+            filtroDirectorioStatus={filtroDirectorioStatus}
+            setFiltroDirectorioStatus={setFiltroDirectorioStatus}
+            handleUploadFoto={handleUploadFoto}
+            enviarMensagemWhatsApp={enviarMensagemWhatsApp}
+            abrirEdicao={abrirEdicao}
+            alterarStatus={alterarStatus}
+            eliminarAluno={eliminarAluno}
+            abrirResolverPendencias={abrirResolverPendencias}
+            adicionarNota={adicionarNota}
+            eliminarNota={eliminarNota}
+            buscarDuplicados={buscarDuplicados}
+            timelineMonths={timelineMonths}
+            mostrarMenuAcoes={mostrarMenuAcoes}
+            setMostrarMenuAcoes={setMostrarMenuAcoes}
+            menuAcoesRef={menuAcoesRef}
+            novaNota={novaNota}
+            setNovaNota={setNovaNota}
+          />
+        )}
         {aba === 'configuracoes' && sessionUser?.role === 'admin' && (
-          <div className="flex-1 overflow-hidden flex bg-[var(--bg-app)] animate-fade-in custom-scrollbar overflow-y-auto p-8">
-            <div className="mx-auto flex w-full h-fit min-h-[600px] border border-[var(--border)] shadow-sm rounded-[4px]" style={{ maxWidth: `${larguraListas}px` }}>
-              {/* Sidebar de Configurações */}
-              <div className="w-[240px] border-r border-[var(--border-light)] bg-[var(--color-secondary-lighter)]/40 p-6 flex flex-col gap-1 shrink-0">
-               <div className="mb-4 px-2">
-                  <p className="text-[10px] font-black nl-text-muted uppercase tracking-[0.2em] mb-1">Painel de Controlo</p>
-                  <h2 className="text-[16px] font-black nl-text tracking-tight uppercase">Ajustes</h2>
-               </div>
-               
-               {([
-                  { id: 'geral',          label: 'Academia',      icon: <Landmark size={16} />,    color: 'text-blue-600' },
-                  { id: 'utilizadores',   label: 'Utilizadores',  icon: <Users size={16} />,       color: 'text-emerald-600' },
-                  { id: 'tema',           label: 'Aparência',     icon: <Palette size={16} />,     color: 'text-purple-600' },
-                  { id: 'notificacoes',   label: 'Notificações',  icon: <Bell size={16} />,        color: 'text-rose-600' },
-                  { id: 'operacao',       label: 'Operação',      icon: <Shield size={16} />,      color: 'text-orange-600' },
-                  { id: 'ajuda',          label: 'Suporte',       icon: <Info size={16} />,        color: 'text-sky-600' },
-                  { id: 'sobre',          label: 'Licença',       icon: <Sparkles size={16} />,    color: 'text-amber-600' },
-               ] as const).map(item => (
-                 <button
-                   key={item.id}
-                   onClick={() => setConfigAba(item.id as any)}
-                   className={`w-full text-left px-4 py-3 rounded-[3px] flex items-center gap-3 transition-all ${
-                     configAba === item.id
-                       ? 'bg-[var(--bg-surface)] shadow-sm ring-1 ring-black/5 text-[var(--color-primary)] font-bold'
-                       : 'nl-text-muted hover:bg-[var(--bg-surface)]/60 hover:text-[var(--text-primary)]'
-                   }`}
-                 >
-                   <div className={`shrink-0 ${configAba === item.id ? '' : item.color}`}>
-                     {item.icon}
-                   </div>
-                   <div className="min-w-0">
-                     <p className="text-[13px] leading-tight">{item.label}</p>
-                   </div>
-                 </button>
-               ))}
-            </div>
-
-            {/* Conteúdo Dinâmico */}
-            <div className="flex-1 bg-[var(--bg-surface)] p-10 lg:p-14 overflow-y-auto custom-scrollbar">
-               {configAba === 'geral' && (
-                 <div className="animate-slide-up space-y-10">
-                    <div>
-                      <h3 className="text-[28px] font-black nl-text tracking-tighter uppercase">Instituição</h3>
-                      <p className="nl-text-muted font-medium mt-1">Gira as informações públicas e de contacto da sua academia.</p>
-                    </div>
-
-                    {/* Logo da academia */}
-                    <div className="space-y-3">
-                      <label className="text-[11px] font-bold nl-text-muted uppercase tracking-wider block">Logótipo da Academia</label>
-                      <div className="flex items-center gap-6 p-5 rounded-[6px] bg-[var(--color-secondary-lighter)]/40 border border-[var(--border)]">
-                        <div className="w-20 h-20 rounded-[8px] bg-[var(--bg-surface)] border border-[var(--border)] shadow-sm flex items-center justify-center overflow-hidden shrink-0">
-                          <img src={appLogo || APP_ICON_PATH} className="w-14 h-14 object-contain" alt="Logo" />
-                        </div>
-                        <div className="space-y-1.5">
-                          <p className="text-[13px] font-semibold nl-text">Imagem usada no sistema, PDFs e cabeçalhos</p>
-                          <p className="text-[11px] nl-text-muted">Formatos: PNG, JPEG, SVG · Recomendado: fundo transparente</p>
-                          <div className="flex items-center gap-3 mt-2">
-                            <input
-                              type="file"
-                              id="logo-upload-geral"
-                              className="hidden"
-                              accept="image/svg+xml,image/png,image/jpeg"
-                              onChange={(e) => {
-                                const file = e.target.files?.[0];
-                                if (file) {
-                                  const reader = new FileReader();
-                                  reader.onload = (ev) => {
-                                    const result = ev.target?.result as string;
-                                    setAppLogo(result);
-                                    localStorage.setItem('nl_app_logo', result);
-                                    guardarConfiguracao('app_logo', result);
-                                  };
-                                  reader.readAsDataURL(file);
-                                }
-                              }}
-                            />
-                            <button onClick={() => document.getElementById('logo-upload-geral')?.click()} className="nl-btn nl-btn-secondary h-9 px-4 text-[12px]">
-                              Alterar Logo
-                            </button>
-                            <button onClick={() => { setAppLogo(APP_ICON_PATH); localStorage.removeItem('nl_app_logo'); guardarConfiguracao('app_logo', ''); }} className="text-[11px] font-semibold nl-text-muted hover:text-red-500 transition-colors">
-                              Repor padrão
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 gap-8">
-                       <div className="space-y-2">
-                          <label className="text-[11px] font-bold nl-text-muted uppercase tracking-wider">Nome Comercial</label>
-                          <input type="text" value={nomeAcademia} onChange={(e) => setNomeAcademia(e.target.value)} className="nl-input w-full h-12 px-4" />
-                       </div>
-
-                       <div className="grid grid-cols-2 gap-6">
-                          <div className="space-y-2">
-                             <label className="text-[11px] font-bold nl-text-muted uppercase tracking-wider">Telemóvel Suporte</label>
-                             <input type="text" value={telefoneAcademia} onChange={(e) => setTelefoneAcademia(e.target.value)} className="nl-input w-full h-12 px-4" />
-                          </div>
-                          <div className="space-y-2">
-                             <label className="text-[11px] font-bold nl-text-muted uppercase tracking-wider">Email de Contacto</label>
-                             <input type="email" value={emailAcademia} onChange={(e) => setEmailAcademia(e.target.value)} className="nl-input w-full h-12 px-4" />
-                          </div>
-                       </div>
-
-                       <div className="space-y-2">
-                          <label className="text-[11px] font-bold nl-text-muted uppercase tracking-wider">Localização / Morada</label>
-                          <input type="text" value={moradaAcademia} onChange={(e) => setMoradaAcademia(e.target.value)} className="nl-input w-full h-12 px-4" />
-                       </div>
-                    </div>
-
-                    {/* ── Segurança de Acesso ── */}
-                    <div className="space-y-4 pt-8 border-t border-[var(--border)]">
-                      <div>
-                        <h3 className="text-[14px] font-bold nl-text">Segurança & Autenticação</h3>
-                        <p className="text-[12px] nl-text-muted mt-0.5">Defina as políticas de privacidade e persistência de sessão para o ecrã de login.</p>
-                      </div>
-
-                      <div className="flex flex-col gap-3">
-                        {/* Lembrar utilizadores */}
-                        <label className="flex items-center gap-2 cursor-pointer">
-                          <div className={`w-9 h-5 rounded-full transition-colors relative ${lembrarUtilizadores ? 'bg-[var(--color-primary)]' : 'bg-slate-200'}`}
-                               onClick={() => setLembrarUtilizadores(!lembrarUtilizadores)}>
-                            <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-all ${lembrarUtilizadores ? 'left-4' : 'left-0.5'}`} />
-                          </div>
-                          <span className="text-[12px] nl-text-muted">Lembrar utilizadores anteriores (mostra lista no email do login)</span>
-                        </label>
-
-                        {/* Guardar sessão */}
-                        <label className="flex items-center gap-2 cursor-pointer">
-                          <div className={`w-9 h-5 rounded-full transition-colors relative ${permitirGuardarSessao ? 'bg-[var(--color-primary)]' : 'bg-slate-200'}`}
-                               onClick={() => setPermitirGuardarSessao(!permitirGuardarSessao)}>
-                            <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-all ${permitirGuardarSessao ? 'left-4' : 'left-0.5'}`} />
-                          </div>
-                          <span className="text-[12px] nl-text-muted">Permitir guardar sessão (exibe a caixa "Manter sessão iniciada")</span>
-                        </label>
-
-                        {/* Exigir Senha para Operacionais */}
-                        <label className="flex items-center gap-2 cursor-pointer mt-1">
-                          <div className={`w-9 h-5 rounded-full transition-colors relative ${requireOperationalPassword ? 'bg-[var(--color-primary)]' : 'bg-slate-200'}`}
-                               onClick={() => setRequireOperationalPassword(!requireOperationalPassword)}>
-                            <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-all ${requireOperationalPassword ? 'left-4' : 'left-0.5'}`} />
-                          </div>
-                          <span className="text-[12px] nl-text-muted">Exigir palavra-passe para utilizadores operacionais</span>
-                        </label>
-                      </div>
-                    </div>
-
-                    {/* ── Slideshow de Login ── */}
-                    <div className="space-y-4 pt-8 border-t border-[var(--border)]">
-                      <div>
-                        <h3 className="text-[14px] font-bold nl-text">Slideshow na Tela de Login</h3>
-                        <p className="text-[12px] nl-text-muted mt-0.5">Até 5 imagens que passam automaticamente no painel direito do login. Quando o app estiver inativo, entra em modo apresentação.</p>
-                      </div>
-
-                      {/* Imagens do slideshow */}
-                      <div className="grid grid-cols-5 gap-2">
-                        {Array.from({ length: 5 }).map((_, i) => {
-                          const img = slideshowImages[i];
-                          return (
-                            <div key={i} className="relative aspect-video rounded-[5px] overflow-hidden border border-[var(--border)] bg-[var(--color-secondary-lighter)] group">
-                              {img ? (
-                                <>
-                                  <img src={img} className="w-full h-full object-cover" alt={`Slide ${i + 1}`} />
-                                  <button
-                                    onClick={() => {
-                                      const next = slideshowImages.filter((_, idx) => idx !== i);
-                                      setSlideshowImages(next);
-                                      localStorage.setItem('nl_slideshow_images', JSON.stringify(next));
-                                    }}
-                                    className="absolute top-1 right-1 w-5 h-5 bg-red-500 text-white rounded-full text-[10px] font-bold flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                                  >×</button>
-                                </>
-                              ) : (
-                                <label className="w-full h-full flex flex-col items-center justify-center cursor-pointer nl-text-muted opacity-60 hover:opacity-100 hover:bg-[var(--color-secondary-lighter)] transition-colors gap-1">
-                                  <Plus size={14} />
-                                  <span className="text-[9px] font-bold uppercase tracking-wider">{i + 1}</span>
-                                  <input type="file" accept="image/*" className="hidden" onChange={(e) => {
-                                    const file = e.target.files?.[0]; if (!file) return;
-                                    const reader = new FileReader();
-                                    reader.onload = (ev) => {
-                                      const b64 = ev.target?.result as string;
-                                      const next = [...slideshowImages]; next[i] = b64;
-                                      const filtered = next.filter(Boolean);
-                                      setSlideshowImages(filtered);
-                                      localStorage.setItem('nl_slideshow_images', JSON.stringify(filtered));
-                                    };
-                                    reader.readAsDataURL(file);
-                                  }} />
-                                </label>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-
-                      <div className="flex items-center gap-6">
-                        {/* Timer */}
-                        <div className="flex items-center gap-2">
-                          <label className="text-[11px] font-bold nl-text-muted uppercase tracking-wider whitespace-nowrap">Intervalo (seg)</label>
-                          <input type="number" min={3} max={30} value={slideshowTimer}
-                            onChange={e => { const v = Number(e.target.value); setSlideshowTimer(v); localStorage.setItem('nl_slideshow_timer', String(v)); }}
-                            className="nl-input w-16 h-8 text-center text-[13px]" />
-                        </div>
-                        {/* Texto overlay */}
-                        <label className="flex items-center gap-2 cursor-pointer">
-                          <div className={`w-9 h-5 rounded-full transition-colors relative ${slideshowTextEnabled ? 'bg-[var(--color-primary)]' : 'bg-slate-200'}`}
-                               onClick={() => { const v = !slideshowTextEnabled; setSlideshowTextEnabled(v); localStorage.setItem('nl_slideshow_text', v ? '1' : '0'); }}>
-                            <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-all ${slideshowTextEnabled ? 'left-4' : 'left-0.5'}`} />
-                          </div>
-                          <span className="text-[12px] nl-text-muted">Mostrar texto sobre as imagens</span>
-                        </label>
-                        {/* Limpar tudo */}
-                        {slideshowImages.length > 0 && (
-                          <button onClick={() => { setSlideshowImages([]); localStorage.removeItem('nl_slideshow_images'); }}
-                            className="text-[11px] font-bold text-red-500 hover:underline">
-                            Limpar Slideshow
-                          </button>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="pt-6 border-t flex justify-end">
-                       <button onClick={salvarDefinicoesGerais} className="nl-btn nl-btn-primary px-10 h-11 font-bold rounded-[3px]">Guardar Alterações</button>
-                    </div>
-                 </div>
-               )}
-
-               {configAba === 'tema' && (
-                 <div className="animate-slide-up space-y-10">
-                    <div>
-                      <h3 className="text-[28px] font-black nl-text tracking-tighter uppercase">Aparência & Branding</h3>
-                      <p className="nl-text-muted font-medium mt-1">Personalize o tema e a identidade visual do sistema NEXTLevel.</p>
-                    </div>
-
-                    <div className="space-y-8">
-
-                      {/* ── Selector de Tema ── */}
-                      <div className="space-y-4">
-                        <label className="text-[11px] font-bold nl-text-muted uppercase tracking-wider block">Tema da Interface</label>
-                        <div className="grid grid-cols-3 gap-4">
-                          {([
-                            {
-                              id: 'light' as const,
-                              label: 'Claro',
-                              desc: 'Padrão profissional',
-                              preview: { bg: '#F4F5F7', surface: '#FFFFFF', header: '#FFFFFF', accent: '#0065FF', text: '#172B4D', border: '#DFE1E6' },
-                            },
-                            {
-                              id: 'dark' as const,
-                              label: 'Escuro',
-                              desc: 'Conforto nocturno',
-                              preview: { bg: '#161A1D', surface: '#22272B', header: '#1D2125', accent: '#579DFF', text: '#F1F2F4', border: '#3D474F' },
-                            },
-                            {
-                              id: 'claude' as const,
-                              label: 'Claude',
-                              desc: 'Quente & elegante',
-                              preview: { bg: '#EDE7DF', surface: '#FAF7F3', header: '#F2EDE6', accent: '#CF7C5A', text: '#1E1612', border: '#DDD4C8' },
-                            },
-                          ] as const).map((tema) => {
-                            const active = appTheme === tema.id;
-                            return (
-                              <button
-                                key={tema.id}
-                                onClick={() => { setAppTheme(tema.id); localStorage.setItem('nl_app_theme', tema.id); }}
-                                className={`relative flex flex-col rounded-[8px] overflow-hidden border-2 transition-all text-left ${active ? 'border-[var(--color-primary)] shadow-[0_0_0_3px_var(--shadow-primary)]' : 'border-[var(--border)] hover:border-[var(--color-primary)]/40'}`}
-                              >
-                                {/* Mini preview */}
-                                <div className="h-[80px] w-full relative overflow-hidden" style={{ background: tema.preview.bg }}>
-                                  {/* Mini header */}
-                                  <div className="absolute top-0 left-0 right-0 h-5 flex items-center px-2 gap-1.5" style={{ background: tema.preview.header, borderBottom: `1px solid ${tema.preview.border}` }}>
-                                    <div className="w-8 h-1.5 rounded-full" style={{ background: tema.preview.accent }} />
-                                    <div className="flex gap-1 ml-auto">
-                                      {[0,1,2].map(i => <div key={i} className="h-1.5 rounded-full" style={{ width: i === 0 ? 14 : i === 1 ? 10 : 10, background: tema.preview.border }} />)}
-                                    </div>
-                                  </div>
-                                  {/* Mini content */}
-                                  <div className="absolute top-6 left-2 right-2 bottom-2 rounded-[3px] p-2 flex flex-col gap-1" style={{ background: tema.preview.surface, border: `1px solid ${tema.preview.border}` }}>
-                                    <div className="h-1.5 rounded-full w-3/4" style={{ background: tema.preview.text, opacity: 0.7 }} />
-                                    <div className="h-1 rounded-full w-1/2" style={{ background: tema.preview.border }} />
-                                    <div className="h-4 rounded-[2px] w-16 mt-auto" style={{ background: tema.preview.accent }} />
-                                  </div>
-                                </div>
-                                {/* Label */}
-                                <div className="px-3 py-2.5 bg-[var(--bg-surface)] border-t border-[var(--border)]">
-                                  <div className="flex items-center justify-between">
-                                    <div>
-                                      <p className="text-[12px] font-bold nl-text">{tema.label}</p>
-                                      <p className="text-[10px] nl-text-muted">{tema.desc}</p>
-                                    </div>
-                                    {active && (
-                                      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[var(--color-primary)]">
-                                        <CheckCircle2 size={12} className="text-white" />
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
-                              </button>
-                            );
-                          })}
-                        </div>
-                        <p className="text-[11px] nl-text-muted">O tema aplica-se imediatamente em todo o sistema sem necessidade de reiniciar.</p>
-                      </div>
-
-                      <div className="border-t border-[var(--border)]" />
-
-                       <div className="grid grid-cols-2 gap-10">
-                          <div className="space-y-4">
-                             <label className="text-[11px] font-bold nl-text-muted uppercase tracking-wider block">Logotipo da Academia</label>
-                             <div className="flex items-center gap-5">
-                                <div className="w-24 h-24 rounded-[6px] bg-[var(--color-secondary-lighter)] border border-[var(--border)] flex items-center justify-center overflow-hidden">
-                                   <img src={appLogo || APP_ICON_PATH} className="w-16 h-16 object-contain" alt="Logo" />
-                                </div>
-                                <div className="flex flex-col gap-2">
-                                  <input type="file" id="logo-upload" className="hidden" accept="image/svg+xml,image/png,image/jpeg"
-                                    onChange={(e) => { const file = e.target.files?.[0]; if (file) { const reader = new FileReader(); reader.onload = (ev) => { setAppLogo(ev.target?.result as string); }; reader.readAsDataURL(file); } }}
-                                  />
-                                  <button onClick={() => document.getElementById('logo-upload')?.click()} className="nl-btn nl-btn-secondary h-10 px-4 text-[12px]">Alterar Logo</button>
-                                  <button onClick={() => { setAppLogo(APP_ICON_PATH); localStorage.removeItem('nl_app_logo'); }} className="text-[10px] font-bold text-red-500 hover:underline">Reset Padrão</button>
-                                </div>
-                             </div>
-                          </div>
-                          <div className="space-y-4">
-                             <label className="text-[11px] font-bold nl-text-muted uppercase tracking-wider block">Banner de Login (50%)</label>
-                             <div className="flex items-center gap-5">
-                                <div className="w-32 h-20 rounded-[6px] bg-[var(--color-secondary-lighter)] border border-[var(--border)] flex items-center justify-center overflow-hidden">
-                                   <img src={bannerAcademia || DEFAULT_ACADEMY_BANNER} className="w-full h-full object-cover" alt="Banner" />
-                                </div>
-                                <div className="flex flex-col gap-2">
-                                  <input type="file" id="banner-upload" className="hidden" accept="image/*"
-                                    onChange={(e) => { const file = e.target.files?.[0]; if (file) { const reader = new FileReader(); reader.onload = (ev) => { setBannerAcademia(ev.target?.result as string); }; reader.readAsDataURL(file); } }}
-                                  />
-                                  <button onClick={() => document.getElementById('banner-upload')?.click()} className="nl-btn nl-btn-secondary h-10 px-4 text-[12px]">Upload Imagem</button>
-                                  <button onClick={() => { setBannerAcademia(DEFAULT_ACADEMY_BANNER); localStorage.removeItem('nl_banner_academia'); }} className="text-[10px] font-bold text-red-500 hover:underline">Reset Padrão</button>
-                                </div>
-                             </div>
-                          </div>
-                       </div>
-
-                       <div className="p-5 bg-[var(--color-primary-light)] border border-[var(--color-primary)]/20 rounded-[6px]">
-                          <p className="text-[12px] font-bold nl-text mb-0.5">Dica de Design</p>
-                          <p className="text-[11px] nl-text-muted leading-relaxed">Para o banner de login, recomenda-se imagens horizontais Full HD para garantir impacto visual premium na tela de entrada.</p>
-                       </div>
-
-                        <div className="pt-4 border-t border-[var(--border)] flex justify-end">
-                           <button onClick={salvarAparencia} className="nl-btn nl-btn-primary px-10 h-11 font-bold rounded-[3px]">Guardar Alterações</button>
-                        </div>
-                    </div>
-                 </div>
-               )}
-
-               {configAba === 'utilizadores' && (
-                 <div className="animate-slide-up space-y-8">
-                    <div className="flex items-center justify-between">
-                       <div>
-                         <h3 className="text-[28px] font-black nl-text tracking-tighter uppercase">Utilizadores</h3>
-                         <p className="nl-text-muted font-medium mt-1">{listaUtilizadores.length} conta(s) · clique para editar ou ver actividade</p>
-                       </div>
-                       <button onClick={() => setMostrarFormNovoUtilizador(true)} className="nl-btn nl-btn-primary px-6 h-11 flex items-center gap-2">
-                          <Plus size={16} /> Novo Utilizador
-                       </button>
-                    </div>
-
-                    <div className="border border-[var(--border)] rounded-[6px] overflow-hidden bg-[var(--bg-surface)] shadow-sm divide-y divide-[var(--border-light)]">
-                       {listaUtilizadores.length === 0 && (
-                         <p className="px-6 py-8 text-center text-[13px] nl-text-muted">Nenhum utilizador registado.</p>
-                       )}
-                       {listaUtilizadores.map(user => {
-                         const avatar = utilizadorAvatares[String(user.id)];
-                         const isCurrent = sessionUser?.email === user.email;
-                         const activityCount = logs.filter(l => l.user_name === user.name).length;
-                         return (
-                           <button
-                             key={user.id}
-                             type="button"
-                             onClick={() => {
-                               setUtilizadorEmEdicao(user);
-                               setUtilizadorEdicaoForm({ name: user.name, role: user.role, isActive: user.is_active !== 0, novaSenha: '' });
-                               carregarLogs();
-                             }}
-                             className="w-full flex items-center gap-4 px-6 py-4 text-left hover:bg-[var(--color-secondary-lighter)]/40 transition-colors group"
-                           >
-                             {/* Avatar */}
-                             <div className="relative shrink-0">
-                               <div className={`w-11 h-11 rounded-[8px] overflow-hidden flex items-center justify-center font-bold text-[14px] border-2 ${user.is_active === 0 ? 'opacity-40 grayscale' : ''} ${isCurrent ? 'border-[var(--color-primary)]' : 'border-transparent'}`}
-                                    style={{ background: avatar ? 'transparent' : `hsl(${(user.name.charCodeAt(0) * 37) % 360}, 60%, 88%)`, color: `hsl(${(user.name.charCodeAt(0) * 37) % 360}, 60%, 35%)` }}>
-                                 {avatar
-                                   ? <img src={avatar} className="w-full h-full object-cover" alt={user.name} />
-                                   : user.name.slice(0, 2).toUpperCase()}
-                               </div>
-                               {isCurrent && <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-500 border-2 border-white" />}
-                             </div>
-                             {/* Info */}
-                             <div className="flex-1 min-w-0">
-                               <div className="flex items-center gap-2">
-                                 <p className="text-[14px] font-semibold nl-text truncate">{user.name}</p>
-                                 {isCurrent && <span className="text-[9px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-full">Eu</span>}
-                                 {user.is_active === 0 && <span className="text-[9px] font-bold nl-text-muted bg-[var(--color-secondary-lighter)] border border-[var(--border)] px-1.5 py-0.5 rounded-full">Inactivo</span>}
-                               </div>
-                               <p className="text-[12px] nl-text-muted truncate">{user.email}</p>
-                             </div>
-                             {/* Role + Quick Access + stats */}
-                             <div className="flex items-center gap-2 shrink-0">
-                               {/* Toggle Quick Access */}
-                               {user.is_active !== 0 && (
-                                 <button
-                                   type="button"
-                                   title={quickAccessUsers.includes(user.id) ? 'Remover acesso rápido' : 'Ativar acesso rápido (sem senha)'}
-                                   onClick={(e) => {
-                                     e.stopPropagation();
-                                     setQuickAccessUsers(prev => {
-                                       const next = prev.includes(user.id) ? prev.filter(id => id !== user.id) : [...prev, user.id];
-                                       localStorage.setItem('nl_quick_access_users', JSON.stringify(next));
-                                       setLoginSlideshowUsers(listaUtilizadores.filter(u => next.includes(u.id) && u.is_active !== 0));
-                                       return next;
-                                     });
-                                   }}
-                                   className={`flex items-center gap-1 h-6 px-2 rounded-full text-[9px] font-black uppercase tracking-wider transition-all ${quickAccessUsers.includes(user.id) ? 'bg-amber-100 text-amber-700 border border-amber-300' : 'bg-slate-100 text-slate-400 border border-slate-200 hover:bg-amber-50 hover:text-amber-600 hover:border-amber-200'}`}
-                                 >
-                                   <Zap size={9} /> Quick
-                                 </button>
-                               )}
-                               {activityCount > 0 && (
-                                 <span className="text-[11px] nl-text-muted">{activityCount} acção{activityCount !== 1 ? 'ões' : ''}</span>
-                               )}
-                               <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${user.role === 'admin' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600'}`}>
-                                 {user.role === 'admin' ? 'Admin' : 'Operador'}
-                               </span>
-                               <ChevronRight size={14} className="nl-text-muted group-hover:text-[var(--color-primary)] transition-colors" />
-                             </div>
-                           </button>
-                         );
-                       })}
-                    </div>
-                 </div>
-               )}
-
-               {configAba === 'notificacoes' && (
-                 <div className="animate-slide-up space-y-10">
-                    <div>
-                      <h3 className="text-[28px] font-black nl-text tracking-tighter uppercase">Notificações</h3>
-                      <p className="nl-text-muted font-medium mt-1">Controle quais alertas e avisos recebe no sistema.</p>
-                    </div>
-
-                    {/* Notificações Desktop */}
-                    <div className="space-y-4">
-                      <p className="text-[11px] font-bold nl-text-muted uppercase tracking-wider border-b border-[var(--border-light)] pb-2">Sistema</p>
-                      <div className="space-y-3">
-                        {([
-                          { label: 'Notificações de sistema (desktop)', sub: 'Alertas via notificação nativa do sistema operativo', val: desktopNotificationsEnabled, set: setDesktopNotificationsEnabled },
-                          { label: 'Alertas do sistema', sub: 'Avisos de backup, actualizações e manutenção', val: notifSistema, set: setNotifSistema },
-                        ] as const).map(row => (
-                          <div key={row.label} className="flex items-center justify-between p-4 rounded-[6px] bg-[var(--color-secondary-lighter)]/40 border border-[var(--border)]">
-                            <div>
-                              <p className="text-[13px] font-semibold nl-text">{row.label}</p>
-                              <p className="text-[11px] nl-text-muted mt-0.5">{row.sub}</p>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => row.set(!row.val)}
-                              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none ${row.val ? 'bg-[var(--color-primary)]' : 'bg-slate-300'}`}
-                            >
-                              <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition-transform ${row.val ? 'translate-x-5' : 'translate-x-0'}`} />
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Categorias de notificação */}
-                    <div className="space-y-4">
-                      <p className="text-[11px] font-bold nl-text-muted uppercase tracking-wider border-b border-[var(--border-light)] pb-2">Categorias</p>
-                      <div className="space-y-3">
-                        {([
-                          { label: 'Pagamentos', sub: 'Confirmação de pagamentos registados e cobranças pendentes', icon: <CreditCard size={16} className="text-emerald-600" />, val: notifPagamentos, set: setNotifPagamentos },
-                          { label: 'Matrículas', sub: 'Novos alunos inscritos e alterações de estado', icon: <UserPlus size={16} className="text-blue-600" />, val: notifMatriculas, set: setNotifMatriculas },
-                          { label: 'Relatórios mensais', sub: 'Aviso quando o relatório do mês está disponível para exportar', icon: <FileBarChart size={16} className="text-amber-600" />, val: notifRelatorios, set: setNotifRelatorios },
-                        ] as const).map(row => (
-                          <div key={row.label} className="flex items-center justify-between p-4 rounded-[6px] bg-[var(--color-secondary-lighter)]/40 border border-[var(--border)]">
-                            <div className="flex items-center gap-3">
-                              <div className="w-8 h-8 rounded-[5px] bg-[var(--bg-surface)] border border-[var(--border)] flex items-center justify-center shrink-0 shadow-sm">
-                                {row.icon}
-                              </div>
-                              <div>
-                                <p className="text-[13px] font-semibold nl-text">{row.label}</p>
-                                <p className="text-[11px] nl-text-muted mt-0.5">{row.sub}</p>
-                              </div>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => row.set(!row.val)}
-                              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none ${row.val ? 'bg-[var(--color-primary)]' : 'bg-slate-300'}`}
-                            >
-                              <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition-transform ${row.val ? 'translate-x-5' : 'translate-x-0'}`} />
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Relatório mensal disponível */}
-                    {relatorioMensalDisponivel && (
-                      <div className="nl-alert nl-alert-info">
-                        <div className="nl-alert-icon"><FileBarChart size={15} /></div>
-                        <div className="flex-1 min-w-0">
-                          <p className="nl-alert-title">Relatório de {relatorioMensalDisponivel} disponível</p>
-                          <p className="nl-alert-body">Aceda ao dossier de desempenho para exportar em PDF ou Excel.</p>
-                        </div>
-                        <button type="button" onClick={() => { setAba('gestao'); setMostrarModalExport(true); }}
-                          className="shrink-0 text-[10px] font-black uppercase tracking-wider text-blue-700 bg-blue-100 hover:bg-blue-200 border border-blue-200 px-2.5 py-1 rounded-[4px] transition-colors self-start">
-                          Exportar →
-                        </button>
-                      </div>
-                    )}
-
-                    {/* Histórico de notificações */}
-                    <div className="space-y-4">
-                      <div className="flex items-center justify-between border-b border-[var(--border-light)] pb-2">
-                        <p className="text-[11px] font-bold nl-text-muted uppercase tracking-wider">Histórico</p>
-                        {notificacoes.length > 0 && (
-                          <button type="button" onClick={() => setNotificacoes([])} className="text-[11px] text-red-500 font-semibold hover:underline">Limpar tudo</button>
-                        )}
-                      </div>
-                      {notificacoes.length === 0 ? (
-                        <p className="text-[13px] nl-text-muted text-center py-6">Sem notificações.</p>
-                      ) : (
-                        <div className="space-y-2 max-h-64 overflow-y-auto custom-scrollbar">
-                          {notificacoes.slice().reverse().map(n => (
-                            <div key={n.id} className={`flex items-start gap-3 p-3 rounded-[5px] border ${n.lida ? 'bg-[var(--color-secondary-lighter)] border-[var(--border)]' : 'bg-blue-50 border-blue-100'}`}>
-                              <div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${n.tipo === 'sucesso' ? 'bg-emerald-500' : n.tipo === 'alerta' ? 'bg-amber-500' : n.tipo === 'erro' ? 'bg-red-500' : 'bg-blue-500'}`} />
-                              <div className="flex-1 min-w-0">
-                                <p className="text-[12px] font-semibold nl-text">{n.titulo}</p>
-                                <p className="text-[11px] nl-text-muted mt-0.5 line-clamp-2">{n.mensagem}</p>
-                                <p className="text-[10px] nl-text-muted mt-1">{n.data}</p>
-                              </div>
-                              {!n.lida && <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0 mt-2" />}
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="pt-6 border-t flex justify-end">
-                      <button onClick={salvarPreferenciasNotificacoes} className="nl-btn nl-btn-primary px-10 h-11 font-bold rounded-[3px]">Guardar Preferências</button>
-                    </div>
-                 </div>
-               )}
-
-               {configAba === 'operacao' && (
-                 <div className=" animate-slide-up space-y-10">
-                    <div>
-                      <h3 className="text-[28px] font-black nl-text tracking-tighter uppercase">Operação & Segurança</h3>
-                      <p className="nl-text-muted font-medium mt-1">Ferramentas de manutenção e cópias de segurança.</p>
-                    </div>
-
-                    <div className="grid grid-cols-1 gap-6">
-                       <div className="p-8 rounded-[6px] bg-[var(--color-secondary-lighter)]/40 border border-[var(--border)] flex flex-col gap-6">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-5">
-                               <div className="w-14 h-14 bg-[var(--bg-surface)] rounded-[6px] shadow-sm flex items-center justify-center text-blue-600 shrink-0">
-                                  <Archive size={24} />
-                               </div>
-                               <div>
-                                  <p className="text-[16px] font-black nl-text">Backup Integral (ZIP)</p>
-                                  <p className="text-[12px] nl-text-muted">Exportar base de dados e ficheiros locais.</p>
-                               </div>
-                            </div>
-                            <button onClick={gerarBackup} className="nl-btn nl-btn-primary px-8 h-12 shadow-blue-500/10 whitespace-nowrap">Exportar Agora</button>
-                          </div>
-                          
-                          <div className="flex items-center gap-4 bg-[var(--bg-surface)] p-4 rounded-md border border-[var(--border)] mt-2">
-                             <div className="flex-1 min-w-0">
-                               <p className="text-[10px] font-bold uppercase tracking-widest nl-text-muted mb-1">Pasta de Backups (Opcional)</p>
-                               <p className="text-[13px] font-medium nl-text truncate" title={diretorioBackup || 'Guardar e escolher na hora'}>
-                                 {diretorioBackup || 'O sistema perguntará onde guardar cada vez'}
-                               </p>
-                             </div>
-                             <button onClick={selecionarDiretorioBackup} className="px-4 py-2 text-[11px] font-black uppercase tracking-widest nl-text-muted bg-[var(--color-secondary-lighter)] border border-[var(--border)] hover:bg-[var(--color-secondary-lighter)]/80 rounded-md transition-colors whitespace-nowrap">
-                               Escolher Pasta
-                             </button>
-                             {diretorioBackup && (
-                               <button onClick={async () => {
-                                 setDiretorioBackup('');
-                                 await electron?.ipcRenderer.invoke('update-configuracao', 'diretorio_backup', '');
-                               }} className="px-4 py-2 text-[11px] font-black uppercase tracking-widest text-red-500 hover:bg-red-50 rounded-md transition-colors whitespace-nowrap">
-                                 Limpar
-                               </button>
-                             )}
-                          </div>
-                       </div>
-
-                       <div className="p-8 rounded-[6px] bg-[var(--color-secondary-lighter)]/40 border border-[var(--border)] flex items-center justify-between opacity-50 cursor-not-allowed">
-                          <div className="flex items-center gap-5">
-                             <div className="w-14 h-14 bg-[var(--bg-surface)] rounded-[6px] shadow-sm flex items-center justify-center nl-text-muted">
-                                <Database size={24} />
-                             </div>
-                             <div>
-                                <p className="text-[16px] font-black nl-text">Limpeza de Cache</p>
-                                <p className="text-[12px] nl-text-muted">Otimizar base de dados interna.</p>
-                             </div>
-                          </div>
-                          <button className="nl-btn nl-btn-secondary px-8 h-12" disabled>Otimizar</button>
-                       </div>
-                    </div>
-                 </div>
-               )}
-
-               {configAba === 'ajuda' && (
-                 <div className="animate-slide-up space-y-12">
-                    <div className="text-center space-y-5">
-                       <div className="w-24 h-24 rounded-2xl flex items-center justify-center mx-auto text-white shadow-2xl relative group transition-transform hover:scale-105" style={{ background: 'linear-gradient(135deg, #3B82F6 0%, #2563EB 100%)' }}>
-                          <div className="absolute inset-0 bg-white/20 rounded-2xl blur-xl opacity-50 group-hover:opacity-100 transition-opacity" />
-                          <HelpCircle size={48} className="relative z-10" />
-                       </div>
-                       <div>
-                          <h3 className="text-[36px] font-black nl-text tracking-tighter uppercase leading-none">Centro de Ajuda</h3>
-                          <p className="nl-text-muted font-medium max-w-sm mx-auto mt-4 leading-relaxed">Assistência técnica dedicada e esclarecimento de dúvidas sobre o ecossistema <span className="font-black nl-text">NEXTLevel</span>.</p>
-                       </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-6">
-                       <button onClick={() => electron?.ipcRenderer.invoke('open-external', `mailto:${COMPANY_EMAIL}`)} className="group p-8 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] shadow-[0_4px_20px_rgba(0,0,0,0.03)] hover:shadow-[0_20px_40px_rgba(0,0,0,0.06)] hover:-translate-y-1.5 transition-all text-left relative overflow-hidden">
-                          <div className="absolute top-0 right-0 w-32 h-32 bg-[var(--color-primary-light)] rounded-full -mr-16 -mt-16 group-hover:scale-110 transition-transform" />
-                          <div className="w-12 h-12 rounded-lg bg-blue-50 flex items-center justify-center mb-6 text-blue-600">
-                             <Mail size={24} />
-                          </div>
-                          <p className="text-[18px] font-black nl-text mb-1">Suporte via E-mail</p>
-                          <p className="text-[11px] font-bold text-blue-600 uppercase tracking-[0.2em]">Resposta prioritária 24h</p>
-                       </button>
-
-                       <button onClick={() => electron?.ipcRenderer.invoke('open-external', COMPANY_WEBSITE)} className="group p-8 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] shadow-[0_4px_20px_rgba(0,0,0,0.03)] hover:shadow-[0_20px_40px_rgba(0,0,0,0.06)] hover:-translate-y-1.5 transition-all text-left relative overflow-hidden">
-                          <div className="absolute top-0 right-0 w-32 h-32 bg-[var(--color-secondary-lighter)] rounded-full -mr-16 -mt-16 group-hover:scale-110 transition-transform" />
-                          <div className="w-12 h-12 rounded-lg bg-[var(--color-secondary-lighter)] flex items-center justify-center mb-6 nl-text-muted">
-                             <Globe size={24} />
-                          </div>
-                          <p className="text-[18px] font-black nl-text mb-1">Portal do Cliente</p>
-                          <p className="text-[11px] font-bold nl-text-muted uppercase tracking-[0.2em]">nextlab.com/suporte</p>
-                       </button>
-                    </div>
-
-                    <div className="relative p-10 rounded-2xl overflow-hidden shadow-2xl group transition-all duration-500 hover:shadow-blue-900/20" style={{ background: 'linear-gradient(135deg, #0F172A 0%, #1E293B 100%)' }}>
-                       <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500/10 rounded-full -mr-32 -mt-32 blur-3xl" />
-                       <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-8">
-                          <div className="flex items-center gap-6">
-                             <div className="w-16 h-16 bg-white/5 rounded-xl border border-white/10 flex items-center justify-center relative shadow-inner">
-                                <Phone size={28} className="text-blue-400" />
-                                <span className="absolute -top-1 -right-1 w-4 h-4 bg-emerald-500 border-2 border-[#0F172A] rounded-full animate-pulse" />
-                             </div>
-                             <div>
-                                <div className="flex items-center gap-3">
-                                   <p className="text-[18px] font-black text-white">Suporte Directo</p>
-                                   <span className="text-[9px] font-black bg-blue-500/20 text-blue-400 border border-blue-500/30 px-2 py-0.5 rounded-full uppercase tracking-widest">Online</span>
-                                </div>
-                                <p className="text-white/60 text-[14px] mt-1 font-medium tracking-wide">{COMPANY_PHONE}</p>
-                             </div>
-                          </div>
-                          <div className="text-right">
-                             <p className="text-[10px] font-black text-blue-400 uppercase tracking-[0.3em] mb-1">Atendimento Comercial</p>
-                             <p className="text-white/40 text-[11px] font-medium italic">Disponível em dias úteis, 09h — 18h</p>
-                          </div>
-                       </div>
-                    </div>
-                 </div>
-               )}
-
-               {configAba === 'sobre' && (
-                 <div className="animate-slide-up">
-                   <div className="mx-auto max-w-[640px] bg-white py-14 px-16" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
-
-                     {/* Logos */}
-                     <div className="flex items-center justify-between mb-14">
-                       <div className="flex items-center gap-3">
-                         <img src={appLogo || APP_ICON_PATH} className="w-9 h-9 object-contain" alt="NEXTLevel" />
-                         <div>
-                           <p className="text-[15px] font-bold text-slate-900 leading-none tracking-tight">NEXTLevel</p>
-                           <p className="text-[11px] text-slate-400 mt-0.5">Sistema de Gestão de Academias</p>
-                         </div>
-                       </div>
-                       <div className="flex items-center gap-2.5">
-                         <img src={NEXT_LAB_ICON} className="w-7 h-7 object-contain opacity-70" alt="NEXT Lab" />
-                         <div className="text-right">
-                           <p className="text-[13px] font-semibold text-slate-700 leading-none">NEXT Lab</p>
-                           <p className="text-[11px] text-slate-400 mt-0.5">Creative Studio · desde 1995</p>
-                         </div>
-                       </div>
-                     </div>
-
-                     {/* Título */}
-                     <div className="mb-10">
-                       <p className="text-[10px] text-slate-400 uppercase tracking-[0.25em] mb-2">Acordo de Licença de Utilização</p>
-                       <h1 className="text-[26px] font-bold text-slate-900 leading-tight tracking-tight">
-                         NEXTLevel — Licença de Uso de Software
-                       </h1>
-                       <p className="text-[13px] text-slate-400 mt-2">
-                         Emitido em {new Date().toLocaleDateString('pt-PT', { day: 'numeric', month: 'long', year: 'numeric' })}
-                         {licencaDados.chave && ` · Licença: ${licencaDados.tipo || 'Standard'} · Válida até ${licencaDados.expiracao || 'Vitalícia'}`}
-                       </p>
-                     </div>
-
-                     {/* Corpo do texto */}
-                     <div className="space-y-8 text-[14px] text-slate-600 leading-[1.9]" style={{ textAlign: 'justify' }}>
-
-                       <div>
-                         <p className="text-[11px] font-semibold text-slate-900 uppercase tracking-[0.15em] mb-3">1. Propriedade Intelectual</p>
-                         <p>O presente software, incluindo o seu código-fonte, design, arquitectura e documentação, é propriedade intelectual exclusiva de <strong className="text-slate-800 font-semibold">Ivaldino da Luz Fortes</strong>, CEO da <strong className="text-slate-800 font-semibold">NEXT Lab</strong>. Todos os direitos reservados nos termos da legislação vigente sobre direitos de autor e propriedade intelectual. Qualquer reprodução, distribuição ou utilização não autorizada constitui violação do presente acordo e poderá implicar responsabilidade civil e criminal.</p>
-                       </div>
-
-                       <div>
-                         <p className="text-[11px] font-semibold text-slate-900 uppercase tracking-[0.15em] mb-3">2. Licença de Uso</p>
-                         <p>A licença concedida é de carácter pessoal e intransferível, válida para uma única entidade — pessoa singular ou colectiva — identificada no momento da activação. Fica expressamente proibida a cedência, partilha ou sublicenciamento a terceiros; a instalação simultânea em múltiplos terminais sem autorização escrita do desenvolvedor; bem como a engenharia reversa, modificação ou redistribuição do software sob qualquer forma.</p>
-                       </div>
-
-                       <div>
-                         <p className="text-[11px] font-semibold text-slate-900 uppercase tracking-[0.15em] mb-3">3. Dados e Privacidade</p>
-                         <p>O NEXTLevel opera em modo totalmente offline. Todos os dados introduzidos — incluindo informações de alunos, pagamentos e configurações — são armazenados exclusivamente no dispositivo local do utilizador. A NEXT Lab não tem acesso, não armazena nem transmite qualquer dado pessoal ou operacional. O utilizador é o único responsável pela gestão, segurança e integridade das suas informações.</p>
-                       </div>
-
-                       <div>
-                         <p className="text-[11px] font-semibold text-slate-900 uppercase tracking-[0.15em] mb-3">4. Cópias de Segurança</p>
-                         <p>Recomenda-se vivamente a realização periódica de cópias de segurança através das ferramentas disponíveis no sistema — exportação ZIP completa e exportação de dossier operacional em Excel. Estas cópias devem ser conservadas em suporte externo independente. A NEXT Lab declina qualquer responsabilidade por perda de dados resultante de falha de hardware, eliminação acidental ou causas externas ao software.</p>
-                       </div>
-
-                       <div>
-                         <p className="text-[11px] font-semibold text-slate-900 uppercase tracking-[0.15em] mb-3">5. Suporte Técnico</p>
-                         <p>Para questões técnicas, esclarecimentos ou solicitação de actualizações, o utilizador deverá contactar directamente o desenvolvedor pelos meios indicados neste documento. O suporte técnico encontra-se garantido durante todo o período de vigência da licença, sem encargos adicionais para o utilizador licenciado.</p>
-                       </div>
-
-                       <div>
-                         <p className="text-[11px] font-semibold text-slate-900 uppercase tracking-[0.15em] mb-3">6. Limitação de Responsabilidade</p>
-                         <p>O software é fornecido no estado em que se encontra. A NEXT Lab não garante que o funcionamento seja ininterrupto ou isento de erros, nem se responsabiliza por danos directos ou indirectos decorrentes da utilização do software, incluindo perda de dados, lucros cessantes ou interrupção de actividade, mesmo que tenha sido advertida da possibilidade de tais danos.</p>
-                       </div>
-                     </div>
-
-                     {/* Separador */}
-                     <div className="my-12 border-t border-slate-100" />
-
-                     {/* Assinatura */}
-                     <div className="flex items-end justify-between gap-8">
-                       <div>
-                         <p className="text-[11px] text-slate-400 uppercase tracking-[0.15em] mb-2">Desenvolvedor & CEO</p>
-                         <p className="text-[20px] text-slate-900 leading-none mb-1" style={{ fontFamily: 'Georgia, serif', fontStyle: 'italic' }}>Ivaldino da Luz Fortes</p>
-                         <p className="text-[12px] text-slate-400">NEXT Lab · Cabo Verde</p>
-                         <div className="flex items-center gap-5 mt-3 text-[12px] text-slate-400">
-                           <span>{COMPANY_EMAIL}</span>
-                           <span>{COMPANY_PHONE}</span>
-                         </div>
-                       </div>
-                       <div className="text-right shrink-0">
-                         <img src={NEXT_LAB_ICON} className="w-10 h-10 object-contain opacity-30 ml-auto" alt="NEXT Lab" />
-                         <p className="text-[10px] text-slate-300 mt-2 uppercase tracking-widest">NEXT Lab</p>
-                       </div>
-                     </div>
-
-                     {/* Rodapé da página */}
-                     <div className="mt-14 pt-6 border-t border-slate-100 flex items-center justify-between">
-                       <p className="text-[11px] text-slate-300">© {new Date().getFullYear()} NEXT Lab. Todos os direitos reservados.</p>
-                       <p className="text-[11px] text-slate-300">NEXTLevel · versão 1.0 Beta</p>
-                     </div>
-                   </div>
-                 </div>
-               )}
-            </div>
-          </div>
-            </div>
+          <ConfiguracoesPage
+            aba={aba}
+            configAba={configAba}
+            setConfigAba={setConfigAba}
+            sessionUser={sessionUser}
+            larguraListas={larguraListas}
+            appLogo={appLogo}
+            setAppLogo={setAppLogo}
+            nomeAcademia={nomeAcademia}
+            setNomeAcademia={setNomeAcademia}
+            telefoneAcademia={telefoneAcademia}
+            setTelefoneAcademia={setTelefoneAcademia}
+            emailAcademia={emailAcademia}
+            setEmailAcademia={setEmailAcademia}
+            moradaAcademia={moradaAcademia}
+            setMoradaAcademia={setMoradaAcademia}
+            lembrarUtilizadores={lembrarUtilizadores}
+            setLembrarUtilizadores={setLembrarUtilizadores}
+            permitirGuardarSessao={permitirGuardarSessao}
+            setPermitirGuardarSessao={setPermitirGuardarSessao}
+            requireOperationalPassword={requireOperationalPassword}
+            setRequireOperationalPassword={setRequireOperationalPassword}
+            slideshowImages={slideshowImages}
+            setSlideshowImages={setSlideshowImages}
+            slideshowTimer={slideshowTimer}
+            setSlideshowTimer={setSlideshowTimer}
+            slideshowTextEnabled={slideshowTextEnabled}
+            setSlideshowTextEnabled={setSlideshowTextEnabled}
+            appTheme={appTheme}
+            setAppTheme={setAppTheme}
+            bannerAcademia={bannerAcademia}
+            setBannerAcademia={setBannerAcademia}
+            listaUtilizadores={listaUtilizadores}
+            utilizadorAvatares={utilizadorAvatares}
+            logs={logs}
+            mostrarFormNovoUtilizador={mostrarFormNovoUtilizador}
+            setMostrarFormNovoUtilizador={setMostrarFormNovoUtilizador}
+            utilizadorEmEdicao={utilizadorEmEdicao}
+            setUtilizadorEmEdicao={setUtilizadorEmEdicao}
+            utilizadorEdicaoForm={utilizadorEdicaoForm}
+            setUtilizadorEdicaoForm={setUtilizadorEdicaoForm}
+            quickAccessUsers={quickAccessUsers}
+            setQuickAccessUsers={setQuickAccessUsers}
+            loginSlideshowUsers={loginSlideshowUsers}
+            setLoginSlideshowUsers={setLoginSlideshowUsers}
+            desktopNotificationsEnabled={desktopNotificationsEnabled}
+            setDesktopNotificationsEnabled={setDesktopNotificationsEnabled}
+            notifSistema={notifSistema}
+            setNotifSistema={setNotifSistema}
+            notifPagamentos={notifPagamentos}
+            setNotifPagamentos={setNotifPagamentos}
+            notifMatriculas={notifMatriculas}
+            setNotifMatriculas={setNotifMatriculas}
+            notifRelatorios={notifRelatorios}
+            setNotifRelatorios={setNotifRelatorios}
+            relatorioMensalDisponivel={relatorioMensalDisponivel}
+            notificacoes={notificacoes}
+            setNotificacoes={setNotificacoes}
+            diretorioBackup={diretorioBackup}
+            setDiretorioBackup={setDiretorioBackup}
+            resetSeguroForm={resetSeguroForm}
+            setResetSeguroForm={setResetSeguroForm}
+            resetSeguroLoading={resetSeguroLoading}
+            carregandoDuplicados={carregandoDuplicados}
+            mostrarImportar={mostrarImportar}
+            setMostrarImportar={setMostrarImportar}
+            licencaDados={licencaDados}
+            guardarConfiguracao={guardarConfiguracao}
+            salvarDefinicoesGerais={salvarDefinicoesGerais}
+            salvarAparencia={salvarAparencia}
+            carregarLogs={carregarLogs}
+            gerarBackup={gerarBackup}
+            selecionarDiretorioBackup={selecionarDiretorioBackup}
+            buscarDuplicados={buscarDuplicados}
+            abrirConfirmacao={abrirConfirmacao}
+            resetarBancoDeDados={resetarBancoDeDados}
+            salvarPreferenciasNotificacoes={salvarPreferenciasNotificacoes}
+            setAba={setAba}
+            setMostrarModalExport={setMostrarModalExport}
+          />
         )}
     </main>
 
     {/* Modal: Nova Matrícula */}
     {mostrarImportar && (
-      <ImportarDadosModal
-        onClose={() => setMostrarImportar(false)}
-        onSuccess={(resumo) => {
-          setMostrarImportar(false);
-          carregarConfiguracoes();
-          showToast(`Importação concluída: ${resumo.inseridos} inseridos e ${resumo.erros} falhas.`);
-        }}
-        electron={electron}
-        categorias={categorias || ['Geral']}
-      />
+      <Suspense fallback={null}>
+        <ImportarDadosModal
+          onClose={() => setMostrarImportar(false)}
+          onSuccess={(resumo) => {
+            setMostrarImportar(false);
+            carregarConfiguracoes();
+            showToast(`Importação concluída: ${resumo.inseridos} inseridos e ${resumo.erros} falhas.`);
+          }}
+          electron={electron}
+          categorias={categorias || ['Geral']}
+        />
+      </Suspense>
     )}
     {mostrarForm && (
       <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100] p-4 animate-fade-in" onClick={() => setMostrarForm(false)}>
@@ -6440,31 +4474,38 @@ function App() {
 
     {/* Modal: Resolver Tudo (Pendências) */}
     {mostrarResolverPendencias && alunoParaResolver && (
-      <div className="fixed inset-0 nl-modal-overlay flex items-center justify-center z-[150] p-4 animate-in fade-in duration-200">
-        <div className="bg-[var(--bg-surface)] w-full max-w-[450px] shadow-[0_20px_70px_rgba(0,0,0,0.3)] rounded-[8px] border border-[var(--border)] overflow-hidden flex flex-col animate-scale-in" onClick={e => e.stopPropagation()}>
-          <div className="bg-slate-900 h-14 flex items-center shrink-0 px-6">
-            <div className="flex-1 flex items-center gap-3">
-              <div className="h-8 w-8 rounded-full bg-amber-500/20 flex items-center justify-center border border-amber-500/30">
-                <AlertCircle size={18} className="text-amber-500" />
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[150] p-4 animate-fade-in" onClick={() => setMostrarResolverPendencias(false)}>
+        <div className="bg-[var(--bg-surface)] w-full max-w-[450px] shadow-[0_20px_70px_rgba(0,0,0,0.3)] rounded-[6px] border border-[var(--border)] overflow-hidden flex flex-col animate-scale-in" style={{ maxHeight: 'calc(100vh - 40px)' }} onClick={e => e.stopPropagation()}>
+          <div className="bg-[#F1F4F9] border-b border-[#DDE2EB] h-12 flex items-center shrink-0">
+            <div className="flex-1 flex items-center gap-2.5 px-4">
+              <div className="h-6 w-6 rounded-md bg-white/50 backdrop-blur-sm p-1 border border-white/40 shadow-sm flex items-center justify-center">
+                <img src={appLogo || APP_ICON_PATH} alt="Logo" className="w-full h-full object-contain" />
               </div>
-              <div>
-                <p className="text-[10px] font-black text-amber-500 uppercase tracking-[0.2em] leading-none">Regularização</p>
-                <h2 className="text-[14px] font-bold text-white tracking-tight">Resolver Pendências</h2>
-              </div>
+              <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] leading-none">NextLevel</span>
             </div>
-            <button onClick={() => setMostrarResolverPendencias(false)} className="h-8 w-8 flex items-center justify-center rounded-lg text-white/40 hover:bg-white/10 hover:text-white transition-all">
-              <X size={18} />
-            </button>
+            <div className="flex-1 text-center whitespace-nowrap">
+              <h2 className="text-[12px] font-black text-slate-700 uppercase tracking-wider leading-none">Resolver Pendências</h2>
+            </div>
+            <div className="flex-1 flex justify-end px-3">
+              <button onClick={() => setMostrarResolverPendencias(false)} className="h-8 w-8 flex items-center justify-center rounded-md text-slate-400 hover:bg-red-50 hover:text-red-500 transition-all" title="Fechar">
+                <X size={16} />
+              </button>
+            </div>
           </div>
 
           <div className="p-6 space-y-6">
-            <div className="text-center">
-              <p className="text-[13px] nl-text-muted">Estás a regularizar a conta de</p>
-              <p className="text-[18px] font-black nl-text mt-1">{alunoParaResolver.nome}</p>
+            <div className="flex items-center gap-3 p-4 rounded-[6px] bg-amber-50 border border-amber-100">
+              <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center shrink-0">
+                <AlertCircle size={18} className="text-amber-600" />
+              </div>
+              <div>
+                <p className="text-[12px] nl-text-muted">Estás a regularizar a conta de</p>
+                <p className="text-[16px] font-black nl-text">{alunoParaResolver.nome}</p>
+              </div>
             </div>
 
             <div className="space-y-3">
-              <p className="text-[11px] font-black text-slate-400 uppercase tracking-widest text-center">Meses Selecionados</p>
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[var(--text-secondary)]">Meses Selecionados</p>
               <div className="grid grid-cols-2 gap-2">
                 {mesesParaResolver.map(mes => (
                   <div key={mes} className="flex items-center gap-2 px-3 py-2 rounded-[6px] bg-emerald-50 border border-emerald-100 text-emerald-700 text-[11px] font-bold">
@@ -6474,22 +4515,23 @@ function App() {
               </div>
             </div>
 
-            <div className="p-4 rounded-[8px] bg-slate-50 border border-slate-200 flex items-center justify-between">
-              <div>
-                <p className="text-[10px] font-bold text-slate-400 uppercase">Total a Liquidar</p>
-                <p className="text-[20px] font-black nl-text">{formatCve(normalizeAmount(alunoParaResolver.plano) * mesesParaResolver.length)}</p>
+            <div className="flex items-center justify-between px-4 py-3 rounded-[10px] bg-gradient-to-r from-amber-500 to-amber-600 shadow-lg shadow-amber-200/50">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
+                  <Wallet size={15} className="text-white" />
+                </div>
+                <span className="text-[12px] font-black text-white uppercase tracking-[0.12em]">Total a Liquidar</span>
               </div>
-              <div className="text-right">
-                <p className="text-[10px] font-bold text-slate-400 uppercase">Método</p>
-                <p className="text-[11px] font-bold text-slate-700">Dinheiro</p>
-              </div>
+              <span className="text-[20px] font-black text-white drop-shadow-sm" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                {formatCve(normalizeAmount(alunoParaResolver.plano) * mesesParaResolver.length)}
+              </span>
             </div>
           </div>
 
-          <div className="p-4 bg-slate-50 border-t border-slate-200 flex gap-3">
-            <button onClick={() => setMostrarResolverPendencias(false)} className="flex-1 nl-btn nl-btn-secondary !h-11 !text-[12px] font-bold uppercase tracking-widest">Cancelar</button>
-            <button onClick={resolverPendencias} className="flex-[2] nl-btn !bg-slate-900 !text-white hover:!bg-black !h-11 !text-[12px] font-black uppercase tracking-widest shadow-lg">
-               Resolver {mesesParaResolver.length} Mensalidades
+          <div className="bg-[#F8F9FC] border-t border-[#DDE2EB] px-6 py-4 flex items-center justify-end gap-3 shrink-0">
+            <button onClick={() => setMostrarResolverPendencias(false)} className="nl-btn nl-btn-secondary !h-9 !px-5 !text-[11px] font-bold">Cancelar</button>
+            <button onClick={resolverPendencias} className="nl-btn !h-10 !px-7 !text-[12px] font-black !bg-gradient-to-r !from-amber-600 !to-amber-500 !text-white !border-none !shadow-lg !shadow-amber-200/50 hover:!shadow-amber-300/60 hover:!scale-[1.02] active:!scale-[0.98] transition-all">
+              <CheckCircle2 size={16} /> Resolver {mesesParaResolver.length} Mensalidades
             </button>
           </div>
         </div>
@@ -6604,50 +4646,54 @@ function App() {
 
     {/* Modal: Resolver Duplicados */}
     {mostrarModalDuplicados && (
-      <div className="fixed inset-0 nl-modal-overlay flex items-center justify-center z-[160] p-4 animate-in fade-in duration-200">
-        <div className="bg-[var(--bg-surface)] w-full max-w-[600px] shadow-[0_20px_70px_rgba(0,0,0,0.4)] rounded-[8px] border border-[var(--border)] overflow-hidden flex flex-col animate-scale-in" style={{ maxHeight: '85vh' }} onClick={e => e.stopPropagation()}>
-          <div className="bg-slate-900 h-14 flex items-center shrink-0 px-6">
-            <div className="flex-1 flex items-center gap-3">
-              <div className="h-8 w-8 rounded-full bg-blue-500/20 flex items-center justify-center border border-blue-500/30">
-                <Sparkles size={18} className="text-blue-400" />
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[160] p-4 animate-fade-in" onClick={() => setMostrarModalDuplicados(false)}>
+        <div className="bg-[var(--bg-surface)] w-full max-w-[600px] shadow-[0_20px_70px_rgba(0,0,0,0.3)] rounded-[6px] border border-[var(--border)] overflow-hidden flex flex-col animate-scale-in" style={{ maxHeight: '85vh' }} onClick={e => e.stopPropagation()}>
+          <div className="bg-[#F1F4F9] border-b border-[#DDE2EB] h-12 flex items-center shrink-0">
+            <div className="flex-1 flex items-center gap-2.5 px-4">
+              <div className="h-6 w-6 rounded-md bg-white/50 backdrop-blur-sm p-1 border border-white/40 shadow-sm flex items-center justify-center">
+                <img src={appLogo || APP_ICON_PATH} alt="Logo" className="w-full h-full object-contain" />
               </div>
-              <div>
-                <p className="text-[10px] font-black text-blue-400 uppercase tracking-[0.2em] leading-none">Manutenção de Dados</p>
-                <h2 className="text-[14px] font-bold text-white tracking-tight">Duplicados Encontrados ({duplicadosEncontrados.length})</h2>
-              </div>
+              <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] leading-none">NextLevel</span>
             </div>
-            <button onClick={() => setMostrarModalDuplicados(false)} className="h-8 w-8 flex items-center justify-center rounded-lg text-white/40 hover:bg-white/10 hover:text-white transition-all">
-              <X size={18} />
-            </button>
+            <div className="flex-1 text-center whitespace-nowrap">
+              <h2 className="text-[12px] font-black text-slate-700 uppercase tracking-wider leading-none">Duplicados ({duplicadosEncontrados.length})</h2>
+            </div>
+            <div className="flex-1 flex justify-end px-3">
+              <button onClick={() => setMostrarModalDuplicados(false)} className="h-8 w-8 flex items-center justify-center rounded-md text-slate-400 hover:bg-red-50 hover:text-red-500 transition-all" title="Fechar">
+                <X size={16} />
+              </button>
+            </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-6 custom-scrollbar space-y-6">
+          <div className="flex-1 overflow-y-auto p-5 custom-scrollbar space-y-5">
             {duplicadosEncontrados.length === 0 ? (
               <div className="py-12 text-center space-y-3">
-                <CheckCircle2 size={40} className="mx-auto text-emerald-500 opacity-40" />
-                <p className="text-[14px] font-bold nl-text">Tudo limpo!</p>
+                <div className="w-16 h-16 rounded-full bg-emerald-50 flex items-center justify-center mx-auto">
+                  <CheckCircle2 size={32} className="text-emerald-500" />
+                </div>
+                <p className="text-[16px] font-black nl-text">Tudo limpo!</p>
                 <p className="text-[12px] nl-text-muted">Não foram encontrados contactos com nomes ou telefones repetidos.</p>
               </div>
             ) : (
-              <div className="space-y-6">
-                <p className="text-[12px] nl-text-muted">Os grupos abaixo partilham o mesmo <b>nome</b> ou <b>número de telemóvel</b>. Analise e decida qual manter.</p>
+              <div className="space-y-5">
+                <p className="text-[11px] nl-text-muted">Os grupos abaixo partilham o mesmo <b>nome</b> ou <b>número de telemóvel</b>.</p>
                 
                 {duplicadosEncontrados.map((grupo, idx) => (
-                  <div key={idx} className="rounded-[8px] border border-slate-200 bg-slate-50 overflow-hidden shadow-sm">
-                    <div className="px-4 py-2 bg-white border-b border-slate-100 flex items-center justify-between">
-                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Grupo #{idx + 1}</span>
+                  <div key={idx} className="rounded-[8px] border border-[var(--border)] bg-[var(--bg-surface)] overflow-hidden shadow-sm">
+                    <div className="px-4 py-2 bg-[var(--color-secondary-lighter)]/50 border-b border-[var(--border-light)] flex items-center justify-between">
+                      <span className="text-[10px] font-black text-[var(--text-secondary)] uppercase tracking-widest">Grupo #{idx + 1}</span>
                       <span className="px-2 py-0.5 bg-blue-50 text-blue-600 text-[9px] font-black rounded-full uppercase">{grupo.length} ocorrências</span>
                     </div>
-                    <div className="divide-y divide-slate-100">
+                    <div className="divide-y divide-[var(--border-light)]">
                       {grupo.map(aluno => (
-                        <div key={aluno.id} className="p-4 bg-white hover:bg-slate-50/50 transition-colors flex items-center gap-4">
-                          <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 font-bold text-[12px] shrink-0 overflow-hidden border border-slate-200">
+                        <div key={aluno.id} className="p-3 hover:bg-[var(--color-secondary-lighter)]/30 transition-colors flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-full bg-[var(--color-secondary-lighter)] flex items-center justify-center text-[var(--text-secondary)] font-bold text-[12px] shrink-0 overflow-hidden border border-[var(--border)]">
                             {aluno.foto_path ? <img src={`local-resource://${aluno.foto_path}`} className="w-full h-full object-cover" /> : getAlunoIniciais(aluno)}
                           </div>
                           <div className="flex-1 min-w-0">
                             <p className="text-[13px] font-bold nl-text truncate">{aluno.nome}</p>
                             <p className="text-[11px] nl-text-muted">{aluno.telefone || 'Sem telefone'}</p>
-                            <p className="text-[10px] text-slate-400 mt-0.5">Inscrito em: {aluno.data_matricula || '—'}</p>
+                            <p className="text-[10px] text-[var(--text-tertiary)] mt-0.5">Inscrito em: {aluno.data_matricula || '—'}</p>
                           </div>
                           <div className="flex items-center gap-1.5">
                             <button 
@@ -6655,7 +4701,7 @@ function App() {
                                 setMostrarModalDuplicados(false);
                                 abrirPerfilAluno(aluno);
                               }}
-                              className="nl-btn !h-8 !px-3 !bg-slate-100 !text-slate-600 hover:!bg-blue-50 hover:!text-blue-600 !border-slate-200 !text-[10px] font-bold uppercase"
+                              className="nl-btn !h-8 !px-3 !text-[10px] font-bold uppercase"
                             >
                               Ver
                             </button>
@@ -6663,15 +4709,19 @@ function App() {
                               onClick={() => {
                                 abrirConfirmacao({
                                   title: 'Eliminar Duplicado',
-                                  message: `Tens a certeza que queres eliminar o registo de ${aluno.nome}? Esta ação é irreversível.`,
+                                  message: `Tens a certeza que queres mover o registo de ${aluno.nome} para a lixeira?`,
                                   confirmLabel: 'Eliminar',
                                   tone: 'danger',
                                   onConfirm: async () => {
-                                    await eliminarAluno(aluno.id);
-                                    // Recalcular duplicados após eliminar
-                                    const novosGrupos = duplicadosEncontrados.map(g => g.filter(a => a.id !== aluno.id)).filter(g => g.length > 1);
-                                    setDuplicadosEncontrados(novosGrupos);
-                                    if (novosGrupos.length === 0) setMostrarModalDuplicados(false);
+                                    if (electron) {
+                                      const res = await electron.ipcRenderer.invoke('db:delete-duplicate', { alunoId: aluno.id });
+                                      if (!res?.success) throw new Error(res?.message || 'Falha ao remover duplicado.');
+                                      const novosGrupos = (res.groups || []).map((group: any) => group.alunos || []);
+                                      setDuplicadosEncontrados(novosGrupos);
+                                      await carregarConfiguracoes();
+                                      showToast('✅ Duplicado movido para a lixeira.');
+                                      if (novosGrupos.length === 0) setMostrarModalDuplicados(false);
+                                    }
                                   }
                                 });
                               }}
@@ -6689,8 +4739,8 @@ function App() {
             )}
           </div>
 
-          <div className="p-4 bg-slate-50 border-t border-slate-200 flex justify-center">
-            <button onClick={() => setMostrarModalDuplicados(false)} className="nl-btn nl-btn-secondary !h-10 !px-8 !text-[11px] font-black uppercase tracking-widest shadow-sm">Fechar</button>
+          <div className="bg-[#F8F9FC] border-t border-[#DDE2EB] px-6 py-4 flex items-center justify-center shrink-0">
+            <button onClick={() => setMostrarModalDuplicados(false)} className="nl-btn nl-btn-secondary !h-9 !px-5 !text-[11px] font-bold">Fechar</button>
           </div>
         </div>
       </div>
@@ -6837,6 +4887,7 @@ function App() {
       {/* Menu de Contexto */}
       {contextMenu && (
         <div 
+          ref={contextMenuRef}
           className="fixed bg-[var(--bg-surface)] shadow-2xl border border-[var(--border)] rounded-[3px] py-2 z-[200] min-w-[240px] animate-in fade-in zoom-in-95 duration-100"
           style={{ top: contextMenu.y, left: contextMenu.x }}
         >
@@ -6918,89 +4969,65 @@ function App() {
 
       {/* Modal: Relatório Mensal */}
       {mostrarRelatorioMensal && (
-        <div className="fixed inset-0 nl-modal-overlay flex items-center justify-center z-[120] p-4 animate-in fade-in duration-200">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[120] p-4 animate-fade-in" onClick={() => setMostrarRelatorioMensal(false)}>
            <div className="bg-[var(--bg-surface)] w-full max-w-[850px] shadow-[0_20px_70px_rgba(0,0,0,0.3)] rounded-[6px] border border-[var(--border)] overflow-hidden flex flex-col animate-scale-in" style={{ maxHeight: 'calc(100vh - 40px)' }} onClick={e => e.stopPropagation()}>
-              <div className="bg-[#1E293B] border-b border-white/5 h-14 flex items-center shrink-0 shadow-xl">
-                <div className="flex-1 flex items-center gap-2.5 px-6">
-                  <div className="h-7 w-7 rounded-lg bg-blue-500/20 border border-blue-400/30 flex items-center justify-center">
-                    <Star size={16} className="text-amber-400 fill-amber-400" />
+              <div className="bg-[#F1F4F9] border-b border-[#DDE2EB] h-12 flex items-center shrink-0">
+                <div className="flex-1 flex items-center gap-2.5 px-4">
+                  <div className="h-6 w-6 rounded-md bg-white/50 backdrop-blur-sm p-1 border border-white/40 shadow-sm flex items-center justify-center">
+                    <img src={appLogo || APP_ICON_PATH} alt="Logo" className="w-full h-full object-contain" />
                   </div>
-                  <div>
-                    <p className="text-[10px] font-black text-blue-400 uppercase tracking-[0.2em] leading-none">Intelligence Hub</p>
-                    <p className="text-[12px] font-bold text-white/50 tracking-tight">Relatório Consolidado</p>
-                  </div>
+                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] leading-none">NextLevel</span>
                 </div>
                 <div className="flex-1 text-center whitespace-nowrap">
-                  <h2 className="text-[14px] font-black text-white uppercase tracking-[0.2em] leading-none">{mesFinanceiro} {anoFinanceiro}</h2>
+                  <h2 className="text-[12px] font-black text-slate-700 uppercase tracking-wider leading-none">{mesFinanceiro} {anoFinanceiro}</h2>
                 </div>
-                <div className="flex-1 flex justify-end px-4">
-                  <button onClick={() => setMostrarRelatorioMensal(false)} className="h-10 w-10 flex items-center justify-center rounded-xl text-white/40 hover:bg-white/10 hover:text-white transition-all">
-                    <X size={20} />
+                <div className="flex-1 flex justify-end px-3">
+                  <button onClick={() => setMostrarRelatorioMensal(false)} className="h-8 w-8 flex items-center justify-center rounded-md text-slate-400 hover:bg-red-50 hover:text-red-500 transition-all" title="Fechar">
+                    <X size={16} />
                   </button>
                 </div>
               </div>
 
-              <div className="flex-1 p-8 overflow-y-auto custom-scrollbar flex flex-col gap-8">
+              <div className="flex-1 p-6 overflow-y-auto custom-scrollbar flex flex-col gap-6">
                  {/* Cards Resumo */}
-                 <div className="grid grid-cols-4 gap-6">
-                    <div className="p-5 border nl-border rounded-[6px] nl-bg-input flex flex-col justify-center relative overflow-hidden group">
-                       <div className="absolute -right-4 -bottom-4 opacity-5 group-hover:scale-110 transition-transform"><CreditCard size={100} /></div>
-                       <span className="text-[11px] font-extrabold nl-text-muted uppercase tracking-wider mb-2 relative z-10">Total Recebido</span>
-                       <span className="text-[28px] font-black text-[#33d17a] leading-none relative z-10">
-                         {normalizeAmount(totalRecebidoPeriodo).toLocaleString()} <span className="text-[14px] text-[#33d17a]/70">CVE</span>
-                       </span>
-                    </div>
-                    <div className="p-5 border nl-border rounded-[6px] nl-bg-input flex flex-col justify-center relative overflow-hidden group">
-                       <div className="absolute -right-4 -bottom-4 opacity-5 group-hover:scale-110 transition-transform"><CheckCircle2 size={100} /></div>
-                       <span className="text-[11px] font-extrabold nl-text-muted uppercase tracking-wider mb-2 relative z-10">Cobertura Ativa</span>
-                       <span className="text-[28px] font-black nl-text leading-none relative z-10">
-                         {alunosComPagamentoEmDia.length}
-                       </span>
-                    </div>
-                    <div className="p-5 border nl-border rounded-[6px] nl-bg-input flex flex-col justify-center relative overflow-hidden group">
-                       <div className="absolute -right-4 -bottom-4 opacity-5 group-hover:scale-110 transition-transform"><AlertCircle size={100} /></div>
-                       <span className="text-[11px] font-extrabold nl-text-muted uppercase tracking-wider mb-2 relative z-10">Em Cobrança</span>
-                       <span className="text-[28px] font-black text-[#e01b24] leading-none relative z-10">
-                         {alunosEmDivida.length}
-                       </span>
-                    </div>
-                    <div className="p-5 border nl-border rounded-[6px] nl-bg-input flex flex-col justify-center relative overflow-hidden group">
-                       <div className="absolute -right-4 -bottom-4 opacity-5 group-hover:scale-110 transition-transform"><UserPlus size={100} /></div>
-                       <span className="text-[11px] font-extrabold nl-text-muted uppercase tracking-wider mb-2 relative z-10">Inscritos neste mês</span>
-                       <span className="text-[28px] font-black text-[#3584e4] leading-none relative z-10">
-                         {alunos.filter(a => {
-                           const dataMatricula = parseFlexibleDate(a.data_matricula);
-                           if (dataMatricula) {
-                              const targetMonth = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'].indexOf(mesFinanceiro);
-                              return dataMatricula.getMonth() === targetMonth && dataMatricula.getFullYear() === anoFinanceiro;
-                           }
-                           return false;
-                         }).length}
-                       </span>
-                    </div>
+                 <div className="grid grid-cols-4 gap-4">
+                    {[
+                      { label: 'Total Recebido', value: normalizeAmount(totalRecebidoPeriodo).toLocaleString(), suffix: 'CVE', color: '#33d17a', icon: <CreditCard size={100} /> },
+                      { label: 'Cobertura Ativa', value: alunosComPagamentoEmDia.length, suffix: '', color: 'var(--color-primary)', icon: <CheckCircle2 size={100} /> },
+                      { label: 'Em Cobrança', value: alunosEmDivida.length, suffix: '', color: '#e01b24', icon: <AlertCircle size={100} /> },
+                      { label: 'Inscritos no mês', value: alunos.filter(a => { const d = parseFlexibleDate(a.data_matricula); return d ? d.getMonth() === ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'].indexOf(mesFinanceiro) && d.getFullYear() === anoFinanceiro : false; }).length, suffix: '', color: '#3584e4', icon: <UserPlus size={100} /> },
+                    ].map(card => (
+                      <div key={card.label} className="p-4 border nl-border rounded-[6px] nl-bg-input flex flex-col justify-center relative overflow-hidden group">
+                        <div className="absolute -right-4 -bottom-4 opacity-5 group-hover:scale-110 transition-transform">{card.icon}</div>
+                        <span className="text-[10px] font-extrabold nl-text-muted uppercase tracking-wider mb-1.5 relative z-10">{card.label}</span>
+                        <span className="text-[24px] font-black leading-none relative z-10" style={{ color: card.color }}>
+                          {card.value}{card.suffix && <> <span className="text-[12px]" style={{ opacity: 0.7 }}>{card.suffix}</span></>}
+                        </span>
+                      </div>
+                    ))}
                  </div>
 
-                 <div className="grid grid-cols-2 gap-8 flex-1 overflow-hidden">
-                    <div className="flex flex-col gap-6 overflow-hidden">
-                       <h3 className="text-[14px] font-extrabold nl-text uppercase tracking-widest flex items-center gap-3">
-                          <AlertCircle size={18} className="text-red-600" /> Em Cobrança Agora
+                 <div className="grid grid-cols-2 gap-6 flex-1 overflow-hidden">
+                    <div className="flex flex-col gap-4 overflow-hidden">
+                       <h3 className="text-[12px] font-extrabold nl-text uppercase tracking-widest flex items-center gap-2">
+                          <AlertCircle size={15} className="text-red-600" /> Em Cobrança Agora
                        </h3>
                        <div className="border border-[var(--border)] rounded-[3px] overflow-hidden flex flex-col h-full bg-[var(--bg-surface)]">
                           <div className="flex-1 overflow-y-auto custom-scrollbar divide-y border-[var(--border-light)]">
                              {alunosEmDivida.length === 0 ? (
-                                <div className="p-12 text-center nl-text-muted text-[14px] font-medium ">Nenhum aluno em dívida. Tudo controlado.</div>
+                                <div className="p-12 text-center nl-text-muted text-[13px] font-medium">Nenhum aluno em dívida. Tudo controlado.</div>
                              ) : (
                                 alunosEmDivida.map(({ aluno, resumo }, index) => {
                                    const tom = obterTomPastel(index);
                                    return (
-                                      <div key={aluno.id} className={`p-4 flex items-center justify-between border-b last:border-b-0 transition-all group ${tom.bg} ${tom.border} hover:-translate-y-[1px]`}>
-                                         <div className="flex flex-col gap-1">
-                                            <span className="text-[14px] font-bold nl-text">{aluno.nome}</span>
-                                            <span className="text-[12px] nl-text-muted font-mono">{aluno.telefone}</span>
+                                      <div key={aluno.id} className={`p-3 flex items-center justify-between border-b last:border-b-0 transition-all group ${tom.bg} ${tom.border} hover:-translate-y-[1px]`}>
+                                         <div className="flex flex-col gap-0.5">
+                                            <span className="text-[13px] font-bold nl-text">{aluno.nome}</span>
+                                            <span className="text-[11px] nl-text-muted font-mono">{aluno.telefone}</span>
                                          </div>
-                                         <div className="flex flex-col items-end gap-1">
-                                            <span className="text-[14px] font-extrabold text-red-600">{formatCve(aluno.plano)}</span>
-                                            <span className="text-[11px] text-red-600/70 font-bold uppercase tracking-wider">{resumo.statusLabel}</span>
+                                         <div className="flex flex-col items-end gap-0.5">
+                                            <span className="text-[13px] font-extrabold text-red-600">{formatCve(aluno.plano)}</span>
+                                            <span className="text-[10px] text-red-600/70 font-bold uppercase tracking-wider">{resumo.statusLabel}</span>
                                          </div>
                                       </div>
                                    )
@@ -7010,32 +5037,32 @@ function App() {
                        </div>
                     </div>
 
-                    <div className="flex flex-col gap-6 overflow-hidden">
-                       <h3 className="text-[14px] font-extrabold nl-text uppercase tracking-widest flex items-center gap-3">
-                          <CheckCircle2 size={18} className="text-green-600" /> Recebidos no Período
+                    <div className="flex flex-col gap-4 overflow-hidden">
+                       <h3 className="text-[12px] font-extrabold nl-text uppercase tracking-widest flex items-center gap-2">
+                          <CheckCircle2 size={15} className="text-green-600" /> Recebidos no Período
                        </h3>
                        <div className="border border-[var(--border)] rounded-[3px] overflow-hidden flex flex-col h-full bg-[var(--bg-surface)]">
                           <div className="flex-1 overflow-y-auto custom-scrollbar divide-y border-[var(--border-light)]">
                              {pagamentosDoPeriodo.length === 0 ? (
-                                <div className="p-12 text-center nl-text-muted text-[14px] font-medium ">Nenhum pagamento registado.</div>
+                                <div className="p-12 text-center nl-text-muted text-[13px] font-medium">Nenhum pagamento registado.</div>
                              ) : (
                                 pagamentosDoPeriodo
                                   .sort((left, right) => (right.id || 0) - (left.id || 0))
                                   .map((p, index) => {
                                    const tom = obterTomPastel(index);
                                    return (
-                                   <div key={`${p.id}-${index}`} className={`p-4 flex items-center justify-between border-b last:border-b-0 transition-all group ${tom.bg} ${tom.border} hover:-translate-y-[1px]`}>
-                                      <div className="flex flex-col gap-1">
-                                         <span className="text-[14px] font-bold nl-text">{p.nome}</span>
-                                         <div className="flex items-center gap-3">
-                                            <span className="text-[10px] px-2 py-0.5 rounded-[3px] bg-green-500/10 text-green-600 font-bold uppercase tracking-wider">{p?.metodo_pagamento}</span>
-                                            <span className="text-[11px] nl-text-muted font-mono">{p?.data_pagamento}</span>
+                                   <div key={`${p.id}-${index}`} className={`p-3 flex items-center justify-between border-b last:border-b-0 transition-all group ${tom.bg} ${tom.border} hover:-translate-y-[1px]`}>
+                                      <div className="flex flex-col gap-0.5">
+                                         <span className="text-[13px] font-bold nl-text">{p.nome}</span>
+                                         <div className="flex items-center gap-2">
+                                            <span className="text-[9px] px-1.5 py-0.5 rounded-[3px] bg-green-500/10 text-green-600 font-bold uppercase tracking-wider">{p?.metodo_pagamento}</span>
+                                            <span className="text-[10px] nl-text-muted font-mono">{p?.data_pagamento}</span>
                                          </div>
                                          {p?.referencia_inicio && p?.referencia_fim && (
-                                           <span className="text-[11px] nl-text-muted">cobre {p.referencia_inicio} ate {p.referencia_fim}</span>
+                                           <span className="text-[10px] nl-text-muted">cobre {p.referencia_inicio} ate {p.referencia_fim}</span>
                                          )}
                                       </div>
-                                      <span className="text-[14px] font-extrabold text-green-600">{formatCve(p?.valor)}</span>
+                                      <span className="text-[13px] font-extrabold text-green-600">{formatCve(p?.valor)}</span>
                                    </div>
                                 )})
                              )}
@@ -7089,7 +5116,7 @@ function App() {
         );
 
         return (
-          <div className="fixed top-16 right-6 w-[400px] bg-[var(--bg-surface)] shadow-2xl rounded-[3px] border border-[var(--border)] z-[500] overflow-hidden flex flex-col animate-slide-up" style={{ maxHeight: 'calc(100vh - 80px)' }}>
+          <div ref={notificacoesRef} className="fixed top-16 right-6 w-[400px] bg-[var(--bg-surface)] shadow-2xl rounded-[3px] border border-[var(--border)] z-[500] overflow-hidden flex flex-col animate-slide-up" style={{ maxHeight: 'calc(100vh - 80px)' }}>
             {/* Header */}
             <div className="px-5 py-4 border-b border-[var(--border)] flex items-center justify-between bg-[var(--color-secondary-lighter)]/40">
               <div className="flex items-center gap-2.5">
@@ -7235,72 +5262,75 @@ function App() {
       {/* Modal: Sobre o App (Página Estilo Word) */}
 
       {mostrarSobreDoc && (
-        <div className="fixed inset-0 z-[2000] flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(6px)' }}>
-          <div className="relative bg-white w-full max-w-[520px] rounded-[12px] overflow-hidden shadow-[0_32px_80px_rgba(0,0,0,0.25)]" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[2000] p-4 animate-fade-in" onClick={() => setMostrarSobreDoc(false)}>
+          <div className="bg-[var(--bg-surface)] w-full max-w-[520px] shadow-[0_20px_70px_rgba(0,0,0,0.3)] rounded-[6px] border border-[var(--border)] overflow-hidden flex flex-col animate-scale-in" onClick={e => e.stopPropagation()}>
 
-            {/* Fechar */}
-            <button onClick={() => setMostrarSobreDoc(false)} className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-all z-10">
-              <X size={16} />
-            </button>
-
-            {/* Topo com logos */}
-            <div className="px-10 pt-10 pb-8 flex items-center gap-5 border-b border-slate-100">
-              <div className="w-14 h-14 rounded-[10px] bg-slate-50 border border-slate-100 flex items-center justify-center shrink-0">
-                <img src={appLogo || APP_ICON_PATH} className="w-9 h-9 object-contain" alt="NEXTLevel" />
-              </div>
-              <div>
-                <h2 className="text-[22px] font-black text-slate-900 tracking-tight leading-none">NEXTLevel</h2>
-                <p className="text-[12px] text-slate-400 mt-1">Sistema de Gestão de Academias · v1.0 Beta</p>
-              </div>
-            </div>
-
-            {/* Info grid */}
-            <div className="px-10 py-8 space-y-5 text-[13px]">
-
-              {[
-                { label: 'Versão',         value: '1.0.0 Beta' },
-                { label: 'Plataforma',     value: 'macOS · Windows · Desktop' },
-                { label: 'Base de Dados',  value: 'SQLite · Offline · Local' },
-                { label: 'Licença',        value: licencaDados.tipo ? `${licencaDados.tipo} · ${licencaDados.expiracao || 'Vitalícia'}` : 'Não activada' },
-                { label: 'Ano',            value: String(new Date().getFullYear()) },
-              ].map(item => (
-                <div key={item.label} className="flex items-center justify-between gap-4">
-                  <span className="text-slate-400 font-medium">{item.label}</span>
-                  <span className="text-slate-800 font-semibold text-right">{item.value}</span>
+            <div className="bg-[#F1F4F9] border-b border-[#DDE2EB] h-12 flex items-center shrink-0">
+              <div className="flex-1 flex items-center gap-2.5 px-4">
+                <div className="h-6 w-6 rounded-md bg-white/50 backdrop-blur-sm p-1 border border-white/40 shadow-sm flex items-center justify-center">
+                  <img src={appLogo || APP_ICON_PATH} alt="Logo" className="w-full h-full object-contain" />
                 </div>
-              ))}
-
+                <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] leading-none">NextLevel</span>
+              </div>
+              <div className="flex-1 text-center whitespace-nowrap">
+                <h2 className="text-[12px] font-black text-slate-700 uppercase tracking-wider leading-none">Sobre a Aplicação</h2>
+              </div>
+              <div className="flex-1 flex justify-end px-3">
+                <button onClick={() => setMostrarSobreDoc(false)} className="h-8 w-8 flex items-center justify-center rounded-md text-slate-400 hover:bg-red-50 hover:text-red-500 transition-all" title="Fechar">
+                  <X size={16} />
+                </button>
+              </div>
             </div>
 
-            {/* Separador */}
-            <div className="mx-10 border-t border-slate-100" />
-
-            {/* NEXT Lab créditos */}
-            <div className="px-10 py-6 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <img src={NEXT_LAB_ICON} className="w-7 h-7 object-contain opacity-50" alt="NEXT Lab" />
+            <div className="px-6 py-6 space-y-6">
+              <div className="flex items-center gap-4 pb-4 border-b border-[var(--border-light)]">
+                <div className="w-12 h-12 rounded-[8px] bg-[var(--color-secondary-lighter)] border border-[var(--border)] flex items-center justify-center shrink-0">
+                  <img src={appLogo || APP_ICON_PATH} className="w-8 h-8 object-contain" alt="NEXTLevel" />
+                </div>
                 <div>
-                  <p className="text-[13px] font-semibold text-slate-700 leading-none">NEXT Lab</p>
-                  <p className="text-[11px] text-slate-400 mt-0.5">Creative Studio · desde 1995</p>
+                  <p className="text-[16px] font-black nl-text tracking-tight leading-none">NEXTLevel</p>
+                  <p className="text-[11px] nl-text-muted mt-1">Sistema de Gestão de Academias · v1.0 Beta</p>
                 </div>
               </div>
-              <div className="text-right">
-                <p className="text-[12px] text-slate-500 font-medium">{COMPANY_AUTHOR}</p>
-                <p className="text-[11px] text-slate-400">{COMPANY_EMAIL}</p>
+
+              <div className="space-y-3">
+                {[
+                  { label: 'Versão', value: '1.0.0 Beta' },
+                  { label: 'Plataforma', value: 'macOS · Windows · Desktop' },
+                  { label: 'Base de Dados', value: 'SQLite · Offline · Local' },
+                  { label: 'Licença', value: licencaDados.tipo ? `${licencaDados.tipo} · ${licencaDados.expiracao || 'Vitalícia'}` : 'Não activada' },
+                  { label: 'Ano', value: String(new Date().getFullYear()) },
+                ].map(item => (
+                  <div key={item.label} className="flex items-center justify-between gap-4 px-3 py-2.5 rounded-[6px] bg-[var(--color-secondary-lighter)]/30 border border-[var(--border-light)]">
+                    <span className="text-[11px] font-bold nl-text-muted uppercase tracking-wider">{item.label}</span>
+                    <span className="text-[12px] font-bold nl-text text-right">{item.value}</span>
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex items-center justify-between px-3 py-3 rounded-[6px] bg-gradient-to-r from-slate-50 to-white border border-[var(--border-light)]">
+                <div className="flex items-center gap-3">
+                  <img src={NEXT_LAB_ICON} className="w-6 h-6 object-contain opacity-50" alt="NEXT Lab" />
+                  <div>
+                    <p className="text-[12px] font-bold nl-text leading-none">NEXT Lab</p>
+                    <p className="text-[10px] nl-text-muted mt-0.5">Creative Studio · desde 1995</p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="text-[11px] font-semibold nl-text">{COMPANY_AUTHOR}</p>
+                  <p className="text-[10px] nl-text-muted">{COMPANY_EMAIL}</p>
+                </div>
               </div>
             </div>
 
-            {/* Rodapé */}
-            <div className="px-10 pb-8">
-              <button
-                onClick={() => electron?.ipcRenderer.invoke('open-external', COMPANY_WEBSITE)}
-                className="w-full h-10 rounded-[6px] text-[13px] font-semibold text-slate-500 border border-slate-200 hover:border-slate-300 hover:text-slate-700 transition-all"
-              >
-                linktr.ee/next.lab
-              </button>
-              <p className="text-center text-[10px] text-slate-300 mt-4">
-                © {new Date().getFullYear()} NEXT Lab · Todos os direitos reservados
-              </p>
+            <div className="bg-[#F8F9FC] border-t border-[#DDE2EB] px-6 py-4 flex items-center justify-between shrink-0">
+              <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">© {new Date().getFullYear()} NEXT Lab</p>
+              <div className="flex gap-3">
+                <button onClick={() => setMostrarSobreDoc(false)} className="nl-btn nl-btn-secondary !h-9 !px-5 !text-[11px] font-bold">Fechar</button>
+                <button onClick={() => electron?.ipcRenderer.invoke('open-external', COMPANY_WEBSITE)} className="nl-btn !h-9 !px-5 !text-[11px] font-bold !bg-slate-800 !text-white hover:!bg-slate-900">
+                  <Globe size={14} /> linktr.ee/next.lab
+                </button>
+              </div>
             </div>
 
           </div>
@@ -7308,35 +5338,47 @@ function App() {
       )}
       {/* Modal: Novo Utilizador */}
       {mostrarFormNovoUtilizador && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[1000] p-6 animate-in fade-in duration-300">
-           <div className="bg-[var(--bg-surface)] w-full max-w-[460px] shadow-2xl rounded-[3px] border border-[var(--border)] overflow-hidden animate-slide-up flex flex-col">
-              <div className="p-6 border-b border-[var(--border)] bg-[var(--color-secondary-lighter)]/50 flex items-center justify-between">
-                 <h2 className="text-[16px] font-extrabold nl-text tracking-tight">Novo Utilizador</h2>
-                 <button onClick={() => setMostrarFormNovoUtilizador(false)} className="nl-text-muted hover:text-[var(--text-primary)] transition-colors"><X size={18} /></button>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[1000] p-4 animate-fade-in" onClick={() => setMostrarFormNovoUtilizador(false)}>
+           <div className="bg-[var(--bg-surface)] w-full max-w-[460px] shadow-[0_20px_70px_rgba(0,0,0,0.3)] rounded-[6px] border border-[var(--border)] overflow-hidden flex flex-col animate-scale-in" style={{ maxHeight: 'calc(100vh - 40px)' }} onClick={e => e.stopPropagation()}>
+              <div className="bg-[#F1F4F9] border-b border-[#DDE2EB] h-12 flex items-center shrink-0">
+                <div className="flex-1 flex items-center gap-2.5 px-4">
+                  <div className="h-6 w-6 rounded-md bg-white/50 backdrop-blur-sm p-1 border border-white/40 shadow-sm flex items-center justify-center">
+                    <img src={appLogo || APP_ICON_PATH} alt="Logo" className="w-full h-full object-contain" />
+                  </div>
+                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] leading-none">NextLevel</span>
+                </div>
+                <div className="flex-1 text-center whitespace-nowrap">
+                  <h2 className="text-[12px] font-black text-slate-700 uppercase tracking-wider leading-none">Novo Utilizador</h2>
+                </div>
+                <div className="flex-1 flex justify-end px-3">
+                  <button onClick={() => setMostrarFormNovoUtilizador(false)} className="h-8 w-8 flex items-center justify-center rounded-md text-slate-400 hover:bg-red-50 hover:text-red-500 transition-all" title="Fechar">
+                    <X size={16} />
+                  </button>
+                </div>
               </div>
-              <div className="p-8 space-y-5">
-                 <div className="space-y-2">
-                    <label className="block text-[11px] font-bold nl-text-muted uppercase tracking-wider">Nome Completo</label>
-                    <input type="text" value={novoUtilizadorForm.name} onChange={e => setNovoUtilizadorForm({...novoUtilizadorForm, name: e.target.value})} className="nl-input w-full h-11" placeholder="Ex: João Silva" required />
+              <div className="p-5 space-y-4">
+                 <div className="space-y-1.5">
+                    <label className="block text-[10px] font-bold nl-text-muted uppercase tracking-[0.12em] mb-1">Nome Completo</label>
+                    <input type="text" value={novoUtilizadorForm.name} onChange={e => setNovoUtilizadorForm({...novoUtilizadorForm, name: e.target.value})} className="nl-input w-full h-10 px-3 text-[13px]" placeholder="Ex: João Silva" required />
                  </div>
-                 <div className="space-y-2">
-                    <label className="block text-[11px] font-bold nl-text-muted uppercase tracking-wider">Email</label>
-                    <input type="email" value={novoUtilizadorForm.email} onChange={e => setNovoUtilizadorForm({...novoUtilizadorForm, email: e.target.value})} className="nl-input w-full h-11" placeholder="contacto@exemplo.com" required />
+                 <div className="space-y-1.5">
+                    <label className="block text-[10px] font-bold nl-text-muted uppercase tracking-[0.12em] mb-1">Email</label>
+                    <input type="email" value={novoUtilizadorForm.email} onChange={e => setNovoUtilizadorForm({...novoUtilizadorForm, email: e.target.value})} className="nl-input w-full h-10 px-3 text-[13px]" placeholder="contacto@exemplo.com" required />
                  </div>
-                 <div className="space-y-2">
-                    <label className="block text-[11px] font-bold nl-text-muted uppercase tracking-wider">Função (Role)</label>
-                    <select value={novoUtilizadorForm.role} onChange={e => setNovoUtilizadorForm({...novoUtilizadorForm, role: e.target.value})} className="nl-input w-full h-11 cursor-pointer">
+                 <div className="space-y-1.5">
+                    <label className="block text-[10px] font-bold nl-text-muted uppercase tracking-[0.12em] mb-1">Função</label>
+                    <select value={novoUtilizadorForm.role} onChange={e => setNovoUtilizadorForm({...novoUtilizadorForm, role: e.target.value})} className="nl-input w-full h-10 px-3 text-[13px] cursor-pointer">
                        <option value="operational">Operacional (Sem Ajustes)</option>
                        <option value="admin">Administrador (Total)</option>
                     </select>
                  </div>
-                 <div className="space-y-2">
-                    <label className="block text-[11px] font-bold nl-text-muted uppercase tracking-wider">Palavra-passe</label>
-                    <input type="password" value={novoUtilizadorForm.password} onChange={e => setNovoUtilizadorForm({...novoUtilizadorForm, password: e.target.value})} className="nl-input w-full h-11" placeholder="Mínimo 6 caracteres" required />
+                 <div className="space-y-1.5">
+                    <label className="block text-[10px] font-bold nl-text-muted uppercase tracking-[0.12em] mb-1">Palavra-passe</label>
+                    <input type="password" value={novoUtilizadorForm.password} onChange={e => setNovoUtilizadorForm({...novoUtilizadorForm, password: e.target.value})} className="nl-input w-full h-10 px-3 text-[13px]" placeholder="Mínimo 6 caracteres" required />
                  </div>
               </div>
-              <div className="p-6 border-t border-[var(--border)] bg-[var(--bg-surface)] flex justify-end gap-3">
-                 <button onClick={() => setMostrarFormNovoUtilizador(false)} className="nl-btn nl-btn-secondary px-6 h-10">Cancelar</button>
+              <div className="bg-[#F8F9FC] border-t border-[#DDE2EB] px-6 py-4 flex items-center justify-end gap-3 shrink-0">
+                 <button onClick={() => setMostrarFormNovoUtilizador(false)} className="nl-btn nl-btn-secondary !h-9 !px-5 !text-[11px] font-bold">Cancelar</button>
                  <button onClick={async () => {
                     if (!electron || !novoUtilizadorForm.name || !novoUtilizadorForm.email || novoUtilizadorForm.password.length < 6) return alert('Preencha todos os campos e palavra-passe com mínimo de 6 caracteres.');
                     const res = await electron.ipcRenderer.invoke('users:create', novoUtilizadorForm);
@@ -7346,7 +5388,9 @@ function App() {
                     setNovoUtilizadorForm({ name: '', email: '', role: 'operational', password: '' });
                     const listRes = await electron.ipcRenderer.invoke('users:list');
                     if (listRes?.success) setListaUtilizadores(listRes.users || []);
-                 }} className="nl-btn nl-btn-primary px-6 h-10">Criar Conta</button>
+                 }} className="nl-btn !h-9 !px-6 !text-[11px] font-bold nl-btn-primary">
+                    <UserPlus size={14} /> Criar Conta
+                 </button>
               </div>
            </div>
         </div>
@@ -7354,45 +5398,45 @@ function App() {
 
       {/* Modal: Editar Utilizador + Actividade */}
       {utilizadorEmEdicao && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[1000] p-6 animate-in fade-in duration-200" onClick={() => setUtilizadorEmEdicao(null)}>
-          <div className="bg-[var(--bg-surface)] w-full max-w-[720px] shadow-2xl rounded-[6px] border border-[var(--border)] overflow-hidden flex flex-col animate-scale-in" style={{ maxHeight: 'calc(100vh - 60px)' }} onClick={e => e.stopPropagation()}>
-
-            {/* Header */}
-            <div className="px-6 py-4 border-b border-[var(--border)] bg-[var(--color-secondary-lighter)]/40 flex items-center justify-between shrink-0">
-              <div className="flex items-center gap-3">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[1000] p-4 animate-fade-in" onClick={() => setUtilizadorEmEdicao(null)}>
+          <div className="bg-[var(--bg-surface)] w-full max-w-[720px] shadow-[0_20px_70px_rgba(0,0,0,0.3)] rounded-[6px] border border-[var(--border)] overflow-hidden flex flex-col animate-scale-in" style={{ maxHeight: 'calc(100vh - 40px)' }} onClick={e => e.stopPropagation()}>
+            <div className="bg-[#F1F4F9] border-b border-[#DDE2EB] h-12 flex items-center shrink-0">
+              <div className="flex-1 flex items-center gap-2.5 px-4">
                 {(() => {
                   const avatar = utilizadorAvatares[String(utilizadorEmEdicao.id)];
                   return (
-                    <div className="w-10 h-10 rounded-[8px] overflow-hidden flex items-center justify-center font-bold text-[13px] border border-[var(--border)]"
+                    <div className="h-6 w-6 rounded-md overflow-hidden flex items-center justify-center font-bold text-[9px] border border-white/40 shadow-sm"
                          style={{ background: avatar ? 'transparent' : `hsl(${(utilizadorEmEdicao.name.charCodeAt(0) * 37) % 360}, 60%, 88%)`, color: `hsl(${(utilizadorEmEdicao.name.charCodeAt(0) * 37) % 360}, 60%, 35%)` }}>
                       {avatar ? <img src={avatar} className="w-full h-full object-cover" /> : utilizadorEmEdicao.name.slice(0,2).toUpperCase()}
                     </div>
                   );
                 })()}
-                <div>
-                  <p className="text-[15px] font-bold nl-text">{utilizadorEmEdicao.name}</p>
-                  <p className="text-[11px] nl-text-muted">{utilizadorEmEdicao.email}</p>
-                </div>
+                <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] leading-none">{utilizadorEmEdicao.name}</span>
               </div>
-              <button onClick={() => setUtilizadorEmEdicao(null)} className="nl-icon-btn"><X size={16} /></button>
+              <div className="flex-1 text-center whitespace-nowrap">
+                <h2 className="text-[12px] font-black text-slate-700 uppercase tracking-wider leading-none">Editar Utilizador</h2>
+              </div>
+              <div className="flex-1 flex justify-end px-3">
+                <button onClick={() => setUtilizadorEmEdicao(null)} className="h-8 w-8 flex items-center justify-center rounded-md text-slate-400 hover:bg-red-50 hover:text-red-500 transition-all" title="Fechar">
+                  <X size={16} />
+                </button>
+              </div>
             </div>
 
             <div className="flex flex-1 overflow-hidden min-h-0">
-              {/* Left: Edit form */}
-              <div className="w-[300px] shrink-0 border-r border-[var(--border)] p-6 space-y-5 overflow-y-auto custom-scrollbar">
-                <p className="text-[10px] font-bold nl-text-muted uppercase tracking-wider">Perfil</p>
+              <div className="w-[300px] shrink-0 border-r border-[var(--border)] p-5 space-y-4 overflow-y-auto custom-scrollbar">
+                <p className="text-[9px] font-black uppercase tracking-[0.2em] text-[var(--text-secondary)]">Perfil</p>
 
-                {/* Avatar upload */}
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-3">
                   <div className="relative group">
-                    <div className="w-16 h-16 rounded-[10px] overflow-hidden flex items-center justify-center font-bold text-[18px] border border-[var(--border)]"
+                    <div className="w-14 h-14 rounded-[8px] overflow-hidden flex items-center justify-center font-bold text-[16px] border border-[var(--border)]"
                          style={{ background: utilizadorAvatares[String(utilizadorEmEdicao.id)] ? 'transparent' : `hsl(${(utilizadorEmEdicao.name.charCodeAt(0) * 37) % 360}, 60%, 88%)`, color: `hsl(${(utilizadorEmEdicao.name.charCodeAt(0) * 37) % 360}, 60%, 35%)` }}>
                       {utilizadorAvatares[String(utilizadorEmEdicao.id)]
                         ? <img src={utilizadorAvatares[String(utilizadorEmEdicao.id)]} className="w-full h-full object-cover" />
                         : utilizadorEmEdicao.name.slice(0,2).toUpperCase()}
                     </div>
-                    <label className="absolute inset-0 bg-black/50 rounded-[10px] flex items-center justify-center opacity-0 group-hover:opacity-100 cursor-pointer transition-all">
-                      <Camera size={16} className="text-white" />
+                    <label className="absolute inset-0 bg-black/50 rounded-[8px] flex items-center justify-center opacity-0 group-hover:opacity-100 cursor-pointer transition-all">
+                      <Camera size={14} className="text-white" />
                       <input type="file" className="hidden" accept="image/*" onChange={(e) => {
                         const file = e.target.files?.[0];
                         if (!file) return;
@@ -7407,8 +5451,8 @@ function App() {
                       }} />
                     </label>
                   </div>
-                  <div className="text-[11px] nl-text-muted leading-relaxed">
-                    <p className="font-semibold nl-text mb-0.5">Foto de perfil</p>
+                  <div className="text-[10px] nl-text-muted leading-relaxed">
+                    <p className="font-bold nl-text mb-0.5">Foto de perfil</p>
                     <p>Passe o rato para alterar</p>
                     {utilizadorAvatares[String(utilizadorEmEdicao.id)] && (
                       <button type="button" onClick={() => {
@@ -7416,26 +5460,26 @@ function App() {
                         delete updated[String(utilizadorEmEdicao.id)];
                         setUtilizadorAvatares(updated);
                         localStorage.setItem('nl_user_avatares', JSON.stringify(updated));
-                      }} className="text-red-500 hover:underline mt-1 block">Remover foto</button>
+                      }} className="text-red-500 hover:underline mt-1 block text-[10px]">Remover foto</button>
                     )}
                   </div>
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="block text-[11px] font-bold nl-text-muted uppercase tracking-wider">Nome</label>
+                  <label className="block text-[10px] font-bold nl-text-muted uppercase tracking-[0.12em] mb-1">Nome</label>
                   <input type="text" value={utilizadorEdicaoForm.name} onChange={e => setUtilizadorEdicaoForm(f => ({...f, name: e.target.value}))} className="nl-input w-full h-10 px-3 text-[13px]" />
                 </div>
                 <div className="space-y-1.5">
-                  <label className="block text-[11px] font-bold nl-text-muted uppercase tracking-wider">Função</label>
+                  <label className="block text-[10px] font-bold nl-text-muted uppercase tracking-[0.12em] mb-1">Função</label>
                   <select value={utilizadorEdicaoForm.role} onChange={e => setUtilizadorEdicaoForm(f => ({...f, role: e.target.value}))} className="nl-input w-full h-10 px-3 text-[13px] cursor-pointer">
                     <option value="operational">Operacional</option>
                     <option value="admin">Administrador</option>
                   </select>
                 </div>
-                <div className="flex items-center justify-between p-3 rounded-[5px] bg-slate-50 border border-slate-200">
+                <div className="flex items-center justify-between p-3 rounded-[6px] bg-[var(--color-secondary-lighter)]/40 border border-[var(--border-light)]">
                   <div>
-                    <p className="text-[12px] font-semibold nl-text">Conta activa</p>
-                    <p className="text-[10px] nl-text-muted">Acesso ao sistema</p>
+                    <p className="text-[11px] font-bold nl-text">Conta activa</p>
+                    <p className="text-[9px] nl-text-muted">Acesso ao sistema</p>
                   </div>
                   <button type="button" onClick={() => setUtilizadorEdicaoForm(f => ({...f, isActive: !f.isActive}))}
                     className={`relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors ${utilizadorEdicaoForm.isActive ? 'bg-[var(--color-primary)]' : 'bg-slate-300'}`}>
@@ -7455,10 +5499,10 @@ function App() {
                   const listRes = await electron.ipcRenderer.invoke('users:list');
                   if (listRes?.success) setListaUtilizadores(listRes.users || []);
                   setUtilizadorEmEdicao({ ...utilizadorEmEdicao, name: utilizadorEdicaoForm.name, role: utilizadorEdicaoForm.role, is_active: utilizadorEdicaoForm.isActive ? 1 : 0 });
-                }} className="nl-btn nl-btn-primary w-full h-10 text-[13px]">Guardar alterações</button>
+                }} className="nl-btn nl-btn-primary w-full h-10 text-[12px] font-bold"><Save size={14} /> Guardar alterações</button>
 
                 <div className="border-t border-[var(--border-light)] pt-4 space-y-2">
-                  <p className="text-[10px] font-bold nl-text-muted uppercase tracking-wider">Palavra-passe</p>
+                  <p className="text-[9px] font-black uppercase tracking-[0.2em] text-[var(--text-secondary)]">Palavra-passe</p>
                   <input type="password" value={utilizadorEdicaoForm.novaSenha} onChange={e => setUtilizadorEdicaoForm(f => ({...f, novaSenha: e.target.value}))} placeholder="Nova palavra-passe..." className="nl-input w-full h-10 px-3 text-[13px]" />
                   <button type="button" onClick={async () => {
                     if (!electron || utilizadorEdicaoForm.novaSenha.length < 6) return showToast('Mínimo 6 caracteres.');
@@ -7466,15 +5510,15 @@ function App() {
                     if (!res?.success) return showToast('Erro: ' + (res?.message || ''));
                     showToast('Palavra-passe alterada.');
                     setUtilizadorEdicaoForm(f => ({...f, novaSenha: ''}));
-                  }} className="nl-btn nl-btn-secondary w-full h-9 text-[12px]">Alterar palavra-passe</button>
+                  }} className="nl-btn nl-btn-secondary w-full h-9 text-[11px] font-bold">Alterar palavra-passe</button>
                 </div>
               </div>
 
               {/* Right: Activity log */}
               <div className="flex-1 flex flex-col overflow-hidden">
-                <div className="px-5 py-3.5 border-b border-[var(--border)] bg-slate-50/50 flex items-center justify-between shrink-0">
-                  <p className="text-[11px] font-bold nl-text-muted uppercase tracking-wider">Histórico de Actividade</p>
-                  <span className="text-[10px] nl-text-muted">{logs.filter(l => l.user_name === utilizadorEmEdicao.name).length} acções</span>
+                <div className="px-5 py-3 border-b border-[var(--border)] bg-[var(--color-secondary-lighter)]/30 flex items-center justify-between shrink-0">
+                  <p className="text-[10px] font-bold nl-text-muted uppercase tracking-wider">Histórico de Actividade</p>
+                  <span className="text-[9px] nl-text-muted">{logs.filter(l => l.user_name === utilizadorEmEdicao.name).length} acções</span>
                 </div>
                 <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-1.5">
                   {(() => {
@@ -7501,15 +5545,15 @@ function App() {
                     return userLogs.map(log => {
                       const { icon, color } = iconePorAcao(log.acao);
                       return (
-                        <div key={log.id} className="flex items-start gap-2.5 p-2.5 rounded-[5px] hover:bg-slate-50 transition-colors">
+                        <div key={log.id} className="flex items-start gap-2.5 p-2.5 rounded-[5px] hover:bg-[var(--color-secondary-lighter)]/30 transition-colors">
                           <div className={`w-6 h-6 rounded-[4px] border flex items-center justify-center shrink-0 mt-0.5 ${color}`}>
                             {icon}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className="text-[12px] font-semibold nl-text">{log.acao}</p>
-                            {log.detalhes && <p className="text-[11px] nl-text-muted mt-0.5 line-clamp-2">{log.detalhes}</p>}
+                            <p className="text-[12px] font-bold nl-text">{log.acao}</p>
+                            {log.detalhes && <p className="text-[10px] nl-text-muted mt-0.5 line-clamp-2">{log.detalhes}</p>}
                           </div>
-                          <span className="text-[10px] nl-text-muted shrink-0 tabular-nums whitespace-nowrap">{log.data_hora}</span>
+                          <span className="text-[9px] nl-text-muted shrink-0 tabular-nums whitespace-nowrap">{log.data_hora}</span>
                         </div>
                       );
                     });
@@ -7605,9 +5649,9 @@ function App() {
             return;
           }
           try {
-            const selectedMonthName = pagamentoForm.mesReferencia || mesFinanceiro;
+            const selectedMonthName = mesAtualNome;
             const targetMonthIndex = MONTH_OPTIONS.indexOf(selectedMonthName);
-            const targetYear = anoFinanceiro;
+            const targetYear = anoAtual;
             const dueDay = (() => {
               const date = parseFlexibleDate(alunoPerfil.vencimento) || parseFlexibleDate(alunoPerfil.data_matricula) || new Date();
               return date.getDate();
@@ -7656,94 +5700,103 @@ function App() {
         })();
 
         return (
-          <>
-            {/* Backdrop */}
-            <div
-              className="fixed inset-0 z-[200] bg-slate-900/40 backdrop-blur-[3px] animate-fade-in"
-              onClick={fecharPerfilModal}
-            />
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[210] p-4 animate-fade-in" onClick={fecharPerfilModal}>
+            <div className="bg-[var(--bg-surface)] w-full max-w-[480px] shadow-[0_20px_70px_rgba(0,0,0,0.3)] rounded-[6px] border border-[var(--border)] overflow-hidden flex flex-col animate-scale-in" style={{ maxHeight: 'calc(100vh - 40px)' }} onClick={e => e.stopPropagation()}>
+              <div className="bg-[#F1F4F9] border-b border-[#DDE2EB] h-12 flex items-center shrink-0">
+                <div className="flex-1 flex items-center gap-2.5 px-4">
+                  <div className={`h-6 w-6 rounded-md flex items-center justify-center text-[9px] font-black text-white overflow-hidden shrink-0 ${avatarBg}`}>
+                    {alunoPerfil.foto_path
+                      ? <img src={`local-resource://${alunoPerfil.foto_path}`} className="w-full h-full object-cover" />
+                      : getAlunoIniciais(alunoPerfil)}
+                  </div>
+                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] leading-none truncate max-w-[100px]">{nomePerfil}</span>
+                </div>
+                <div className="flex-1 text-center whitespace-nowrap">
+                  <h2 className="text-[12px] font-black text-slate-700 uppercase tracking-wider leading-none">Perfil do Aluno</h2>
+                </div>
+                <div className="flex-1 flex justify-end px-3">
+                  <button onClick={fecharPerfilModal} className="h-8 w-8 flex items-center justify-center rounded-md text-slate-400 hover:bg-red-50 hover:text-red-500 transition-all" title="Fechar">
+                    <X size={16} />
+                  </button>
+                </div>
+              </div>
 
-            {/* Container do Modal */}
-            <div
-              className="fixed inset-0 z-[210] flex items-center justify-center p-4 animate-scale-in"
-              onClick={(e) => { if (e.target === e.currentTarget) fecharPerfilModal(); }}
-            >
-              <div
-                className="bg-white rounded-[16px] shadow-[0_25px_80px_rgba(0,0,0,0.2)] border border-slate-200/60 w-full max-w-[480px] max-h-[90vh] flex flex-col overflow-hidden relative"
-                onClick={(e) => e.stopPropagation()}
-              >
-                {perfilPagamentoSucesso ? (
-                  /* ── SUCCESS STATE ── */
-                  <div className="flex flex-col items-center justify-center p-10 text-center animate-scale-in">
-                    <div className="w-20 h-20 rounded-full bg-emerald-50 flex items-center justify-center mb-6">
-                      <CheckCircle2 size={40} className="text-emerald-500" />
-                    </div>
-                    <h3 className="text-[20px] font-black text-slate-800 mb-2">Pagamento Registado!</h3>
-                    <p className="text-[14px] text-slate-500 font-medium">
-                      O valor de {formatCve(normalizeAmount(perfilUltimoPagamentoInfo?.valor || alunoPerfil.plano))} foi cobrado com sucesso.
+              {perfilPagamentoSucesso ? (
+                <div className="px-5 py-10 text-center space-y-5 bg-gradient-to-b from-emerald-50/50 to-white">
+                  <div className="w-20 h-20 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-600 shadow-lg shadow-emerald-200 flex items-center justify-center mx-auto animate-scale-in">
+                    <CheckCircle2 size={40} className="text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-[22px] font-black text-emerald-700">Pagamento Registado!</h3>
+                    <p className="text-[14px] text-emerald-600/80 font-semibold mt-1">
+                      {formatCve(normalizeAmount(perfilUltimoPagamentoInfo?.valor || alunoPerfil.plano))} · {nomePerfil}
                     </p>
                   </div>
-                ) : (
-                  <>
-                    {/* ══════ 1. CABEÇALHO (INFO DO CLIENTE) ══════ */}
-                    <div className="px-6 py-5 bg-gradient-to-b from-slate-50 to-white border-b border-slate-100 relative shrink-0">
-                      <button onClick={fecharPerfilModal} className="absolute top-4 right-4 w-8 h-8 rounded-full flex items-center justify-center text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-all z-10">
-                        <X size={16} />
-                      </button>
-
-                      <div className="flex items-center gap-4">
-                        <div className={`w-16 h-16 rounded-full flex items-center justify-center text-[22px] font-black text-white overflow-hidden shadow-lg ring-4 ring-white ${avatarBg} shrink-0`}>
-                          {alunoPerfil.foto_path
-                            ? <img src={`local-resource://${alunoPerfil.foto_path}`} className="w-full h-full object-cover" />
-                            : getAlunoIniciais(alunoPerfil)}
+                  {whatsappNumPerfil && (
+                    <button
+                      type="button"
+                      onClick={() => electron?.ipcRenderer.invoke('open-external', whatsappUrlPerfil)}
+                      className="inline-flex items-center gap-2 h-10 px-6 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.97] text-white rounded-[8px] text-[12px] font-black shadow-lg shadow-emerald-200 transition-all"
+                    >
+                      <Send size={15} /> Enviar Recibo via WhatsApp
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <>
+                  <div className="px-5 pt-3 space-y-3 overflow-y-auto custom-scrollbar">
+                    {/* Info do Aluno */}
+                    <div className="flex items-center gap-3 rounded-[10px] border-2 border-[var(--border-light)] bg-gradient-to-br from-[var(--color-secondary-lighter)]/40 to-white p-3.5 shadow-sm">
+                      <div className={`w-12 h-12 rounded-full flex items-center justify-center text-[15px] font-black text-white overflow-hidden shadow-md ring-2 ring-white/60 shrink-0 ${avatarBg}`}>
+                        {alunoPerfil.foto_path
+                          ? <img src={`local-resource://${alunoPerfil.foto_path}`} className="w-full h-full object-cover" />
+                          : getAlunoIniciais(alunoPerfil)}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[15px] font-black nl-text truncate leading-tight">{nomePerfil}</p>
+                        <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                          <span className={`text-[9px] font-extrabold uppercase tracking-wider px-1.5 py-0.5 rounded-full border ${statusColorsPerfil}`}>
+                            {alunoPerfil.status || 'ativo'}
+                          </span>
+                          <span className="text-[10px] nl-text-muted">· {alunoPerfil.categoria || 'Geral'}</span>
                         </div>
-                        <div className="flex-1 min-w-0 pr-6">
-                          <h2 className="text-[18px] font-black text-slate-800 tracking-tight truncate leading-tight">{nomePerfil}</h2>
-                          <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                            <span className={`text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full border ${statusColorsPerfil}`}>
-                              {alunoPerfil.status || 'ativo'}
-                            </span>
-                            <span className="text-[11px] font-medium text-slate-400 flex items-center gap-1">
-                              {alunoPerfil.categoria || 'Geral'}
-                            </span>
-                            <span className="text-[11px] font-medium text-slate-400 flex items-center gap-1">
-                              • {alunoPerfil.telefone || 'Sem contacto'}
-                            </span>
-                          </div>
-                        </div>
+                      </div>
+                      <div className="text-right shrink-0 bg-white/60 px-3 py-1.5 rounded-[8px] border border-[var(--border-light)]">
+                        <p className="text-[8px] font-black uppercase tracking-[0.15em] text-[var(--text-secondary)]">Plano</p>
+                        <p className="text-[15px] font-black text-[var(--color-primary)] tabular-nums leading-tight">{formatCve(valorMensalidade)}</p>
                       </div>
                     </div>
 
-                    {/* ══════ 2. ÁREA DO HISTÓRICO (ACCORDION) ══════ */}
-                    <div className="shrink-0 bg-slate-50/50 border-b border-slate-100">
-                      <button 
+                    {/* Histórico Accordion */}
+                    <div className="rounded-[8px] border border-[var(--border-light)] overflow-hidden">
+                      <button
                         onClick={() => setMostrarHistoricoPerfil(!mostrarHistoricoPerfil)}
-                        className="w-full px-6 py-3.5 flex items-center justify-between text-slate-500 hover:text-slate-800 hover:bg-slate-50 transition-colors focus:outline-none"
+                        className="w-full px-4 py-2.5 flex items-center justify-between bg-[var(--color-secondary-lighter)]/30 hover:bg-[var(--color-secondary-lighter)]/50 transition-colors"
                       >
                         <div className="flex items-center gap-2">
-                          <History size={15} className={mostrarHistoricoPerfil ? "text-blue-500" : ""} />
-                          <span className="text-[12px] font-bold">
-                            {mostrarHistoricoPerfil ? "Ocultar Histórico de Pagamentos" : `Ver Histórico (${pagamentosAlunoPerfil.length} pagamentos)`}
+                          <History size={13} className="nl-text-muted" />
+                          <span className="text-[10px] font-bold nl-text-muted uppercase tracking-[0.1em]">
+                            {mostrarHistoricoPerfil ? "Ocultar Histórico" : `Ver Histórico (${pagamentosAlunoPerfil.length})`}
                           </span>
                         </div>
-                        {mostrarHistoricoPerfil ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                        {mostrarHistoricoPerfil ? <ChevronUp size={13} className="nl-text-muted" /> : <ChevronDown size={13} className="nl-text-muted" />}
                       </button>
 
                       {mostrarHistoricoPerfil && (
-                        <div className="px-6 pb-4 max-h-[220px] overflow-y-auto custom-scrollbar bg-slate-50/50 animate-fade-in">
+                        <div className="max-h-[200px] overflow-y-auto custom-scrollbar border-t border-[var(--border-light)] bg-[var(--color-secondary-lighter)]/20">
                           {pagamentosAlunoPerfil.length === 0 ? (
-                            <p className="text-[12px] font-medium text-slate-400 text-center py-6">Sem pagamentos registados.</p>
+                            <p className="text-[11px] nl-text-muted text-center py-6">Sem pagamentos registados.</p>
                           ) : (
-                            <div className="space-y-2 mt-2">
+                            <div className="p-3 space-y-2">
                               {pagamentosAlunoPerfil.map((pag) => (
-                                <div key={pag.id} className="flex items-center justify-between bg-white border border-slate-200/60 rounded-xl p-3 shadow-sm">
+                                <div key={pag.id} className="flex items-center justify-between bg-white border border-[var(--border-light)] rounded-[6px] p-2.5">
                                   <div>
-                                    <p className="text-[12px] font-bold text-slate-700 capitalize">{pag.mes_referencia}</p>
-                                    <p className="text-[10px] text-slate-400 font-medium">{pag.data_pagamento} • {pag.metodo_pagamento}</p>
+                                    <p className="text-[11px] font-bold nl-text capitalize">{pag.mes_referencia}</p>
+                                    <p className="text-[9px] nl-text-muted">{pag.data_pagamento} • {pag.metodo_pagamento}</p>
                                   </div>
                                   <div className="text-right">
-                                    <p className="text-[13px] font-black text-slate-800 tabular-nums">{formatCve(pag.valor)}</p>
-                                    <span className="text-[9px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded uppercase">{pag.status}</span>
+                                    <p className="text-[12px] font-black nl-text tabular-nums">{formatCve(pag.valor)}</p>
+                                    <span className="text-[8px] font-bold text-emerald-600 bg-emerald-50 px-1 py-0.5 rounded uppercase">{pag.status}</span>
                                   </div>
                                 </div>
                               ))}
@@ -7753,73 +5806,82 @@ function App() {
                       )}
                     </div>
 
-                    {/* ══════ 3. ÁREA DE COBRANÇA (FOCO PRINCIPAL) ══════ */}
-                    <div className="flex-1 overflow-y-auto p-6 space-y-6">
-                      <div className="text-center">
-                        <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2 block">Valor a Registar (CVE)</span>
-                        <div className="relative max-w-[200px] mx-auto group">
-                          <input
-                            type="text"
-                            value={pagamentoForm.valor}
-                            onChange={e => setPagamentoForm(prev => ({ ...prev, valor: e.target.value }))}
-                            className="w-full text-center font-black text-4xl text-slate-800 tracking-tight bg-slate-50/50 border border-slate-200 rounded-2xl py-3 focus:bg-white focus:outline-none focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 transition-all placeholder:text-slate-300"
-                            placeholder={`${valorMensalidade}`}
-                            style={{ fontVariantNumeric: 'tabular-nums' }}
-                          />
-                          <div className="absolute right-3 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <Pencil size={14} className="text-slate-400" />
-                          </div>
-                        </div>
-                        {pagamentoForm.valor && normalizeAmount(pagamentoForm.valor) !== valorMensalidade && (
-                          <button onClick={() => setPagamentoForm(prev => ({ ...prev, valor: '' }))} className="mt-2 text-[10px] font-bold text-blue-500 hover:text-blue-600 transition-colors">
-                            Repor valor original ({formatCve(valorMensalidade)})
-                          </button>
-                        )}
-                      </div>
+                    {/* Separador */}
+                    <div style={{ borderTop: '1px dashed var(--border-light)', margin: '0 4px' }} />
 
-                      <div className="grid grid-cols-2 gap-4">
-                        {/* Mês de Referência */}
+                    {/* Valor a Registar */}
+                    <div className="space-y-3 pb-3">
+                      <p className="text-[9px] font-black uppercase tracking-[0.2em] text-[var(--text-secondary)]">Registar Pagamento</p>
+
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[13px] font-bold text-[var(--text-secondary)] z-10">$</span>
+                        <input
+                          type="text"
+                          value={pagamentoForm.valor}
+                          onChange={e => setPagamentoForm(prev => ({ ...prev, valor: e.target.value }))}
+                          className="nl-input w-full h-12 pl-7 pr-3 text-[18px] font-black tracking-tight"
+                          placeholder={String(valorMensalidade)}
+                          style={{ fontVariantNumeric: 'tabular-nums' }}
+                        />
+                      </div>
+                      {pagamentoForm.valor && normalizeAmount(pagamentoForm.valor) !== valorMensalidade && (
+                        <button onClick={() => setPagamentoForm(prev => ({ ...prev, valor: '' }))} className="text-[10px] font-bold text-blue-500 hover:text-blue-600 transition-colors">
+                          Repor valor original ({formatCve(valorMensalidade)})
+                        </button>
+                      )}
+
+                      <div className="grid grid-cols-2 gap-3">
                         <div>
-                          <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1.5 block">Mês Ref.</label>
-                          <div className="relative">
-                            <select
-                              className="w-full bg-slate-50 border border-slate-200 text-[13px] font-extrabold text-slate-700 capitalize rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 appearance-none cursor-pointer"
-                              value={pagamentoForm.mesReferencia || mesFinanceiro}
-                              onChange={e => setPagamentoForm(prev => ({ ...prev, mesReferencia: e.target.value }))}
-                            >
-                              {MONTH_OPTIONS.map(m => (
-                                <option key={m} value={m}>{m.charAt(0).toUpperCase() + m.slice(1)} {anoFinanceiro}</option>
-                              ))}
-                            </select>
-                            <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                          </div>
+                          <label className="block text-[10px] font-bold nl-text-muted uppercase tracking-[0.12em] mb-1">Mês atual</label>
+                          <select
+                            value={mesAtualNome}
+                            disabled
+                            className="nl-input w-full h-10 px-3 text-[13px] cursor-not-allowed capitalize !bg-emerald-50 !border-emerald-200 !text-emerald-700 !font-bold"
+                          >
+                            <option value={mesAtualNome}>{mesAtualNome.charAt(0).toUpperCase() + mesAtualNome.slice(1)} {anoAtual}</option>
+                          </select>
                         </div>
-                        
-                        {/* Data do Pagamento */}
                         <div>
-                          <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1.5 block">Data</label>
+                          <label className="block text-[10px] font-bold nl-text-muted uppercase tracking-[0.12em] mb-1">Data</label>
                           <input
                             type="date"
                             value={pagamentoForm.dataPagamento}
                             onChange={e => setPagamentoForm(prev => ({ ...prev, dataPagamento: e.target.value }))}
-                            className="w-full bg-slate-50 border border-slate-200 text-[13px] font-extrabold text-slate-700 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                            className="nl-input w-full h-10 px-3 text-[13px]"
                           />
                         </div>
                       </div>
 
-                      <button
-                        type="button"
-                        onClick={registrarPagamentoPerfil}
-                        className="w-full h-[52px] bg-blue-600 hover:bg-blue-700 active:scale-[0.98] text-white rounded-xl text-[15px] font-black shadow-lg shadow-blue-500/20 flex items-center justify-center gap-2 transition-all mt-2"
-                      >
-                        <CheckCircle2 size={18} /> Confirmar & Cobrar
+                      <div className="flex items-center justify-between px-4 py-3 rounded-[10px] bg-gradient-to-r from-emerald-500 to-emerald-600 shadow-lg shadow-emerald-200/50">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
+                            <Wallet size={15} className="text-white" />
+                          </div>
+                          <span className="text-[12px] font-black text-white uppercase tracking-[0.12em]">Total a registar</span>
+                        </div>
+                        <span className="text-[20px] font-black text-white drop-shadow-sm" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                          {formatCve(normalizeAmount(pagamentoForm.valor || String(valorMensalidade)))}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-[#F8F9FC] border-t border-[#DDE2EB] px-6 py-4 flex items-center justify-between gap-3 shrink-0">
+                    <button onClick={fecharPerfilModal} className="nl-btn nl-btn-ghost !h-9 !px-4 !text-[11px] font-bold">Cancelar</button>
+                    <div className="flex items-center gap-2">
+                      {editandoPerfil && (
+                        <button onClick={salvarEdicao} className="nl-btn !h-9 !px-5 !text-[11px] font-bold nl-btn-primary"><Save size={14} /> Guardar</button>
+                      )}
+                      <button onClick={iniciarEdicao} className="nl-btn nl-btn-secondary !h-9 !px-4 !text-[11px] font-bold"><Edit size={14} /> Editar</button>
+                      <button onClick={registrarPagamentoPerfil} className="nl-btn !h-10 !px-7 !text-[12px] font-black !bg-gradient-to-r !from-emerald-600 !to-emerald-500 !text-white !border-none !shadow-lg !shadow-emerald-200/50 hover:!shadow-emerald-300/60 hover:!scale-[1.02] active:!scale-[0.98] transition-all">
+                        <CheckCircle2 size={16} /> Cobrar
                       </button>
                     </div>
-                  </>
-                )}
+                  </div>
+                </>
+              )}
               </div>
-            </div>
-          </>
+          </div>
         );
       })()}
 
@@ -7829,7 +5891,7 @@ function App() {
         const primeiroNomeCobranca = nomeCobranca.split(' ')[0] || 'Aluno';
         const valorOriginal = normalizeAmount(alunoParaCobrancaRapida.plano) || 0;
         const valorCobranca = pagamentoForm.valor || String(valorOriginal);
-        const mesCobranca = pagamentoForm.mesReferencia || mesFinanceiro;
+        const mesCobranca = pagamentoForm.mesReferencia || mesAtualNome;
         
         const whatsappNum = (alunoParaCobrancaRapida.telefone || '').replace(/\D/g, '');
         const valorWhatsapp = cobrancaUltimoPagamentoInfo?.valor
@@ -7859,9 +5921,9 @@ function App() {
             return;
           }
           try {
-            const selectedMonthName = mesCobranca;
+            const selectedMonthName = mesAtualNome;
             const targetMonthIndex = MONTH_OPTIONS.indexOf(selectedMonthName);
-            const targetYear = anoFinanceiro;
+            const targetYear = anoAtual;
             const dueDay = (() => {
               const date = parseFlexibleDate(alunoParaCobrancaRapida.vencimento) || parseFlexibleDate(alunoParaCobrancaRapida.data_matricula) || new Date();
               return date.getDate();
@@ -7907,8 +5969,8 @@ function App() {
           .sort((a, b) => (b.id || 0) - (a.id || 0));
 
         return (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[200] p-4 animate-fade-in" onClick={fecharCobrancaRapida}>
-            <div className="bg-[var(--bg-surface)] w-full max-w-[500px] shadow-[0_20px_70px_rgba(0,0,0,0.3)] rounded-[6px] border border-[var(--border)] overflow-hidden flex flex-col animate-scale-in" style={{ maxHeight: 'calc(100vh - 40px)' }} onClick={e => e.stopPropagation()}>
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-[2px] flex items-center justify-center z-[200] p-4 animate-fade-in" onClick={fecharCobrancaRapida}>
+            <div className="bg-[var(--bg-surface)] w-full max-w-[500px] shadow-[0_25px_80px_rgba(0,0,0,0.35)] rounded-[6px] border border-[var(--border)] overflow-hidden flex flex-col animate-scale-in" style={{ maxHeight: 'calc(100vh - 40px)' }} onClick={e => e.stopPropagation()}>
               <div className="bg-[#F1F4F9] border-b border-[#DDE2EB] h-12 flex items-center shrink-0">
                 <div className="flex-1 flex items-center gap-2.5 px-4">
                   <div className="h-6 w-6 rounded-md bg-white/50 backdrop-blur-sm p-1 border border-white/40 shadow-sm flex items-center justify-center">
@@ -7917,7 +5979,7 @@ function App() {
                   <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] leading-none">NextLevel</span>
                 </div>
                 <div className="flex-1 text-center whitespace-nowrap">
-                  <h2 className="text-[12px] font-black text-slate-700 uppercase tracking-wider leading-none">Registar Cobrança</h2>
+                  <h2 className="text-[12px] font-black text-slate-700 uppercase tracking-wider leading-none">Registar Pagamento</h2>
                 </div>
                 <div className="flex-1 flex justify-end px-3">
                   <button onClick={fecharCobrancaRapida} className="h-8 w-8 flex items-center justify-center rounded-md text-slate-400 hover:bg-red-50 hover:text-red-500 transition-all" title="Fechar">
@@ -7927,23 +5989,23 @@ function App() {
               </div>
 
               {cobrancaPagamentoSucesso ? (
-                <div className="px-5 py-8 text-center space-y-4">
-                  <div className="w-16 h-16 rounded-full bg-emerald-50 border border-emerald-100 flex items-center justify-center mx-auto">
-                    <CheckCircle2 size={34} className="text-emerald-500" />
+                <div className="px-5 py-10 text-center space-y-5 bg-gradient-to-b from-emerald-50/50 to-white">
+                  <div className="w-20 h-20 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-600 shadow-lg shadow-emerald-200 flex items-center justify-center mx-auto animate-scale-in">
+                    <CheckCircle2 size={40} className="text-white" />
                   </div>
                   <div>
-                    <h3 className="text-[18px] font-black nl-text">Pagamento Registado</h3>
-                    <p className="text-[13px] nl-text-muted mt-1">
-                      {formatCve(normalizeAmount(cobrancaUltimoPagamentoInfo?.valor || valorCobranca))} registados para {nomeCobranca}.
+                    <h3 className="text-[22px] font-black text-emerald-700">Pagamento Registado!</h3>
+                    <p className="text-[14px] text-emerald-600/80 font-semibold mt-1">
+                      {formatCve(normalizeAmount(cobrancaUltimoPagamentoInfo?.valor || valorCobranca))} · {nomeCobranca}
                     </p>
                   </div>
                   {whatsappNum && (
                     <button
                       type="button"
                       onClick={() => electron?.ipcRenderer.invoke('open-external', whatsappUrl)}
-                      className="nl-btn nl-btn-primary !h-9 !px-5 !text-[11px] font-bold mx-auto"
+                      className="inline-flex items-center gap-2 h-10 px-6 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.97] text-white rounded-[8px] text-[12px] font-black shadow-lg shadow-emerald-200 transition-all"
                     >
-                      <Send size={14} /> Enviar Recibo
+                      <Send size={15} /> Enviar Recibo via WhatsApp
                     </button>
                   )}
                 </div>
@@ -7952,26 +6014,29 @@ function App() {
                   <div className="px-5 pt-4 pb-3 space-y-3 overflow-y-auto custom-scrollbar">
                     <p className="text-[9px] font-black uppercase tracking-[0.2em] text-[var(--text-secondary)]">Aluno</p>
 
-                    <div className="flex items-center gap-3 rounded-[8px] border border-[var(--border-light)] bg-[var(--color-secondary-lighter)]/35 p-3">
-                      <div className={`w-11 h-11 rounded-full flex items-center justify-center text-[14px] font-black text-white overflow-hidden ${avatarBg} shrink-0`}>
+                    <div className="flex items-center gap-3 rounded-[10px] border-2 border-[var(--border-light)] bg-gradient-to-br from-[var(--color-secondary-lighter)]/40 to-white p-3.5 shadow-sm">
+                      <div className={`w-12 h-12 rounded-full flex items-center justify-center text-[15px] font-black text-white overflow-hidden shadow-md ring-2 ring-white/60 ${avatarBg} shrink-0`}>
                         {alunoParaCobrancaRapida.foto_path
                           ? <img src={`local-resource://${alunoParaCobrancaRapida.foto_path}`} className="w-full h-full object-cover" />
                           : getAlunoIniciais(alunoParaCobrancaRapida)}
                       </div>
                       <div className="min-w-0 flex-1">
-                        <p className="text-[14px] font-black nl-text truncate">{nomeCobranca}</p>
-                        <p className="text-[11px] nl-text-muted truncate">
-                          {alunoParaCobrancaRapida.telefone || 'Sem contacto'} · {alunoParaCobrancaRapida.categoria || 'Geral'}
+                        <p className="text-[15px] font-black nl-text truncate leading-tight">{nomeCobranca}</p>
+                        <p className="text-[11px] nl-text-muted truncate flex items-center gap-1.5 mt-0.5">
+                          <Phone size={10} className="shrink-0 opacity-60" />
+                          {alunoParaCobrancaRapida.telefone || 'Sem contacto'}
+                          <span className="opacity-30">·</span>
+                          {alunoParaCobrancaRapida.categoria || 'Geral'}
                         </p>
                       </div>
-                      <div className="text-right shrink-0">
-                        <p className="text-[9px] font-black uppercase tracking-[0.12em] text-[var(--text-secondary)]">Mensalidade</p>
-                        <p className="text-[13px] font-black nl-text tabular-nums">{formatCve(valorOriginal)}</p>
+                      <div className="text-right shrink-0 bg-white/60 px-3 py-1.5 rounded-[8px] border border-[var(--border-light)]">
+                        <p className="text-[8px] font-black uppercase tracking-[0.15em] text-[var(--text-secondary)]">Plano</p>
+                        <p className="text-[15px] font-black text-[var(--color-primary)] tabular-nums leading-tight">{formatCve(valorOriginal)}</p>
                       </div>
                     </div>
 
                     {pagamentosAlunoCobranca.length > 0 && (
-                      <div className="rounded-[8px] border border-[#C7DEFF] bg-[#EEF4FF] px-3 py-2 flex items-center justify-between">
+                      <div className="rounded-[8px] border border-[#C7DEFF] bg-gradient-to-r from-[#EEF4FF] to-white px-3 py-2.5 flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           <History size={13} className="text-[#1D4ED8]" />
                           <span className="text-[10px] font-bold text-[#1D4ED8] uppercase tracking-[0.1em]">Último pagamento</span>
@@ -7986,33 +6051,34 @@ function App() {
                   <div style={{ borderTop: '1px dashed var(--border-light)', margin: '0 20px' }} />
 
                   <div className="px-5 pt-4 pb-5 space-y-3">
-                    <p className="text-[9px] font-black uppercase tracking-[0.2em] text-[var(--text-secondary)]">Dados da Cobrança</p>
+                    <p className="text-[9px] font-black uppercase tracking-[0.2em] text-[var(--text-secondary)]">Dados do Pagamento</p>
 
                     <div>
                       <label className="block text-[10px] font-bold nl-text-muted uppercase tracking-[0.12em] mb-1">
                         Valor recebido (CVE) <span className="text-red-500">*</span>
                       </label>
-                      <input
-                        type="text"
-                        value={pagamentoForm.valor}
-                        onChange={e => setPagamentoForm(prev => ({ ...prev, valor: e.target.value }))}
-                        className="nl-input w-full h-10 px-3 text-[14px] font-bold"
-                        placeholder={String(valorOriginal)}
-                        style={{ fontVariantNumeric: 'tabular-nums' }}
-                      />
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[13px] font-bold text-[var(--text-secondary)]">$</span>
+                        <input
+                          type="text"
+                          value={pagamentoForm.valor}
+                          onChange={e => setPagamentoForm(prev => ({ ...prev, valor: e.target.value }))}
+                          className="nl-input w-full h-12 pl-7 pr-3 text-[18px] font-black tracking-tight"
+                          placeholder={String(valorOriginal)}
+                          style={{ fontVariantNumeric: 'tabular-nums' }}
+                        />
+                      </div>
                     </div>
 
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className="block text-[10px] font-bold nl-text-muted uppercase tracking-[0.12em] mb-1">Mês referência</label>
+                        <label className="block text-[10px] font-bold nl-text-muted uppercase tracking-[0.12em] mb-1">Mês atual</label>
                         <select
-                          value={pagamentoForm.mesReferencia || mesFinanceiro}
-                          onChange={e => setPagamentoForm(prev => ({ ...prev, mesReferencia: e.target.value }))}
-                          className="nl-input w-full h-10 px-3 text-[13px] cursor-pointer capitalize"
+                          value={mesAtualNome}
+                          disabled
+                          className="nl-input w-full h-10 px-3 text-[13px] cursor-not-allowed capitalize !bg-emerald-50 !border-emerald-200 !text-emerald-700 !font-bold"
                         >
-                          {MONTH_OPTIONS.map(m => (
-                            <option key={m} value={m}>{m.charAt(0).toUpperCase() + m.slice(1)} {anoFinanceiro}</option>
-                          ))}
+                          <option value={mesAtualNome}>{mesAtualNome.charAt(0).toUpperCase() + mesAtualNome.slice(1)} {anoAtual}</option>
                         </select>
                       </div>
                       <div>
@@ -8037,12 +6103,14 @@ function App() {
                       </select>
                     </div>
 
-                    <div className="flex items-center justify-between px-3 py-2.5 rounded-[8px] bg-[#ECFDF5] border border-[#BBF7D0]">
-                      <div className="flex items-center gap-2">
-                        <Wallet size={13} className="text-[#15803D]" />
-                        <span className="text-[11px] font-bold text-[#15803D] uppercase tracking-[0.1em]">Total a registar</span>
+                    <div className="flex items-center justify-between px-4 py-3 rounded-[10px] bg-gradient-to-r from-emerald-500 to-emerald-600 shadow-lg shadow-emerald-200/50">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
+                          <Wallet size={15} className="text-white" />
+                        </div>
+                        <span className="text-[12px] font-black text-white uppercase tracking-[0.12em]">Total a registar</span>
                       </div>
-                      <span className="text-[13px] font-extrabold text-[#15803D]" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                      <span className="text-[20px] font-black text-white drop-shadow-sm" style={{ fontVariantNumeric: 'tabular-nums' }}>
                         {formatCve(normalizeAmount(valorCobranca))}
                       </span>
                     </div>
@@ -8050,8 +6118,8 @@ function App() {
 
                   <div className="bg-[#F8F9FC] border-t border-[#DDE2EB] px-6 py-4 flex items-center justify-end gap-3 shrink-0">
                     <button type="button" onClick={fecharCobrancaRapida} className="nl-btn nl-btn-secondary !h-9 !px-5 !text-[11px] font-bold">Cancelar</button>
-                    <button type="button" onClick={registrarCobrancaRapida} className="nl-btn nl-btn-primary !h-9 !px-6 !text-[11px] font-bold">
-                      <CheckCircle2 size={14} /> Confirmar Cobrança
+                    <button type="button" onClick={registrarCobrancaRapida} className="nl-btn !h-10 !px-7 !text-[12px] font-black !bg-gradient-to-r !from-emerald-600 !to-emerald-500 !text-white !border-none !shadow-lg !shadow-emerald-200/50 hover:!shadow-emerald-300/60 hover:!scale-[1.02] active:!scale-[0.98] transition-all">
+                      <CheckCircle2 size={16} /> Confirmar Pagamento
                     </button>
                   </div>
                 </>
