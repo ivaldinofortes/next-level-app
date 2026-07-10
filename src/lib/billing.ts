@@ -48,7 +48,9 @@ export interface MonthlyBillingSummary {
     | 'suspenso'
     | 'pausado'
     | 'bloqueado'
-    | 'importado';
+    | 'importado'
+    | 'em_dia'
+    | 'vence_em_breve';
   statusLabel: string;
   /** Registo de pagamento que cobre este mês (se existir) */
   coveringPayment?: BillingPaymentLike;
@@ -60,6 +62,10 @@ export interface MonthlyBillingSummary {
   /** Saldo de dias: positivo = antecipado, negativo = atrasado */
   dayBalance: number;
   amount: number;
+  nextChargeDate?: string;
+  coverageStart?: string;
+  coverageEnd?: string;
+  lastPaymentDate?: string;
 }
 
 /** Entrada do histórico de saldo de dias */

@@ -1,8 +1,9 @@
 import React from 'react';
 import {
   Layout, Users, ChevronLeft, FileBarChart, BookUser, Settings,
-  Plus, Star, FileText, RotateCw, Bell, Info, LogOut,
+  Plus, Star, FileText, RotateCw, Bell, Info, LogOut, AlertCircle, Wallet,
 } from 'lucide-react';
+import { formatCve } from '../lib/billing';
 
 interface HeaderProps {
   nomeAcademia: string;
@@ -11,7 +12,7 @@ interface HeaderProps {
   appLogo: string;
   APP_ICON_PATH: string;
   aba: string;
-  setAba: (aba: any) => void;
+  setAba: (aba: string) => void;
   sessionUser: { id?: number; name: string; email: string; role: string } | null;
   onLogout: () => void;
   notificacoesNaoLidas: number;
@@ -25,6 +26,12 @@ interface HeaderProps {
   setMostrarSobreDoc: (v: boolean) => void;
   onMatricular: () => void;
   setMostrarRelatorioMensal: (v: boolean) => void;
+  listaStats?: {
+    total: number;
+    atrasados: number;
+    recebido: number;
+  };
+  larguraListas?: number;
 }
 
 const Header: React.FC<HeaderProps> = React.memo(({
@@ -45,12 +52,32 @@ const Header: React.FC<HeaderProps> = React.memo(({
   setMostrarUserMenu,
   setMostrarSobreDoc,
   onMatricular,
-  setMostrarRelatorioMensal,
+  listaStats,
+  larguraListas = 1120,
 }) => {
   return (
-    <header className="h-[58px] grid grid-cols-[minmax(180px,260px)_1fr_minmax(300px,auto)] items-center gap-4 px-4 shrink-0 bg-[var(--bg-header)] border-b border-[var(--border)] z-[100] shadow-[var(--shadow-sm)]">
+    <header className="relative h-[68px] flex shrink-0 items-center justify-between gap-4 border-b border-[#D7DCE3] bg-[#F5F6F8] px-5 shadow-[0_10px_26px_rgba(15,23,42,0.10),0_1px_0_rgba(255,255,255,0.75)_inset] z-[100]">
+      {aba === 'gestao' && listaStats && (
+        <div
+          className="absolute top-1/2 hidden -translate-y-1/2 flex-col items-start gap-1 xl:flex"
+          style={{ left: `max(280px, calc((100vw - ${larguraListas}px) / 2))` }}
+        >
+          <span className="flex items-center gap-1.5 text-[11px] font-black uppercase tracking-[0.08em] text-slate-700 leading-none">
+            <Users size={14} strokeWidth={2.8} className="text-blue-600" />
+            {listaStats.total} alunos
+          </span>
+          <span className={`flex items-center gap-1.5 text-[11px] font-black uppercase tracking-[0.08em] leading-none ${listaStats.atrasados > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+            <AlertCircle size={14} strokeWidth={2.8} />
+            {listaStats.atrasados} atraso
+          </span>
+          <span className="flex items-center gap-1.5 text-[11px] font-black uppercase tracking-[0.08em] text-emerald-700 leading-none">
+            <Wallet size={14} strokeWidth={2.8} />
+            {formatCve(listaStats.recebido)}
+          </span>
+        </div>
+      )}
       {/* Left: Branding */}
-      <div className="flex items-center gap-3 min-w-0">
+      <div className="relative z-[2] flex min-w-0 items-center gap-3">
         <div className="w-8 h-8 rounded-[var(--radius-sm)] flex items-center justify-center overflow-hidden shrink-0 shadow-sm" style={{ background: 'var(--color-primary-light)', border: '1px solid var(--border)' }}>
           <img src={appLogo} alt="Logo" className="w-4.5 h-4.5 object-contain" />
         </div>
@@ -61,22 +88,24 @@ const Header: React.FC<HeaderProps> = React.memo(({
       </div>
 
       {/* Center: Navigation */}
-      <div className="flex items-center justify-center min-w-0">
-        <nav className="flex items-center gap-0.5 p-0.5 rounded-[var(--radius-md)] bg-[var(--color-secondary-lighter)] border border-[var(--border-light)]">
+      <div className="absolute left-1/2 top-1/2 z-[4] flex -translate-x-1/2 -translate-y-1/2 items-center justify-center">
+        <nav className="flex items-center gap-1.5 rounded-[12px] border border-[#D7DDE7] bg-[#E9EDF3] p-1 shadow-[inset_0_1px_2px_rgba(15,23,42,0.06),0_1px_0_rgba(255,255,255,0.7)]">
           {[
-            { id: 'home', label: 'Início', icon: <Layout size={14} /> },
-            { id: 'gestao', label: 'Alunos', icon: <Users size={14} /> },
+            { id: 'home', label: 'Início', icon: <Layout size={18} strokeWidth={2.9} /> },
+            { id: 'gestao', label: 'Alunos', icon: <Users size={18} strokeWidth={2.9} /> },
           ].map((nav) => (
             <button
               key={nav.id}
-              onClick={() => setAba(nav.id as any)}
-              className={`flex items-center justify-center gap-2 px-5 py-2 rounded-[var(--radius-sm)] text-[12px] font-bold transition-all duration-150 ${
+              onClick={() => setAba(nav.id)}
+              className={`flex h-11 min-w-[150px] items-center justify-center gap-3 rounded-[var(--radius-surface)] px-7 text-[16px] font-black tracking-tight transition-all duration-150 ${
                 aba === nav.id
-                  ? 'bg-[var(--bg-surface)] text-[var(--color-primary)] shadow-[0_1px_3px_rgba(0,0,0,0.06)] border border-[var(--border)]'
-                  : 'nl-text-muted hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface)]/40'
+                  ? 'border border-white bg-white text-[var(--color-primary)] shadow-[0_8px_20px_rgba(15,23,42,0.10)]'
+                  : 'text-slate-500 hover:bg-white/70 hover:text-slate-800'
               }`}
             >
-              {nav.icon}
+              <span className={`${aba === nav.id ? 'text-[var(--color-primary)]' : 'text-slate-500'} [&>svg]:h-[20px] [&>svg]:w-[20px]`}>
+                {nav.icon}
+              </span>
               <span>{nav.label}</span>
             </button>
           ))}
@@ -84,7 +113,7 @@ const Header: React.FC<HeaderProps> = React.memo(({
       </div>
 
       {/* Right: Context actions + Profile */}
-      <div className="flex items-center justify-end gap-2 min-w-0">
+      <div className="relative z-[2] ml-auto flex min-w-0 items-center justify-end gap-2">
         {/* Page chip for secondary pages */}
         {(aba === 'relatorios_detalhado' || aba === 'configuracoes' || aba === 'contactos') && (
           <div className="flex items-center gap-2 pr-2 border-r border-[var(--border-light)]">
@@ -108,22 +137,31 @@ const Header: React.FC<HeaderProps> = React.memo(({
           </div>
         )}
         {aba === 'gestao' && (
-          <div className="flex items-center gap-1.5 rounded-[var(--radius-md)] border border-[var(--border-light)] bg-[var(--color-secondary-lighter)]/35 p-0.5">
-            <button onClick={onMatricular} className="nl-btn nl-btn-primary !h-8 !px-3 !text-[12px] shadow-sm">
+          <div className="flex items-center gap-1.5 rounded-[12px] border border-[#D7DDE7] bg-[#E9EDF3] p-1 shadow-[inset_0_1px_2px_rgba(15,23,42,0.06),0_1px_0_rgba(255,255,255,0.7)]">
+            <button
+              onClick={() => setAba('contactos')}
+              className="nl-icon-btn !h-10 !w-10 !rounded-[var(--radius-surface)] bg-white/80 hover:!bg-violet-50 hover:!text-violet-700"
+              title="Contactos"
+            >
+              <BookUser size={16} strokeWidth={2.7} />
+            </button>
+            <button onClick={onMatricular} className="nl-btn nl-btn-primary !h-10 !px-5 !text-[14px] shadow-sm">
               <Plus size={14} /> Matricular
             </button>
+            {(sessionUser?.role === 'admin' || sessionUser?.role === 'root') && (
             <button
-              onClick={() => setMostrarRelatorioMensal(true)}
-              className={`nl-btn !h-8 !px-3 !text-[12px] flex items-center gap-2 transition-all ${
+              onClick={() => setAba('relatorios_detalhado')}
+              className={`nl-btn !h-10 !px-5 !text-[14px] flex items-center gap-2 transition-all ${
                 relatorioMensalDisponivel
                   ? '!bg-emerald-600 !text-white shadow-lg shadow-emerald-600/20 ring-1 ring-emerald-400'
                   : 'nl-btn-secondary'
               }`}
-              title="Relatório Mensal"
+              title="Relatórios administrativos"
             >
               {relatorioMensalDisponivel ? <Star size={14} className="text-amber-300 fill-amber-300 animate-pulse-soft" /> : <FileText size={14} />}
               Relatório
             </button>
+            )}
           </div>
         )}
 

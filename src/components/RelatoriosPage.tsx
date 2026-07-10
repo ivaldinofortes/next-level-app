@@ -1,6 +1,22 @@
 // @ts-nocheck
-import { memo } from 'react';
-import { ChevronLeft, ChevronRight, Printer, Download, ChevronDown } from 'lucide-react';
+import { memo, useEffect, useMemo, useState } from 'react';
+import {
+  AlertCircle,
+  BookOpenText,
+  CheckCircle2,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  Clock,
+  Database,
+  Download,
+  FileBarChart,
+  Printer,
+  ShieldCheck,
+  StickyNote,
+  Users,
+  Wallet,
+} from 'lucide-react';
 import {
   formatCve,
   getStudentStatusForMonth,
@@ -9,15 +25,10 @@ import {
   parseFlexibleDate,
 } from '../lib/billing';
 import {
-  COMPANY_NAME,
   MONTH_OPTIONS,
-  NEXT_LAB_ICON,
   getBillingBadgeLabel,
-  getBillingTone,
   STUDENT_STATUS_HELPERS,
 } from '../constants';
-
-// ─── Helpers (originally defined in App.tsx scope) ─────────────────────────
 
 const isFutureMonth = (monthIndex: number, year: number, reference = new Date()) => {
   const currentYear = reference.getFullYear();
@@ -25,37 +36,38 @@ const isFutureMonth = (monthIndex: number, year: number, reference = new Date())
   return year > currentYear || (year === currentYear && monthIndex > currentMonth);
 };
 
-const getTimelineMetricWidth = (
-  summary: { status?: string; daysUntilCharge?: number },
-  status?: string,
-) => {
-  if (STUDENT_STATUS_HELPERS.isPaused(status) || STUDENT_STATUS_HELPERS.isBlocked(status)) return 0;
-  if (summary.status === 'atrasado' || summary.status === 'hoje') return 100;
-  return Math.max(8, Math.min(100, (Math.max(summary.daysUntilCharge || 0, 0) / 30) * 100));
+const parseAdminDate = (value?: string | null) => {
+  if (!value) return null;
+  const raw = String(value).trim();
+  if (!raw) return null;
+
+  const ptMatch = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (ptMatch) return new Date(Number(ptMatch[3]), Number(ptMatch[2]) - 1, Number(ptMatch[1]));
+
+  const isoLike = raw.includes(' ') ? raw.replace(' ', 'T') : raw;
+  const date = new Date(isoLike);
+  return Number.isNaN(date.getTime()) ? parseFlexibleDate(raw) : date;
 };
 
-// ─── Types (from App.tsx) ──────────────────────────────────────────────────
+const isSameDay = (left?: string | null, right = new Date()) => {
+  const date = parseAdminDate(left);
+  return Boolean(date && date.getFullYear() === right.getFullYear() && date.getMonth() === right.getMonth() && date.getDate() === right.getDate());
+};
+
+const isInsideMonth = (value: string | null | undefined, monthIndex: number, year: number) => {
+  const date = parseAdminDate(value);
+  return Boolean(date && date.getFullYear() === year && date.getMonth() === monthIndex);
+};
 
 interface Aluno {
   id: string;
   nome: string;
   telefone: string;
-  email?: string;
-  sexo?: string;
-  data_nascimento?: string;
-  morada?: string;
-  alergias?: string;
-  objetivos?: string;
-  horario_preferido?: string;
   plano: string;
   vencimento: string;
-  progresso: number;
   data_matricula?: string;
   status?: string;
   categoria?: string;
-  modo_cobranca?: string;
-  foto_path?: string;
-  notas?: string;
 }
 
 interface Pagamento {
@@ -72,6 +84,51 @@ interface Pagamento {
   referencia_fim?: string;
 }
 
+type AdminUser = {
+  id: number | string;
+  name?: string;
+  email?: string;
+  role?: string;
+  is_active?: number;
+  created_at?: string;
+  last_login_at?: string;
+};
+
+type AdminLog = {
+  id: number | string;
+  acao?: string;
+  detalhes?: string;
+  user_name?: string;
+  data_hora?: string;
+};
+
+type AdminTechnicalLog = {
+  id: number | string;
+  tipo?: string;
+  contexto?: string;
+  mensagem?: string;
+  utilizador?: string;
+  criado_em?: string;
+  data_hora?: string;
+};
+
+type AdminNote = {
+  id: number | string;
+  aluno_id?: string;
+  nome?: string;
+  texto?: string;
+  data_criacao?: string;
+};
+
+type AdminData = {
+  users: AdminUser[];
+  logs: AdminLog[];
+  technicalLogs: AdminTechnicalLog[];
+  notes: AdminNote[];
+};
+
+type ReportView = 'resumo' | 'atividade' | 'utilizadores' | 'notas';
+
 export interface RelatoriosPageProps {
   mesRelatorio: string;
   setMesRelatorio: React.Dispatch<React.SetStateAction<string>>;
@@ -85,7 +142,9 @@ export interface RelatoriosPageProps {
   larguraListas: number;
   appLogo: string;
   nomeAcademia: string;
+  sessionUser: { role?: string; name?: string } | null;
   onExportarExcel: () => void;
+  onExportarPdf: () => void;
 }
 
 const RelatoriosPage = memo(function RelatoriosPage({
@@ -101,82 +160,147 @@ const RelatoriosPage = memo(function RelatoriosPage({
   larguraListas,
   appLogo,
   nomeAcademia,
+  sessionUser,
   onExportarExcel,
+  onExportarPdf,
 }: RelatoriosPageProps) {
+  const [adminData, setAdminData] = useState<AdminData>({ users: [], logs: [], technicalLogs: [], notes: [] });
+  const [adminLoading, setAdminLoading] = useState(true);
+  const [vista, setVista] = useState<ReportView>('resumo');
+
+  const isAdmin = sessionUser?.role === 'admin' || sessionUser?.role === 'root';
   const mesIdxRel = MONTH_OPTIONS.indexOf(mesRelatorio);
-  const refRelatorio = new Date(anoRelatorio, mesIdxRel + 1, 0);
-  const geradoEm = new Date().toLocaleString('pt-PT');
+  const refRelatorio = useMemo(() => new Date(anoRelatorio, mesIdxRel + 1, 0), [anoRelatorio, mesIdxRel]);
+  const hoje = useMemo(() => new Date(), []);
 
-  const alunosPeriodoRel = [...alunos]
-    .filter(a => { const e = parseFlexibleDate(a.data_matricula); return e ? e.getTime() <= refRelatorio.getTime() : true; })
-    .sort((a, b) => a.nome.localeCompare(b.nome));
+  useEffect(() => {
+    let mounted = true;
+    const loadAdminData = async () => {
+      setAdminLoading(true);
+      try {
+        const electron = window.electron;
+        if (!electron || !isAdmin) return;
+        const result = await electron.ipcRenderer.invoke('reports:admin-data');
+        if (mounted && result?.success) {
+          setAdminData({
+            users: result.users || [],
+            logs: result.logs || [],
+            technicalLogs: result.technicalLogs || [],
+            notes: result.notes || [],
+          });
+        }
+      } finally {
+        if (mounted) setAdminLoading(false);
+      }
+    };
+    loadAdminData();
+    return () => { mounted = false; };
+  }, [isAdmin]);
 
-  const resumosRel = alunosPeriodoRel.map(aluno => ({ aluno, resumo: getStudentStatusForMonth(aluno, pagamentos, anoRelatorio, mesIdxRel, hojeReferencia) }));
+  const relatorio = useMemo(() => {
+    const alunosPeriodo = [...alunos]
+      .filter((aluno) => {
+        const entrada = parseFlexibleDate(aluno.data_matricula);
+        return entrada ? entrada.getTime() <= refRelatorio.getTime() : true;
+      })
+      .sort((a, b) => a.nome.localeCompare(b.nome));
 
-  const totalInscritos = alunosPeriodoRel.length;
-  const pagosCount   = resumosRel.filter(r => r.resumo.status === 'pago').length;
-  const emDiaCount   = resumosRel.filter(r => ['alerta','pendente','critico','hoje'].includes(r.resumo.status)).length;
-  const atrasadosCount = resumosRel.filter(r => r.resumo.status === 'atrasado').length;
-  const inativosCount  = resumosRel.filter(r => ['pausado','suspenso','bloqueado'].includes(r.resumo.status)).length;
+    const resumos = alunosPeriodo.map((aluno) => ({
+      aluno,
+      resumo: getStudentStatusForMonth(aluno, pagamentos, anoRelatorio, mesIdxRel, hojeReferencia),
+    }));
 
-  const receitaMes   = pagamentos.filter(p => isPaymentInsideMonth(p, mesRelatorio, anoRelatorio)).reduce((s, p) => s + normalizeAmount(p.valor), 0);
-  const previsaoMes  = alunosPeriodoRel.filter(a => STUDENT_STATUS_HELPERS.isOperational(a.status)).reduce((s, a) => s + normalizeAmount(a.plano), 0);
-  const pendenteMes  = Math.max(0, previsaoMes - receitaMes);
+    const pagamentosMes = pagamentos.filter((pagamento) => isPaymentInsideMonth(pagamento, mesRelatorio, anoRelatorio));
+    const pagamentosHoje = pagamentos.filter((pagamento) => isSameDay(pagamento.data_pagamento, hoje));
+    const receitaMes = pagamentosMes.reduce((sum, pagamento) => sum + normalizeAmount(pagamento.valor), 0);
+    const previsaoMes = alunosPeriodo.filter((aluno) => STUDENT_STATUS_HELPERS.isOperational(aluno.status)).reduce((sum, aluno) => sum + normalizeAmount(aluno.plano), 0);
+    const atrasados = resumos.filter(({ resumo }) => resumo.status === 'atrasado' || resumo.status === 'hoje');
+    const pagos = resumos.filter(({ resumo }) => resumo.status === 'pago');
+    const emDia = resumos.filter(({ resumo }) => ['pago', 'alerta', 'pendente', 'critico'].includes(resumo.status));
+    const logsMes = adminData.logs.filter((log) => isInsideMonth(log.data_hora, mesIdxRel, anoRelatorio));
+    const notasMes = adminData.notes.filter((nota) => isInsideMonth(nota.data_criacao, mesIdxRel, anoRelatorio));
+    const tecnicoMes = adminData.technicalLogs.filter((log) => isInsideMonth(log.criado_em || log.data_hora, mesIdxRel, anoRelatorio));
+    const loginsMes = adminData.users.filter((user) => isInsideMonth(user.last_login_at, mesIdxRel, anoRelatorio));
 
-  const dadosBarra = MONTH_OPTIONS
-    .map((mes, idx) => { if (isFutureMonth(idx, anoRelatorio, new Date())) return null; const total = pagamentos.filter(p => isPaymentInsideMonth(p, mes, anoRelatorio)).reduce((s, p) => s + normalizeAmount(p.valor), 0); return { mes: mes.slice(0,3), total, ativo: mes === mesRelatorio }; })
-    .filter(Boolean) as { mes: string; total: number; ativo: boolean }[];
-  const maxBarra = Math.max(...dadosBarra.map(d => d.total), 1);
+    return {
+      alunosPeriodo,
+      resumos,
+      pagamentosMes,
+      pagamentosHoje,
+      receitaMes,
+      previsaoMes,
+      pendenteMes: Math.max(0, previsaoMes - receitaMes),
+      atrasados,
+      pagos,
+      emDia,
+      logsMes,
+      notasMes,
+      tecnicoMes,
+      loginsMes,
+    };
+  }, [alunos, pagamentos, adminData, anoRelatorio, mesIdxRel, mesRelatorio, hojeReferencia, refRelatorio, hoje]);
 
-  const donutSegments = [
-    { label: 'Em dia',   count: emDiaCount,    color: '#2563EB' },
-    { label: 'Pago',     count: pagosCount,    color: '#16A34A' },
-    { label: 'Atrasado', count: atrasadosCount, color: '#DC2626' },
-    { label: 'Pausado',  count: inativosCount,  color: '#94A3B8' },
-  ].filter(s => s.count > 0);
-  const donutTotal = donutSegments.reduce((s, seg) => s + seg.count, 0);
-  const donutR = 42; const donutCx = 65; const donutCy = 65;
-  const donutC = 2 * Math.PI * donutR;
-  let donutAngle = 0;
-  const donutArcs = donutSegments.map(seg => { const pct = seg.count / donutTotal; const len = pct * donutC; const startAngle = donutAngle - 90; donutAngle += pct * 360; return { ...seg, len, startAngle }; });
+  const timelineMonths = MONTH_OPTIONS.map((mes, index) => {
+    if (isFutureMonth(index, anoRelatorio, hojeReferencia)) return null;
+    const payments = pagamentos.filter((pagamento) => isPaymentInsideMonth(pagamento, mes, anoRelatorio)).length;
+    const logs = adminData.logs.filter((log) => isInsideMonth(log.data_hora, index, anoRelatorio)).length;
+    const notes = adminData.notes.filter((nota) => isInsideMonth(nota.data_criacao, index, anoRelatorio)).length;
+    return { mes, short: mes.slice(0, 3), index, active: mes === mesRelatorio, current: anoRelatorio === hojeReferencia.getFullYear() && index === hojeReferencia.getMonth(), total: payments + logs + notes };
+  }).filter(Boolean);
+
+  if (!isAdmin) {
+    return (
+      <div className="flex h-full w-full items-center justify-center bg-[#F8FAFC]">
+        <div className="max-w-[420px] rounded-[10px] border border-red-100 bg-white p-8 text-center shadow-[var(--shadow-md)]">
+          <ShieldCheck size={36} className="mx-auto text-red-500" />
+          <h2 className="mt-3 text-[18px] font-black text-slate-800">Acesso reservado ao administrador</h2>
+          <p className="mt-2 text-[13px] font-semibold text-slate-500">Relatórios, logs, utilizadores e exportações administrativas só podem ser vistos por uma conta admin.</p>
+        </div>
+      </div>
+    );
+  }
+
+  const kpis = [
+    { label: 'Recebido no mês', value: formatCve(relatorio.receitaMes), icon: <Wallet size={17} />, tone: 'text-emerald-700 bg-emerald-50 border-emerald-100' },
+    { label: 'Pagaram hoje', value: String(relatorio.pagamentosHoje.length), icon: <CheckCircle2 size={17} />, tone: 'text-blue-700 bg-blue-50 border-blue-100' },
+    { label: 'Em atraso', value: String(relatorio.atrasados.length), icon: <AlertCircle size={17} />, tone: relatorio.atrasados.length > 0 ? 'text-red-700 bg-red-50 border-red-100' : 'text-emerald-700 bg-emerald-50 border-emerald-100' },
+    { label: 'Ações no mês', value: String(relatorio.logsMes.length), icon: <Database size={17} />, tone: 'text-slate-700 bg-slate-50 border-slate-200' },
+  ];
 
   return (
-    <div className="animate-slide-up h-full w-full flex flex-col overflow-hidden">
-      {/* ── Barra de período ── */}
-      <div className="sticky top-0 z-20 shrink-0 border-b border-blue-100 bg-[#EEF4FF]">
-        <div className={`overflow-x-auto transition-all ${timelineFinanceiraMinimizada ? 'py-1' : 'py-1.5'}`}>
-          <div className="flex min-w-[1100px] items-center gap-4 px-6">
-            <span className="text-[11px] font-extrabold nl-text tracking-tight whitespace-nowrap shrink-0">Período</span>
-            <div className="flex items-center gap-2 shrink-0">
-              <button onClick={() => setAnoRelatorio(p => p - 1)} className="flex h-7 w-7 items-center justify-center rounded-full border border-[var(--border-light)] text-[var(--text-secondary)] hover:border-[var(--color-primary)]/30 hover:text-[var(--color-primary)] transition-colors"><ChevronLeft size={14} /></button>
-              <div className="rounded-full border border-[var(--border-light)] bg-[var(--bg-surface)] px-3 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--text-secondary)]">{anoRelatorio}</div>
-              <button onClick={() => setAnoRelatorio(p => p + 1)} className="flex h-7 w-7 items-center justify-center rounded-full border border-[var(--border-light)] text-[var(--text-secondary)] hover:border-[var(--color-primary)]/30 hover:text-[var(--color-primary)] transition-colors"><ChevronRight size={14} /></button>
+    <div className="animate-slide-up flex h-full w-full flex-col overflow-hidden bg-[#F8FAFC]">
+      <div className="sticky top-0 z-20 shrink-0 border-b border-[#D7DCE3] bg-[#F0F3F7]/95 shadow-[0_7px_22px_rgba(15,23,42,0.08)] supports-[backdrop-filter]:backdrop-blur-md">
+        <div className={`overflow-x-auto transition-all ${timelineFinanceiraMinimizada ? 'py-1' : 'py-2'}`}>
+          <div className="flex min-w-[1120px] items-center gap-4 px-6">
+            <div className="flex shrink-0 items-center gap-3">
+              <span className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-700">Ferramentas do relatório</span>
+              <button onClick={() => setAnoRelatorio((prev) => prev - 1)} className="flex h-8 w-8 items-center justify-center rounded-[var(--radius-surface)] bg-white/60 text-[var(--text-secondary)] ring-1 ring-slate-200/70 hover:bg-blue-50/80 hover:text-[var(--color-primary)]" title="Ano anterior"><ChevronLeft size={14} /></button>
+              <div className="rounded-[var(--radius-surface)] bg-blue-50/70 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.18em] text-blue-700 ring-1 ring-blue-100/80">{anoRelatorio}</div>
+              <button onClick={() => setAnoRelatorio((prev) => prev + 1)} className="flex h-8 w-8 items-center justify-center rounded-[var(--radius-surface)] bg-white/60 text-[var(--text-secondary)] ring-1 ring-slate-200/70 hover:bg-blue-50/80 hover:text-[var(--color-primary)]" title="Próximo ano"><ChevronRight size={14} /></button>
             </div>
-            <div className="relative flex-1 min-w-[520px]">
-              <div className="absolute left-0 right-0 top-1/2 h-px -translate-y-1/2 bg-[#D9E2F2]" />
+
+            <div className="relative min-w-[520px] flex-1">
+              <div className="absolute left-0 right-0 top-1/2 h-px -translate-y-1/2 bg-blue-100/80" />
               <div className="relative flex items-center justify-between gap-1">
-                {MONTH_OPTIONS.map((mes, index) => {
-                  if (isFutureMonth(index, anoRelatorio, new Date())) return null;
-                  const ativo = mesRelatorio === mes;
-                  const atual = anoRelatorio === new Date().getFullYear() && index === new Date().getMonth();
-                  return (
-                    <button key={mes} onClick={() => setMesRelatorio(mes)}
-                      className={`group flex min-w-[70px] flex-col items-center rounded-[5px] px-1.5 transition-all ${timelineFinanceiraMinimizada ? 'gap-0 py-0.5' : 'gap-0.5 py-1'}`}
-                      title={`${mes} ${anoRelatorio}`}>
-                      <span className={`h-3 w-3 rounded-full border transition-all ${ativo ? 'border-[var(--color-primary)] bg-[var(--color-primary)] shadow-[0_0_0_3px_rgba(37,99,235,0.12)]' : atual ? 'border-[#2563EB] bg-white' : 'border-[var(--border)] bg-[var(--bg-surface)] group-hover:border-[var(--color-primary)]/45'}`} />
-                      <div className={`transition-all ${timelineFinanceiraMinimizada ? 'h-0 overflow-hidden opacity-0' : 'opacity-100'}`}>
-                        <p className={`text-[9px] font-bold uppercase tracking-[0.12em] ${ativo ? 'text-[var(--color-primary)]' : 'text-[var(--text-secondary)]'}`}>{mes.slice(0,3)}</p>
-                      </div>
-                    </button>
-                  );
-                })}
+                {timelineMonths.map((month) => (
+                  <button key={month.mes} onClick={() => setMesRelatorio(month.mes)}
+                    className={`group flex min-w-[72px] flex-col items-center rounded-[5px] px-1.5 transition-all ${timelineFinanceiraMinimizada ? 'gap-0 py-0.5' : 'gap-0.5 py-1'}`}
+                    title={`${month.mes} ${anoRelatorio} · ${month.total} registo(s)`}>
+                    <span className={`flex h-3.5 w-3.5 items-center justify-center rounded-full border transition-all ${month.active ? 'border-blue-200 bg-blue-300 shadow-[0_0_0_4px_rgba(191,219,254,0.55)]' : month.current ? 'border-sky-200 bg-sky-50' : 'border-slate-200 bg-white/80 group-hover:border-blue-200 group-hover:bg-blue-50'}`} />
+                    <div className={`transition-all ${timelineFinanceiraMinimizada ? 'h-0 overflow-hidden opacity-0' : 'opacity-100'}`}>
+                      <p className={`text-[9px] font-black uppercase tracking-[0.12em] ${month.active ? 'text-blue-700' : 'text-[var(--text-secondary)]'}`}>{month.short}</p>
+                      <p className="text-[8px] font-bold text-slate-400">{month.total}</p>
+                    </div>
+                  </button>
+                ))}
               </div>
             </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <button onClick={() => window.print()} className="inline-flex h-7 items-center gap-1.5 rounded-full border border-[var(--border-light)] px-3 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--text-secondary)] hover:bg-white/60 transition-colors"><Printer size={12} /> Imprimir</button>
-              <button onClick={() => onExportarExcel()} className="inline-flex h-7 items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 text-[10px] font-bold uppercase tracking-[0.12em] text-emerald-700 hover:bg-emerald-100 transition-colors"><Download size={12} /> Excel</button>
-              <button type="button" onClick={() => setTimelineFinanceiraMinimizada(prev => !prev)}
-                className="inline-flex h-7 items-center gap-1.5 rounded-full border border-[var(--border-light)] px-3 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--text-secondary)] transition-colors hover:bg-white/60"
+
+            <div className="flex shrink-0 items-center gap-2">
+              <button onClick={onExportarPdf} className="inline-flex h-9 items-center gap-1.5 rounded-[var(--radius-surface)] bg-blue-50/80 px-3 text-[10px] font-black uppercase tracking-[0.12em] text-blue-700 ring-1 ring-blue-100/80 hover:bg-blue-100/70"><Printer size={12} /> PDF</button>
+              <button onClick={onExportarExcel} className="inline-flex h-9 items-center gap-1.5 rounded-[var(--radius-surface)] bg-emerald-50/80 px-3 text-[10px] font-black uppercase tracking-[0.12em] text-emerald-700 ring-1 ring-emerald-100/80 hover:bg-emerald-100/70"><Download size={12} /> Excel</button>
+              <button type="button" onClick={() => setTimelineFinanceiraMinimizada((prev) => !prev)}
+                className="inline-flex h-9 items-center gap-1.5 rounded-[var(--radius-surface)] bg-white/60 px-3 text-[10px] font-black uppercase tracking-[0.12em] text-[var(--text-secondary)] ring-1 ring-slate-200/70 hover:bg-blue-50/70 hover:text-blue-700"
                 title={timelineFinanceiraMinimizada ? 'Expandir' : 'Minimizar'}>
                 <ChevronDown size={13} className={`transition-transform ${timelineFinanceiraMinimizada ? '-rotate-90' : 'rotate-0'}`} />
                 {timelineFinanceiraMinimizada ? 'Expandir' : 'Minimizar'}
@@ -186,199 +310,229 @@ const RelatoriosPage = memo(function RelatoriosPage({
         </div>
       </div>
 
-      {/* ── Corpo — folha de relatório ── */}
-      <div className="flex-1 overflow-y-auto custom-scrollbar bg-[var(--bg-app)] px-8 py-8">
-        <div className="mx-auto" style={{ maxWidth: `${larguraListas}px` }}>
-          <div className="bg-[var(--bg-surface)] rounded-[var(--radius-md)] shadow-[var(--shadow-lg)] border border-[var(--border)]">
-
-            {/* Cabeçalho do documento */}
-            <div className="px-12 pt-10 pb-6 border-b-2 border-[#1E3A5F]">
-              <div className="flex items-start justify-between mb-5">
-                <div className="flex items-center gap-4">
-                  <img src={appLogo} alt="" className="w-11 h-11 object-contain" />
-                  <div>
-                    <h1 className="text-[22px] font-black tracking-tight leading-tight uppercase" style={{ color: '#0F1F35' }}>{nomeAcademia}</h1>
-                    <p className="text-[10px] font-bold uppercase tracking-[0.18em]" style={{ color: '#526070' }}>Sistema de Gestão · {COMPANY_NAME}</p>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <p className="text-[12px] font-black uppercase tracking-[0.1em]" style={{ color: '#1E3A5F' }}>Dossier de Desempenho</p>
-                  <p className="text-[10px] mt-0.5" style={{ color: '#526070' }}>Relatório Mensal de Mensalidades</p>
+      <div className="flex-1 overflow-y-auto custom-scrollbar px-6 py-6">
+        <div className="mx-auto space-y-4" style={{ maxWidth: `${larguraListas}px` }}>
+          <section className="rounded-[12px] border border-[var(--border)] bg-white p-5 shadow-[var(--shadow-sm)]">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div className="flex items-start gap-3">
+                <img src={appLogo} alt="" className="h-10 w-10 rounded-[var(--radius-compact)] border border-[var(--border-light)] bg-white object-contain p-1 shadow-sm" />
+                <div>
+                  <p className="text-[9px] font-black uppercase tracking-[0.22em] text-slate-400">Relatórios Admin</p>
+                  <h1 className="mt-1 text-[26px] font-black tracking-tight text-slate-900 capitalize">{mesRelatorio} {anoRelatorio}</h1>
+                  <p className="mt-1 text-[12px] font-semibold text-slate-500">Visão financeira, logs, notas, utilizadores e actividade operacional de {nomeAcademia}.</p>
                 </div>
               </div>
-              <div className="grid grid-cols-3 gap-6 pt-4 border-t border-[#D9E2EF]">
-                <div><p className="text-[9px] font-black uppercase tracking-[0.16em] mb-1" style={{ color: '#1E3A5F' }}>Período</p><p className="text-[11px] font-semibold capitalize" style={{ color: '#0F1F35' }}>{mesRelatorio} {anoRelatorio}</p></div>
-                <div><p className="text-[9px] font-black uppercase tracking-[0.16em] mb-1" style={{ color: '#1E3A5F' }}>Gerado em</p><p className="text-[11px] font-semibold" style={{ color: '#0F1F35' }}>{geradoEm}</p></div>
-                <div><p className="text-[9px] font-black uppercase tracking-[0.16em] mb-1" style={{ color: '#1E3A5F' }}>Total no Período</p><p className="text-[11px] font-semibold" style={{ color: '#0F1F35' }}>{totalInscritos} aluno{totalInscritos !== 1 ? 's' : ''}</p></div>
+              <div className="flex items-center gap-2 rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-emerald-700">
+                <ShieldCheck size={13} />
+                Admin: {sessionUser?.name || 'Administrador'}
               </div>
             </div>
 
-            {/* KPIs */}
-            <div className="px-12 py-6 border-b border-[#E2E8F0]" style={{ background: '#F8FAFD' }}>
-              <div className="grid grid-cols-4 gap-4">
-                {[
-                  { label: 'Total Inscritos', value: String(totalInscritos), sub: 'no período', bg: '#EBF0F8', fg: '#1E3A5F' },
-                  { label: 'Em dia / Pago', value: String(pagosCount + emDiaCount), sub: `${Math.round(((pagosCount + emDiaCount) / Math.max(totalInscritos, 1)) * 100)}% do total`, bg: '#DCFCE7', fg: '#166534' },
-                  { label: 'Em Atraso', value: String(atrasadosCount), sub: atrasadosCount === 0 ? 'Tudo em dia ✓' : 'requerem atenção', bg: atrasadosCount > 0 ? '#FEE2E2' : '#DCFCE7', fg: atrasadosCount > 0 ? '#991B1B' : '#166534' },
-                  { label: 'Receita Cobrada', value: formatCve(receitaMes), sub: `Previsão: ${formatCve(previsaoMes)}`, bg: '#D1FAE5', fg: '#065F46' },
-                ].map((kpi, i) => (
-                  <div key={i} className="rounded-[4px] border border-[#E2E8F0] p-4" style={{ background: kpi.bg }}>
-                    <p className="text-[9px] font-black uppercase tracking-[0.15em] mb-2" style={{ color: '#526070' }}>{kpi.label}</p>
-                    <p className="text-[20px] font-black leading-none truncate" style={{ color: kpi.fg }}>{kpi.value}</p>
-                    <p className="text-[9px] mt-1.5" style={{ color: '#526070' }}>{kpi.sub}</p>
+            <div className="mt-5 grid gap-3 md:grid-cols-4">
+              {kpis.map((kpi) => (
+                <div key={kpi.label} className={`rounded-[var(--radius-surface)] border px-4 py-3 ${kpi.tone}`}>
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <span className="text-[9px] font-black uppercase tracking-[0.16em] opacity-70">{kpi.label}</span>
+                    {kpi.icon}
+                  </div>
+                  <p className="text-[24px] font-black leading-none tabular-nums">{kpi.value}</p>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section className="grid gap-4 lg:grid-cols-[1.05fr_0.95fr]">
+            <div className="rounded-[12px] border border-[var(--border)] bg-white p-5 shadow-[var(--shadow-sm)]">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">Pagamentos</p>
+                  <h2 className="mt-1 text-[18px] font-black text-slate-900">Quem pagou hoje</h2>
+                </div>
+                <span className="rounded-full bg-blue-50 px-3 py-1 text-[10px] font-black text-blue-700">{relatorio.pagamentosHoje.length} hoje</span>
+              </div>
+              <div className="mt-4 max-h-[280px] space-y-2 overflow-y-auto custom-scrollbar pr-1">
+                {relatorio.pagamentosHoje.length === 0 ? (
+                  <div className="rounded-[var(--radius-control)] border border-dashed border-[var(--border)] py-8 text-center text-[12px] font-semibold text-slate-400">Nenhum pagamento registado hoje.</div>
+                ) : relatorio.pagamentosHoje.map((pagamento) => (
+                  <div key={pagamento.id} className="flex items-center justify-between gap-3 rounded-[var(--radius-control)] border border-emerald-100 bg-emerald-50 px-4 py-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-[13px] font-black text-emerald-900">{pagamento.nome || pagamento.aluno_id}</p>
+                      <p className="text-[10px] font-semibold text-emerald-700/70">{pagamento.metodo_pagamento || 'Método não definido'} · {pagamento.data_pagamento || 'sem data'}</p>
+                    </div>
+                    <p className="shrink-0 text-[13px] font-black text-emerald-700">{formatCve(pagamento.valor)}</p>
                   </div>
                 ))}
               </div>
             </div>
 
-            {/* Gráficos */}
-            <div className="px-12 py-7 border-b border-[#E2E8F0]">
-              <p className="text-[9px] font-black uppercase tracking-[0.22em] mb-5" style={{ color: '#526070' }}>Análise Gráfica</p>
-              <div className="grid grid-cols-2 gap-10">
-                {/* Donut */}
+            <div className="rounded-[12px] border border-[var(--border)] bg-white p-5 shadow-[var(--shadow-sm)]">
+              <div className="flex items-center justify-between gap-3">
                 <div>
-                  <p className="text-[10px] font-bold mb-4" style={{ color: '#1E3A5F' }}>Distribuição por Estado</p>
-                  <div className="flex items-center gap-6">
-                    <svg width="130" height="130" viewBox="0 0 130 130" style={{ flexShrink: 0 }}>
-                      <circle cx={donutCx} cy={donutCy} r={donutR} fill="none" stroke="#E2E8F0" strokeWidth={13} />
-                      {donutTotal > 0 && donutArcs.map((arc, i) => (
-                        <circle key={i} cx={donutCx} cy={donutCy} r={donutR} fill="none" stroke={arc.color} strokeWidth={13}
-                          strokeDasharray={`${arc.len} ${donutC - arc.len}`} strokeDashoffset={0}
-                          transform={`rotate(${arc.startAngle} ${donutCx} ${donutCy})`} strokeLinecap="butt" />
-                      ))}
-                      <text x={donutCx} y={donutCy - 6} textAnchor="middle" style={{ fontSize: '20px', fontWeight: 800, fill: '#0F1F35', fontFamily: 'system-ui' }}>{totalInscritos}</text>
-                      <text x={donutCx} y={donutCy + 11} textAnchor="middle" style={{ fontSize: '8px', fill: '#526070', fontWeight: 700, fontFamily: 'system-ui', letterSpacing: '0.08em' }}>ALUNOS</text>
-                    </svg>
-                    <div className="flex flex-col gap-3">
-                      {donutSegments.map((seg, i) => (
-                        <div key={i} className="flex items-center gap-2.5">
-                          <span className="w-3 h-3 rounded-full shrink-0" style={{ background: seg.color }} />
-                          <div>
-                            <p className="text-[11px] font-black leading-none" style={{ color: seg.color }}>{seg.count}</p>
-                            <p className="text-[9px] mt-0.5" style={{ color: '#526070' }}>{seg.label}</p>
-                          </div>
-                        </div>
-                      ))}
-                      {donutTotal === 0 && <p className="text-[10px]" style={{ color: '#526070' }}>Sem dados</p>}
+                  <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">Financeiro</p>
+                  <h2 className="mt-1 text-[18px] font-black text-slate-900">Resumo do mês</h2>
+                </div>
+                <FileBarChart size={18} className="text-blue-600" />
+              </div>
+              <div className="mt-4 grid grid-cols-3 gap-2">
+                {[
+                  ['Previsto', formatCve(relatorio.previsaoMes), 'text-blue-700 bg-blue-50'],
+                  ['Recebido', formatCve(relatorio.receitaMes), 'text-emerald-700 bg-emerald-50'],
+                  ['Por cobrar', formatCve(relatorio.pendenteMes), relatorio.pendenteMes > 0 ? 'text-red-700 bg-red-50' : 'text-emerald-700 bg-emerald-50'],
+                ].map(([label, value, tone]) => (
+                  <div key={label} className={`rounded-[var(--radius-control)] px-3 py-3 text-center ${tone}`}>
+                    <p className="text-[9px] font-black uppercase tracking-[0.12em] opacity-70">{label}</p>
+                    <p className="mt-1 truncate text-[15px] font-black">{value}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-4 h-2 overflow-hidden rounded-full bg-slate-100">
+                <div className="h-full rounded-full bg-emerald-500" style={{ width: `${relatorio.previsaoMes > 0 ? Math.min(100, (relatorio.receitaMes / relatorio.previsaoMes) * 100) : 0}%` }} />
+              </div>
+              <p className="mt-2 text-[10px] font-semibold text-slate-500">{relatorio.previsaoMes > 0 ? Math.round((relatorio.receitaMes / relatorio.previsaoMes) * 100) : 0}% da previsão mensal cobrada.</p>
+            </div>
+          </section>
+
+          <section className="rounded-[12px] border border-[var(--border)] bg-white shadow-[var(--shadow-sm)]">
+            <div className="flex flex-wrap items-center gap-2 border-b border-[var(--border-light)] bg-[#F8FAFC] px-4 py-3">
+              {[
+                { id: 'resumo' as ReportView, label: 'Alunos', icon: <Users size={14} /> },
+                { id: 'atividade' as ReportView, label: 'Atividade', icon: <Clock size={14} /> },
+                { id: 'utilizadores' as ReportView, label: 'Utilizadores', icon: <ShieldCheck size={14} /> },
+                { id: 'notas' as ReportView, label: 'Notas', icon: <StickyNote size={14} /> },
+              ].map((item) => (
+                <button key={item.id} onClick={() => setVista(item.id)} className={`inline-flex h-8 items-center gap-2 rounded-full px-3 text-[10px] font-black uppercase tracking-[0.12em] transition-colors ${vista === item.id ? 'bg-blue-600 text-white' : 'text-slate-500 hover:bg-white'}`}>
+                  {item.icon}
+                  {item.label}
+                </button>
+              ))}
+              {adminLoading && <span className="ml-auto text-[10px] font-bold text-slate-400">A carregar dados admin...</span>}
+            </div>
+
+            {vista === 'resumo' && (
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[900px] text-left">
+                  <thead className="bg-white text-[9px] font-black uppercase tracking-[0.12em] text-slate-400">
+                    <tr>
+                      <th className="px-4 py-3">Aluno</th>
+                      <th className="px-4 py-3">Plano</th>
+                      <th className="px-4 py-3">Estado</th>
+                      <th className="px-4 py-3">Próx. cobrança</th>
+                      <th className="px-4 py-3">Último pagamento</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {relatorio.resumos.map(({ aluno, resumo }, index) => (
+                      <tr key={aluno.id} className={index % 2 === 0 ? 'bg-[#F8FAFC]' : 'bg-white'}>
+                        <td className="px-4 py-3">
+                          <p className="text-[12px] font-black text-slate-800">{aluno.nome}</p>
+                          <p className="text-[10px] font-semibold text-slate-400">{aluno.telefone || 'sem telefone'} · {aluno.categoria || 'Geral'}</p>
+                        </td>
+                        <td className="px-4 py-3 text-[12px] font-black text-slate-700">{formatCve(aluno.plano)}</td>
+                        <td className="px-4 py-3"><span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-black text-slate-600">{getBillingBadgeLabel(resumo.status)}</span></td>
+                        <td className="px-4 py-3 text-[11px] font-semibold text-slate-500">{resumo.nextChargeDate || '—'}</td>
+                        <td className="px-4 py-3 text-[11px] font-semibold text-slate-500">{resumo.lastPaymentDate || '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {vista === 'atividade' && (
+              <div className="grid gap-4 p-4 lg:grid-cols-2">
+                <ActivityList title="Logs do mês" icon={<Database size={15} />} items={relatorio.logsMes} empty="Sem ações registadas neste mês." render={(log) => (
+                  <>
+                    <p className="text-[12px] font-black text-slate-800">{log.acao}</p>
+                    <p className="text-[10px] font-semibold text-slate-500">{log.detalhes || 'Sem detalhe'}</p>
+                    <p className="mt-1 text-[9px] font-bold text-slate-400">{log.user_name || 'Sistema'} · {log.data_hora}</p>
+                  </>
+                )} />
+                <ActivityList title="Logs técnicos" icon={<BookOpenText size={15} />} items={relatorio.tecnicoMes} empty="Sem logs técnicos neste mês." render={(log) => (
+                  <>
+                    <p className="text-[12px] font-black text-slate-800">{log.tipo || 'Registo técnico'} · {log.contexto || 'Sistema'}</p>
+                    <p className="text-[10px] font-semibold text-slate-500">{log.mensagem || 'Sem mensagem'}</p>
+                    <p className="mt-1 text-[9px] font-bold text-slate-400">{log.utilizador || 'Sistema'} · {log.criado_em || log.data_hora}</p>
+                  </>
+                )} />
+              </div>
+            )}
+
+            {vista === 'utilizadores' && (
+              <div className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-3">
+                {adminData.users.map((user) => (
+                  <div key={user.id} className="rounded-[var(--radius-surface)] border border-[var(--border-light)] bg-white p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-[13px] font-black text-slate-800">{user.name}</p>
+                        <p className="text-[10px] font-semibold text-slate-400">{user.email}</p>
+                      </div>
+                      <span className={`rounded-full px-2 py-1 text-[9px] font-black uppercase ${user.role === 'admin' ? 'bg-blue-50 text-blue-700' : 'bg-slate-100 text-slate-600'}`}>{user.role}</span>
+                    </div>
+                    <div className="mt-3 space-y-1 text-[10px] font-semibold text-slate-500">
+                      <p>Estado: <span className={user.is_active === 1 ? 'text-emerald-700' : 'text-red-700'}>{user.is_active === 1 ? 'Ativo' : 'Bloqueado'}</span></p>
+                      <p>Último login: {user.last_login_at || 'Sem registo'}</p>
+                      <p>Criado em: {user.created_at || '—'}</p>
                     </div>
                   </div>
-                </div>
-                {/* Barras mensais */}
-                <div>
-                  <p className="text-[10px] font-bold mb-4" style={{ color: '#1E3A5F' }}>Receita Mensal — {anoRelatorio}</p>
-                  <div className="flex items-end gap-1 h-[88px]">
-                    {dadosBarra.map((d, i) => {
-                      const h = maxBarra > 0 ? Math.max(3, (d.total / maxBarra) * 76) : 3;
-                      return (
-                        <div key={i} className="flex flex-col items-center gap-0.5 flex-1" title={`${d.mes}: ${formatCve(d.total)}`}>
-                          <div className="w-full rounded-t-[2px] transition-all" style={{ height: `${h}px`, background: d.ativo ? '#1E3A5F' : '#93BBDC' }} />
-                          <p className="text-[7px] font-bold uppercase" style={{ color: d.ativo ? '#1E3A5F' : '#8A9BB0' }}>{d.mes}</p>
-                        </div>
-                      );
-                    })}
+                ))}
+              </div>
+            )}
+
+            {vista === 'notas' && (
+              <div className="grid gap-3 p-4 md:grid-cols-2">
+                {relatorio.notasMes.length === 0 ? (
+                  <div className="col-span-full rounded-[var(--radius-control)] border border-dashed border-[var(--border)] py-10 text-center text-[12px] font-semibold text-slate-400">Sem notas criadas neste mês.</div>
+                ) : relatorio.notasMes.map((nota) => (
+                  <div key={nota.id} className="rounded-[var(--radius-control)] border border-amber-200 bg-[#FFF7C7] p-4">
+                    <p className="text-[13px] font-black text-amber-950">{nota.nome || nota.aluno_id}</p>
+                    <p className="mt-2 text-[12px] leading-relaxed text-amber-900">{nota.texto}</p>
+                    <p className="mt-3 text-[10px] font-bold text-amber-700/70">{nota.data_criacao}</p>
                   </div>
-                  <div className="flex justify-between mt-2 text-[8px]" style={{ color: '#8A9BB0' }}>
-                    <span>0</span>
-                    <span className="font-bold">{formatCve(maxBarra)} máx.</span>
-                  </div>
-                </div>
+                ))}
               </div>
-            </div>
-
-            {/* Tabela de alunos */}
-            <div className="px-12 py-7 border-b border-[#E2E8F0]">
-              <p className="text-[9px] font-black uppercase tracking-[0.22em] mb-5" style={{ color: '#526070' }}>Detalhe por Aluno — <span style={{ color: '#1E3A5F' }}>{mesRelatorio} {anoRelatorio}</span></p>
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr style={{ borderBottom: '2px solid #1E3A5F' }}>
-                    {['#', 'Nome do Aluno', 'Plano', 'Modalidade', 'Estado', 'Vencimento', 'Cobertura'].map((h, i) => (
-                      <th key={i} className="pb-2.5 text-[8px] font-black uppercase tracking-[0.14em]" style={{ color: '#1E3A5F', paddingRight: i < 6 ? '12px' : 0 }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {resumosRel.length === 0 && (
-                    <tr><td colSpan={7} className="py-10 text-center text-[11px]" style={{ color: '#526070' }}>Nenhum aluno inscrito neste período</td></tr>
-                  )}
-                  {resumosRel.map(({ aluno, resumo }, idx) => {
-                    const tone = getBillingTone(resumo.status);
-                    return (
-                      <tr key={aluno.id} style={{ background: idx % 2 === 0 ? '#FFFFFF' : '#F8FAFD', borderBottom: '1px solid #EDF0F5' }}>
-                        <td className="py-2.5 pr-3 align-middle text-[10px] font-bold" style={{ color: '#8A9BB0' }}>{String(idx + 1).padStart(2,'0')}</td>
-                        <td className="py-2.5 pr-4 align-middle" style={{ width: '30%' }}>
-                          <p className="text-[11px] font-bold leading-tight" style={{ color: '#0F1F35' }}>{aluno.nome}</p>
-                          <p className="text-[9px]" style={{ color: '#8A9BB0' }}>{aluno.telefone || '—'}</p>
-                        </td>
-                        <td className="py-2.5 pr-4 align-middle text-[10px] font-semibold" style={{ color: '#1E3A5F' }}>{formatCve(aluno.plano)}</td>
-                        <td className="py-2.5 pr-4 align-middle">
-                          <span className="px-1.5 py-0.5 rounded-[2px] text-[8px] font-bold uppercase tracking-wider" style={{ background: '#EBF0F8', color: '#1E3A5F' }}>{aluno.modalidade || 'Musc.'}</span>
-                        </td>
-                        <td className="py-2.5 pr-4 align-middle">
-                          <div className="flex items-center gap-1.5">
-                            <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: tone.color }} />
-                            <span className="text-[10px] font-bold" style={{ color: tone.color }}>{getBillingBadgeLabel(resumo.status)}</span>
-                          </div>
-                        </td>
-                        <td className="py-2.5 pr-4 align-middle text-[10px]" style={{ color: '#526070' }}>{resumo.nextChargeDate || '—'}</td>
-                        <td className="py-2.5 align-middle">
-                          <div className="h-1.5 w-14 overflow-hidden rounded-full mb-0.5" style={{ background: '#E2E8F0' }}>
-                            <div className="h-full rounded-full" style={{ width: `${getTimelineMetricWidth(resumo, aluno.status)}%`, background: tone.color }} />
-                          </div>
-                          <p className="text-[8px]" style={{ color: '#8A9BB0' }}>{resumo.coverageEnd || '—'}</p>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Resumo Financeiro */}
-            <div className="px-12 py-7 border-b border-[#E2E8F0]" style={{ background: '#F8FAFD' }}>
-              <p className="text-[9px] font-black uppercase tracking-[0.22em] mb-5" style={{ color: '#526070' }}>Resumo Financeiro — {mesRelatorio} {anoRelatorio}</p>
-              <div className="grid grid-cols-3 gap-6 mb-5">
-                <div className="text-center">
-                  <p className="text-[9px] font-bold uppercase tracking-wider mb-1.5" style={{ color: '#526070' }}>Receita Prevista</p>
-                  <p className="text-[20px] font-black" style={{ color: '#1E3A5F' }}>{formatCve(previsaoMes)}</p>
-                  <p className="text-[9px] mt-1" style={{ color: '#8A9BB0' }}>Base: alunos activos</p>
-                </div>
-                <div className="text-center" style={{ borderLeft: '1px solid #E2E8F0', borderRight: '1px solid #E2E8F0' }}>
-                  <p className="text-[9px] font-bold uppercase tracking-wider mb-1.5" style={{ color: '#526070' }}>Receita Recebida</p>
-                  <p className="text-[20px] font-black" style={{ color: '#166534' }}>{formatCve(receitaMes)}</p>
-                  <p className="text-[9px] mt-1" style={{ color: '#8A9BB0' }}>{previsaoMes > 0 ? `${Math.round((receitaMes / previsaoMes) * 100)}% realizado` : '—'}</p>
-                </div>
-                <div className="text-center">
-                  <p className="text-[9px] font-bold uppercase tracking-wider mb-1.5" style={{ color: '#526070' }}>Por Cobrar</p>
-                  <p className="text-[20px] font-black" style={{ color: pendenteMes > 0 ? '#991B1B' : '#166534' }}>{formatCve(pendenteMes)}</p>
-                  <p className="text-[9px] mt-1" style={{ color: '#8A9BB0' }}>{pendenteMes === 0 ? '100% cobrado ✓' : `${atrasadosCount} em atraso`}</p>
-                </div>
-              </div>
-              <div>
-                <div className="flex justify-between text-[9px] mb-1.5" style={{ color: '#526070' }}>
-                  <span>Progresso de cobrança do mês</span>
-                  <span className="font-bold">{previsaoMes > 0 ? `${Math.round((receitaMes / previsaoMes) * 100)}%` : '—'}</span>
-                </div>
-                <div className="h-2 rounded-full overflow-hidden" style={{ background: '#E2E8F0' }}>
-                  <div className="h-full rounded-full transition-all" style={{ width: `${previsaoMes > 0 ? Math.min(100, (receitaMes / previsaoMes) * 100) : 0}%`, background: pendenteMes === 0 ? '#166534' : '#1E3A5F' }} />
-                </div>
-              </div>
-            </div>
-
-            {/* Rodapé do documento */}
-            <div className="px-12 py-5 flex items-center justify-between" style={{ borderTop: '1px solid #E2E8F0' }}>
-              <div className="flex items-center gap-2">
-                <img src={NEXT_LAB_ICON as string} alt="" className="w-4 h-4" style={{ opacity: 0.35 }} />
-                <p className="text-[9px]" style={{ color: '#8A9BB0' }}>{COMPANY_NAME} · {nomeAcademia}</p>
-              </div>
-              <p className="text-[9px] text-center" style={{ color: '#8A9BB0' }}>Gerado em {geradoEm} · Versão do momento da exportação</p>
-              <p className="text-[9px] font-bold" style={{ color: '#1E3A5F' }}>Pág. 1 / 1</p>
-            </div>
-
-          </div>
+            )}
+          </section>
         </div>
       </div>
     </div>
   );
 });
+
+function ActivityList<T extends { id: number | string }>({
+  title,
+  icon,
+  items,
+  empty,
+  render,
+}: {
+  title: string;
+  icon: React.ReactNode;
+  items: T[];
+  empty: string;
+  render: (item: T) => React.ReactNode;
+}) {
+  return (
+    <div className="rounded-[var(--radius-surface)] border border-[var(--border-light)]">
+      <div className="flex items-center gap-2 border-b border-[var(--border-light)] bg-[#F8FAFC] px-4 py-3">
+        {icon}
+        <p className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-600">{title}</p>
+        <span className="ml-auto rounded-full bg-white px-2 py-0.5 text-[9px] font-black text-slate-400">{items.length}</span>
+      </div>
+      <div className="max-h-[360px] overflow-y-auto custom-scrollbar p-3">
+        {items.length === 0 ? (
+          <div className="rounded-[var(--radius-control)] border border-dashed border-[var(--border)] py-8 text-center text-[12px] font-semibold text-slate-400">{empty}</div>
+        ) : (
+          <div className="space-y-2">
+            {items.map((item) => (
+              <div key={item.id} className="rounded-[var(--radius-control)] border border-[var(--border-light)] bg-white px-3 py-2.5">
+                {render(item)}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export default RelatoriosPage;

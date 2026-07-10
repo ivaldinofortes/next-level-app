@@ -760,6 +760,64 @@ app.whenReady().then(() => {
     return stmt.all();
   });
 
+  ipcMain.handle('reports:admin-data', async () => {
+    try {
+      const users = db.prepare('SELECT id, name, email, role, is_active, created_at, last_login_at FROM users ORDER BY role DESC, name ASC').all();
+      const logs = db.prepare('SELECT * FROM logs ORDER BY id DESC LIMIT 800').all();
+      const technicalLogs = db.prepare('SELECT * FROM logs_tecnicos ORDER BY id DESC LIMIT 500').all();
+      const notes = db.prepare(`
+        SELECT n.*, a.nome, a.telefone, a.categoria
+        FROM notas_contacto n
+        LEFT JOIN alunos a ON a.id = n.aluno_id
+        ORDER BY n.id DESC
+      `).all();
+
+      return {
+        success: true,
+        users,
+        logs,
+        technicalLogs,
+        notes,
+      };
+    } catch (error) {
+      console.error('Erro ao carregar dados administrativos de relatórios:', error);
+      return { success: false, message: error.message, users: [], logs: [], technicalLogs: [], notes: [] };
+    }
+  });
+
+  ipcMain.handle('reports:export-current-pdf', async (event, payload = {}) => {
+    try {
+      const win = BrowserWindow.fromWebContents(event.sender) || mainWindow;
+      if (!win) return { success: false, message: 'Janela principal indisponível.' };
+
+      const now = new Date();
+      const stamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+      const safeName = String(payload?.fileName || `relatorio_admin_${stamp}.pdf`).replace(/[\\/:*?"<>|]/g, '_');
+      const result = await dialog.showSaveDialog(win, {
+        title: 'Guardar relatório em PDF',
+        defaultPath: path.join(app.getPath('desktop'), safeName.endsWith('.pdf') ? safeName : `${safeName}.pdf`),
+        filters: [{ name: 'PDF', extensions: ['pdf'] }],
+      });
+
+      if (result.canceled || !result.filePath) return { success: false, canceled: true };
+
+      const pdfBuffer = payload?.pdfBase64
+        ? Buffer.from(String(payload.pdfBase64), 'base64')
+        : await win.webContents.printToPDF({
+            printBackground: true,
+            landscape: false,
+            margins: { marginType: 'default' },
+            pageSize: 'A4',
+          });
+      fs.writeFileSync(result.filePath, pdfBuffer);
+      registrarLog('Relatório PDF', `Relatório administrativo exportado para ${result.filePath}`);
+      return { success: true, path: result.filePath };
+    } catch (error) {
+      console.error('Erro ao exportar relatório em PDF:', error);
+      return { success: false, message: error.message };
+    }
+  });
+
   ipcMain.handle('select-directory', async () => {
     const result = await dialog.showOpenDialog({
       title: 'Selecione a pasta',
@@ -959,6 +1017,27 @@ app.whenReady().then(() => {
 
   ipcMain.handle('get-notas', async (event, alunoId) => {
     return db.prepare('SELECT * FROM notas_contacto WHERE aluno_id = ? ORDER BY data_criacao DESC').all(alunoId);
+  });
+
+  ipcMain.handle('get-notas-resumo', async () => {
+    return db.prepare(`
+      SELECT
+        aluno_id,
+        COUNT(*) as total,
+        MAX(id) as ultimo_id
+      FROM notas_contacto
+      GROUP BY aluno_id
+    `).all();
+  });
+
+  ipcMain.handle('get-notas-recentes', async () => {
+    return db.prepare(`
+      SELECT n.*, a.nome, a.telefone, a.categoria
+      FROM notas_contacto n
+      LEFT JOIN alunos a ON a.id = n.aluno_id
+      ORDER BY n.id DESC
+      LIMIT 24
+    `).all();
   });
 
   ipcMain.handle('add-nota', async (event, { alunoId, texto }) => {

@@ -43,7 +43,7 @@ export class IPCService {
   static async updateStudent(studentId: string, data: Partial<Student>): Promise<void> {
     if (!this.isAvailable()) throw new Error('IPC not available');
     try {
-      await electron.ipcRenderer.invoke('update-aluno-dados', studentId, data);
+      await electron.ipcRenderer.invoke('update-aluno-dados', { ...data, id: studentId });
     } catch (err) {
       console.error('[IPC] Error updating student:', err);
       throw err;
@@ -120,7 +120,7 @@ export class IPCService {
   static async addNote(studentId: string, text: string): Promise<void> {
     if (!this.isAvailable()) throw new Error('IPC not available');
     try {
-      await electron.ipcRenderer.invoke('add-nota', studentId, text);
+      await electron.ipcRenderer.invoke('add-nota', { alunoId: studentId, texto: text });
     } catch (err) {
       console.error('[IPC] Error adding note:', err);
       throw err;
@@ -160,7 +160,7 @@ export class IPCService {
     }
   }
 
-  static async selectDirectory(): Promise<string> {
+  static async selectDirectory(): Promise<{ canceled?: boolean; filePaths?: string[]; path?: string } | null> {
     if (!this.isAvailable()) throw new Error('IPC not available');
     try {
       const result = await electron.ipcRenderer.invoke('select-directory');

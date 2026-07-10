@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { useState, useEffect, useRef, useMemo, useCallback, type CSSProperties, lazy, Suspense } from 'react';
 import Header from './components/Header';
 import HomePage from './components/HomePage';
@@ -26,7 +25,7 @@ import {
   Archive, Database, HelpCircle, Globe,
   Menu, ChevronDown, ChevronUp, Clock, ShieldOff, UserCheck, Wallet, Landmark, LayoutList,
   Star, FileBarChart, Zap, Activity, Printer, ArrowLeft, Hash, ArrowRight, History, Banknote,
-  Minimize2, Maximize2, Pencil, Send
+  Minimize2, Maximize2, Pencil, Send, StickyNote
 } from 'lucide-react';
 import {
   buildCoverageWindow,
@@ -288,9 +287,9 @@ const themeVars = {
     '--shadow-xl':               '0 8px 16px rgba(9,30,66,0.25)',
     '--shadow-primary':          'rgba(0,101,255,0.24)',
     '--shadow-primary-focus':    'rgba(0,101,255,0.12)',
-    '--radius-lg':               '3px',
-    '--radius-md':               '3px',
-    '--radius-sm':               '3px',
+    '--radius-lg':               '9px',
+    '--radius-md':               '8px',
+    '--radius-sm':               '6px',
     '--font-size-xs':            '11px',
     '--font-size-sm':            '12px',
     '--font-size-base':          '14px',
@@ -345,9 +344,9 @@ const themeVars = {
     '--shadow-xl':               '0 12px 24px rgba(0,0,0,0.6)',
     '--shadow-primary':          'rgba(87,157,255,0.28)',
     '--shadow-primary-focus':    'rgba(87,157,255,0.14)',
-    '--radius-lg':               '3px',
-    '--radius-md':               '3px',
-    '--radius-sm':               '3px',
+    '--radius-lg':               '9px',
+    '--radius-md':               '8px',
+    '--radius-sm':               '6px',
     '--font-size-xs':            '11px',
     '--font-size-sm':            '12px',
     '--font-size-base':          '14px',
@@ -404,7 +403,7 @@ const themeVars = {
     '--shadow-xl':               '0 8px 20px rgba(60,30,10,0.14)',
     '--shadow-primary':          'rgba(207,124,90,0.26)',
     '--shadow-primary-focus':    'rgba(207,124,90,0.14)',
-    '--radius-lg':               '10px',
+    '--radius-lg':               '9px',
     '--radius-md':               '8px',
     '--radius-sm':               '6px',
     '--font-size-xs':            '11px',
@@ -448,6 +447,9 @@ const GlobalStyles = ({ theme }: { theme: 'light' | 'dark' | 'claude' }) => {
         --transition-fast: 130ms cubic-bezier(0.4,0,0.2,1);
         --transition-base: 200ms cubic-bezier(0.4,0,0.2,1);
         --transition-slow: 300ms cubic-bezier(0.4,0,0.2,1);
+        --radius-control: 8.4px;
+        --radius-surface: 9px;
+        --radius-compact: 6px;
       }
 
       @keyframes slideUp {
@@ -495,7 +497,7 @@ const GlobalStyles = ({ theme }: { theme: 'light' | 'dark' | 'claude' }) => {
       /* ── Card ── */
       .nl-card {
         background: var(--bg-surface);
-        border-radius: var(--radius-md);
+        border-radius: var(--radius-surface);
         box-shadow: var(--shadow-sm);
         padding: var(--spacing-lg);
         transition: box-shadow var(--transition-base), background-color var(--transition-base), transform var(--transition-base);
@@ -513,7 +515,7 @@ const GlobalStyles = ({ theme }: { theme: 'light' | 'dark' | 'claude' }) => {
         justify-content: center;
         gap: 6px;
         padding: 6px 14px;
-        border-radius: var(--radius-sm);
+        border-radius: var(--radius-control);
         font-size: 12px;
         font-weight: 700;
         cursor: pointer;
@@ -561,7 +563,7 @@ const GlobalStyles = ({ theme }: { theme: 'light' | 'dark' | 'claude' }) => {
       .nl-input {
         background: var(--bg-input);
         border: 1px solid var(--border);
-        border-radius: var(--radius-sm);
+        border-radius: var(--radius-control);
         padding: 8px 12px;
         font-size: 13px;
         font-weight: 400;
@@ -794,6 +796,7 @@ interface Aluno {
   modo_cobranca?: string;
   foto_path?: string;
   notas?: string;
+  modalidade?: string;
 }
 
 interface Nota {
@@ -801,6 +804,18 @@ interface Nota {
   aluno_id: string;
   texto: string;
   data_criacao: string;
+}
+
+interface NotaRecente extends Nota {
+  nome?: string;
+  telefone?: string;
+  categoria?: string;
+}
+
+interface NotaResumo {
+  aluno_id: string;
+  total: number;
+  ultimo_id?: number;
 }
 
 interface Pagamento {
@@ -828,7 +843,6 @@ function App() {
   const [alunoEdicao, setAlunoEdicao] = useState<Aluno | null>(null);
   const [filtroStatus, setFiltroStatus] = useState<'todos' | 'divida' | 'cobertos' | 'importados'>('todos');
   const [mostrarFiltroListaAlunos, setMostrarFiltroListaAlunos] = useState(false);
-  const [mostrarOrdenacaoListaAlunos, setMostrarOrdenacaoListaAlunos] = useState(false);
   const [ordenacaoListaAlunos, setOrdenacaoListaAlunos] = useState<StudentSortMode>('inteligente');
   const [menuAlunoAberto, setMenuAlunoAberto] = useState<string | null>(null);
   const [mostrarCalendarioMeses, setMostrarCalendarioMeses] = useState(false);
@@ -859,7 +873,7 @@ function App() {
   const [mostrarHistoricoModal, setMostrarHistoricoModal] = useState(false);
   const [mostrarOpcoesAvancadas, setMostrarOpcoesAvancadas] = useState(false);
   const [pagamentoSucesso, setPagamentoSucesso] = useState(false);
-  const [ultimoPagamentoInfo, setUltimoPagamentoInfo] = useState(null);
+  const [ultimoPagamentoInfo, setUltimoPagamentoInfo] = useState<{ valor: string; mes: string } | null>(null);
   const [pagamentoForm, setPagamentoForm] = useState<PaymentFormState>({
     valor: '',
     dataPagamento: formatInputDate(),
@@ -873,6 +887,11 @@ function App() {
   const [alunoPerfil, setAlunoPerfil] = useState<Aluno | null>(null);
   const [notasContacto, setNotasContacto] = useState<Nota[]>([]);
   const [novaNota, setNovaNota] = useState('');
+  const [notasResumo, setNotasResumo] = useState<Record<string, NotaResumo>>({});
+  const [notasRecentes, setNotasRecentes] = useState<NotaRecente[]>([]);
+  const [alunoNotasRapidas, setAlunoNotasRapidas] = useState<Aluno | null>(null);
+  const [notasRapidas, setNotasRapidas] = useState<Nota[]>([]);
+  const [novaNotaRapida, setNovaNotaRapida] = useState('');
   const [filtroCategoria, setFiltroCategoria] = useState('todos');
   const [contactosAbaDetalhe, setContactosAbaDetalhe] = useState<'perfil' | 'historico' | 'financeiro' | 'notas'>('perfil');
   // contactosTimeline now shares mesFinanceiro / anoFinanceiro
@@ -904,6 +923,7 @@ function App() {
   const [alunoParaCobrancaRapida, setAlunoParaCobrancaRapida] = useState<Aluno | null>(null);
   const [cobrancaPagamentoSucesso, setCobrancaPagamentoSucesso] = useState(false);
   const [cobrancaUltimoPagamentoInfo, setCobrancaUltimoPagamentoInfo] = useState<any>(null);
+  const [pagamentoAtivoInfo, setPagamentoAtivoInfo] = useState<{ aluno: Aluno; resumo: any } | null>(null);
 
   // Estados para gestão de utilizadores
   const [listaUtilizadores, setListaUtilizadores] = useState<any[]>([]);
@@ -930,6 +950,7 @@ function App() {
   const [carregandoDuplicados, setCarregandoDuplicados] = useState(false);
   const [resetSeguroForm, setResetSeguroForm] = useState({ password: '', confirmation: '' });
   const [resetSeguroLoading, setResetSeguroLoading] = useState(false);
+  const [carregando, setCarregando] = useState(false);
 
   // Sessão / utilizadores
   type UserRole = 'admin' | 'operational' | 'root';
@@ -1082,11 +1103,11 @@ function App() {
   const larguraListas = Math.round(1120 + ((zoomListaNormalizado - 60) / 40) * 360);
   const larguraSidebarContactos = Math.round(280 + ((zoomListaNormalizado - 60) / 40) * 80);
   const densidadeLista = (zoomListaNormalizado - 60) / 40;
-  const paddingLinhaY = `${((6.2 + densidadeLista * 4.8) * 0.8).toFixed(1)}px`;
-  const paddingLinhaX = `${(10 + densidadeLista * 6).toFixed(1)}px`;
-  const tamanhoAvatarLista = `${Math.round((29 + densidadeLista * 7) * 0.8)}px`;
-  const tamanhoFonteLista = `${(12 + densidadeLista * 1.5).toFixed(1)}px`;
-  const tamanhoFonteSecundariaLista = `${(10 + densidadeLista * 1.2).toFixed(1)}px`;
+  const paddingLinhaY = `${((7.5 + densidadeLista * 5.5) * 0.64).toFixed(1)}px`;
+  const paddingLinhaX = `${(12 + densidadeLista * 7).toFixed(1)}px`;
+  const tamanhoAvatarLista = `${Math.round(29 + densidadeLista * 6)}px`;
+  const tamanhoFonteLista = `${(13 + densidadeLista * 1.6).toFixed(1)}px`;
+  const tamanhoFonteSecundariaLista = `${(11.2 + densidadeLista * 1.25).toFixed(1)}px`;
   const estiloTabelaAlunos = {
     '--list-row-py': paddingLinhaY,
     '--list-row-px': paddingLinhaX,
@@ -1160,20 +1181,20 @@ function App() {
 
   // GNOME Adwaita: Toast Notifications System
   const [toast, setToast] = useState<{ message: string, visible: boolean }>({ message: '', visible: false });
-  const showToast = (message: string) => {
+  const showToast = useCallback((message: string) => {
     setToast({ message, visible: true });
     setTimeout(() => setToast({ message: '', visible: false }), 3000);
-  };
+  }, []);
 
   const guardarConfiguracao = async (chave: string, valor: string) => {
     if (!electron) return;
     await electron.ipcRenderer.invoke('update-configuracao', chave, valor);
   };
 
-  const notificarSistema = async (title: string, body: string) => {
+  const notificarSistema = useCallback(async (title: string, body: string) => {
     if (!electron || !desktopNotificationsEnabled) return;
     await electron.ipcRenderer.invoke('notify-system', { title, body });
-  };
+  }, [desktopNotificationsEnabled]);
 
   const abrirConfirmacao = (config: Omit<ConfirmDialogState, 'visible'>) => {
     setConfirmDialog({ visible: true, ...config });
@@ -1183,11 +1204,10 @@ function App() {
     setConfirmDialog((prev) => ({ ...prev, visible: false }));
   };
 
-  const fecharCamadaAtiva = () => {
+  const fecharCamadaAtiva = useCallback(() => {
     if (confirmDialog.visible) { fecharConfirmacao(); return true; }
     if (mostrarCalendarioMeses) { setMostrarCalendarioMeses(false); return true; }
     if (mostrarFiltroListaAlunos) { setMostrarFiltroListaAlunos(false); return true; }
-    if (mostrarOrdenacaoListaAlunos) { setMostrarOrdenacaoListaAlunos(false); return true; }
     if (mostrarUserMenu) { setMostrarUserMenu(false); return true; }
     if (mostrarMenuAcoes) { setMostrarMenuAcoes(false); return true; }
     if (contextMenu) { setContextMenu(null); return true; }
@@ -1197,21 +1217,25 @@ function App() {
     if (utilizadorEmEdicao) { setUtilizadorEmEdicao(null); return true; }
     if (mostrarFormNovoUtilizador) { setMostrarFormNovoUtilizador(false); return true; }
     if (mostrarBoasVindas) { setMostrarBoasVindas(false); setAlunoBoasVindas(null); setMsgBoasVindas(''); return true; }
+    if (alunoNotasRapidas) { setAlunoNotasRapidas(null); return true; }
+    if (pagamentoAtivoInfo) { setPagamentoAtivoInfo(null); return true; }
     if (mostrarCobrancaRapida) { setMostrarCobrancaRapida(false); setAlunoParaCobrancaRapida(null); setCobrancaPagamentoSucesso(false); setCobrancaUltimoPagamentoInfo(null); return true; }
     if (mostrarPerfilModal) { setMostrarPerfilModal(false); setMostrarHistoricoPerfil(false); setAlunoPerfil(null); setPerfilPagamentoSucesso(false); return true; }
     if (mostrarRelatorioMensal) { setMostrarRelatorioMensal(false); return true; }
     if (mostrarModalDuplicados) { setMostrarModalDuplicados(false); return true; }
-    if (mostrarResolverPendencias) { setMostrarResolverPendencias(false); return true; }
-    if (mostrarFormEdicao) { setMostrarFormEdicao(false); setAlunoEdicao(null); setNovoAluno(novoAlunoDefault); return true; }
-    if (mostrarForm) { setMostrarForm(false); return true; }
-    if (mostrarImportar) { setMostrarImportar(false); return true; }
     if (mostrarModalExport) { setMostrarModalExport(false); return true; }
     if (mostrarModalPagamento) { setMostrarModalPagamento(false); return true; }
-    if (alunoSelecionado) { setAlunoSelecionado(null); return true; }
-    if (mostrarSettings) { setMostrarSettings(false); return true; }
-    if (mostrarConfigModal) { setMostrarConfigModal(false); return true; }
+    if (mostrarImportar) { setMostrarImportar(false); return true; }
     return false;
-  };
+  }, [
+    confirmDialog.visible, mostrarCalendarioMeses, mostrarFiltroListaAlunos,
+    mostrarUserMenu, mostrarMenuAcoes, contextMenu, mostrarNotificacoes,
+    mostrarDropdownRecentes, mostrarSobreDoc, utilizadorEmEdicao,
+    mostrarFormNovoUtilizador, mostrarBoasVindas, alunoNotasRapidas,
+    pagamentoAtivoInfo, mostrarCobrancaRapida, mostrarPerfilModal,
+    mostrarRelatorioMensal, mostrarModalDuplicados, mostrarModalExport,
+    mostrarModalPagamento, mostrarImportar,
+  ]);
 
   // Função para calcular progresso, status e cores inteligentes (Inteligência Termométrica)
   const calcularStatusVencimento = (vencimentoStr: string) => {
@@ -1342,17 +1366,16 @@ function App() {
 
   
   // Estado para o formulário de novo aluno
-  const novoAlunoDefault = {
+  const novoAlunoDefault = useMemo(() => ({
     nome: '', telefone: '', email: '', sexo: '',
     data_nascimento: '', morada: '', alergias: '',
     objetivos: '', horario_preferido: '',
     plano: '', vencimento: '', data_matricula: new Date().toISOString().split('T')[0],
     categoria: '',
     modo_cobranca: 'mensalidade_movel',
-    // Novos campos de lógica de pagamento
     modo_inscricao: 'matricula' as 'matricula' | 'matricula_pago',
     dia_pagamento: 1 as 1 | 'ultimo',
-  };
+  }), []);
   const [novoAluno, setNovoAluno] = useState(novoAlunoDefault);
   const [previewVencimento, setPreviewVencimento] = useState('');
 
@@ -1375,7 +1398,7 @@ function App() {
     const date = new Date();
     date.setHours(0, 0, 0, 0);
     return date;
-  }, [hojeReferenciaKey]);
+  }, []);
   const periodoSelecionadoKey = getMonthKey(mesFinanceiro, anoFinanceiro);
   const periodoSelecionadoFuturo = isFutureMonth(mesFinanceiroIndex, anoFinanceiro, hojeReferencia);
   const inicioPeriodoSelecionado = mesFinanceiroIndex >= 0
@@ -1414,18 +1437,18 @@ function App() {
       ? diasNoPeriodoSelecionado
       : 0;
   const progressoPeriodoPercentual = Math.min(100, Math.max(0, (diaProgressoPeriodo / Math.max(diasNoPeriodoSelecionado, 1)) * 100));
-  const irParaMesAtualOperacional = (mostrarAviso = false) => {
+  const irParaMesAtualOperacional = useCallback((mostrarAviso = false) => {
     setAnoFinanceiro(anoAtual);
     setMesFinanceiro(mesAtualNome);
     if (mostrarAviso) {
       showToast(`Ação operacional movida para ${mesAtualNome} ${anoAtual}.`);
     }
     return { mes: mesAtualNome, ano: anoAtual };
-  };
-  const prepararAcaoOperacionalNoMesAtual = () => {
+  }, [anoAtual, mesAtualNome, showToast]);
+  const prepararAcaoOperacionalNoMesAtual = useCallback(() => {
     if (periodoAtualSelecionado) return { mes: mesFinanceiro, ano: anoFinanceiro };
     return irParaMesAtualOperacional(true);
-  };
+  }, [periodoAtualSelecionado, mesFinanceiro, anoFinanceiro, irParaMesAtualOperacional]);
 
   const resumosFinanceiros = useMemo(() => {
     return alunos.map((aluno) => {
@@ -1601,12 +1624,12 @@ function App() {
         currentDueDate = parseFlexibleDate(janela.nextChargeDate) || new Date();
       }
       
-      await carregarDados();
+      await carregarConfiguracoes();
       setMostrarResolverPendencias(false);
-      abrirNotificacao('sucesso', 'Regularização concluída', `Foram regularizados ${mesesParaResolver.length} meses para ${alunoParaResolver.nome}.`);
+      adicionarNotificacao('sucesso', 'Regularização concluída', 'sucesso');
     } catch (err) {
       console.error(err);
-      abrirNotificacao('erro', 'Falha ao resolver', 'Ocorreu um erro ao processar os pagamentos.');
+      adicionarNotificacao('Erro', 'Falha ao resolver', 'erro');
     } finally {
       setCarregando(false);
     }
@@ -1714,14 +1737,16 @@ function App() {
     alunosNovosNoPeriodo.length,
     alunosComCobrancaNoPeriodo.length,
     nomeAcademia,
+    notificarSistema,
+    showToast,
   ]);
 
   const [alunosDeletados, setAlunosDeletados] = useState<Aluno[]>([]);
 
   const validateEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-  const validatePhone = (phone: string) => /^\d+$/.test(phone.replace(/[\s\-\(\)\+]/g, ''));
+  const validatePhone = (phone: string) => /^\d+$/.test(phone.replace(/[\s\-()+]/g, ''));
 
-  const carregarConfiguracoes = async () => {
+  const carregarConfiguracoes = useCallback(async () => {
     if (electron) {
       try {
         const lista = await electron.ipcRenderer.invoke('get-alunos', false);
@@ -1732,6 +1757,12 @@ function App() {
 
         const listaPagamentos = await electron.ipcRenderer.invoke('get-pagamentos');
         setPagamentos(listaPagamentos);
+
+        const resumoNotas = await electron.ipcRenderer.invoke('get-notas-resumo');
+        setNotasResumo(Object.fromEntries((resumoNotas || []).map((item: NotaResumo) => [item.aluno_id, item])));
+
+        const notasRecentesLista = await electron.ipcRenderer.invoke('get-notas-recentes');
+        setNotasRecentes(notasRecentesLista || []);
         
         const configs = await electron.ipcRenderer.invoke('get-configuracoes');
         setConfiguracoes(configs);
@@ -1793,7 +1824,7 @@ function App() {
         setTimeout(() => setLoadingConfig(false), 1200);
       }
     }
-  };
+  }, []);
 
   const atualizarAplicacao = useCallback(async () => {
     setSincronizando(true);
@@ -1851,7 +1882,6 @@ function App() {
     confirmDialog.visible,
     mostrarCalendarioMeses,
     mostrarFiltroListaAlunos,
-    mostrarOrdenacaoListaAlunos,
     mostrarUserMenu,
     mostrarMenuAcoes,
     contextMenu,
@@ -1874,6 +1904,7 @@ function App() {
     alunoSelecionado,
     mostrarSettings,
     mostrarConfigModal,
+    fecharCamadaAtiva,
   ]);
 
   useEffect(() => {
@@ -1906,7 +1937,7 @@ function App() {
     if (online && isLoggedIn) {
       carregarConfiguracoes();
     }
-  }, [online]);
+  }, [online, isLoggedIn, carregarConfiguracoes]);
 
   useEffect(() => {
     const agora = new Date();
@@ -1925,7 +1956,7 @@ function App() {
       'Faça o backup mensal: exporte o dossier em Excel e gere o backup ZIP do sistema.'
     );
     localStorage.setItem(`nl_backup_alert_${monthKey}`, '1');
-  }, [backupReminderEnabled, ultimoBackupMes, nomeAcademia]);
+  }, [backupReminderEnabled, ultimoBackupMes, nomeAcademia, notificarSistema]);
 
   // ─── Verificação de relatório mensal disponível ──────────────────────────
   useEffect(() => {
@@ -1982,7 +2013,7 @@ function App() {
   // Auto-carregar utilizadores quando a tab de utilizadores fica visível
   useEffect(() => {
     if (aba !== 'configuracoes' || configAba !== 'utilizadores' || !electron) return;
-    electron.ipcRenderer.invoke('users:list').then((res) => {
+    electron.ipcRenderer.invoke('users:list').then((res: any) => {
       if (res?.success) setListaUtilizadores(res.users || []);
     });
   }, [aba, configAba]);
@@ -2018,7 +2049,7 @@ function App() {
       } else {
         throw new Error(res.message);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Erro no reset:', err);
       showToast(`❌ ${err?.message || 'Erro ao limpar base de dados.'}`);
     } finally {
@@ -2037,15 +2068,15 @@ function App() {
 
     try {
       // 1. Guardar dados da empresa
-      await electron.ipcRenderer.invoke('update-configuracao', 'nome_academia', setupEmpresa.nome);
-      await electron.ipcRenderer.invoke('update-configuracao', 'email_academia', setupEmpresa.email);
-      await electron.ipcRenderer.invoke('update-configuracao', 'telefone_academia', setupEmpresa.telefone);
+      await electron.ipcRenderer.invoke('update-configuracao', 'nome_academia', setupData.nomeAcademia);
+      await electron.ipcRenderer.invoke('update-configuracao', 'email_academia', setupData.email);
+      await electron.ipcRenderer.invoke('update-configuracao', 'telefone_academia', setupData.telefone);
       
       // 2. Criar conta admin real (ou atualizar)
       await electron.ipcRenderer.invoke('users:create', {
-        name: setupAdmin.name,
-        email: setupAdmin.email,
-        password: setupAdmin.password,
+        name: setupData.adminEmail,
+        email: setupData.adminEmail,
+        password: setupData.adminSenha,
         role: 'admin'
       });
 
@@ -2054,14 +2085,14 @@ function App() {
       dataExp.setFullYear(dataExp.getFullYear() + 1);
       const expiryStr = formatPtDate(dataExp);
       
-      await electron.ipcRenderer.invoke('update-configuracao', 'license_key', setupLicencaKey);
+      await electron.ipcRenderer.invoke('update-configuracao', 'license_key', setupData.licenca);
       await electron.ipcRenderer.invoke('update-configuracao', 'license_expiry', expiryStr);
       
       // 4. Marcar setup como concluído
       await electron.ipcRenderer.invoke('update-configuracao', 'setup_completed', '1');
 
       adicionarNotificacao('Sistema Configurado', 'A configuração inicial foi concluída com sucesso.', 'sucesso');
-      setSetupPasso(5); // Ir para tela de confirmação
+      setSetupStep(5); // Ir para tela de confirmação
     } catch (error: any) {
       console.error('Erro ao finalizar setup:', error);
       showToast(`❌ Falha no setup: ${error.message}`);
@@ -2122,7 +2153,7 @@ function App() {
         adicionarNotificacao('Pagamento Registado', `Pagamento de ${alunoParaPagamento.nome} (${novoPagamento.mes_referencia}) foi registado com sucesso.`, 'sucesso');
         await notificarSistema(nomeAcademia, `Pagamento de ${alunoParaPagamento.nome} registado com sucesso.`);
 
-        setUltimoPagamentoInfo({ valor: valorPagamento, mes: novoPagamento.mes_referencia });
+        setUltimoPagamentoInfo({ valor: valorPagamento, mes: novoPagamento.mes_referencia || '' });
         setPagamentoSucesso(true);
         if (alunoSelecionado?.id === alunoParaPagamento.id) {
           carregarHistorico(alunoParaPagamento.id);
@@ -2167,12 +2198,12 @@ function App() {
     doc.save(`recibo-${alunoNome}-${p.mes_referencia}.pdf`);
   };
 
-  const carregarLogs = async () => {
+  async function carregarLogs() {
     if (electron) {
       const listaLogs = await electron.ipcRenderer.invoke('get-logs');
       setLogs(listaLogs);
     }
-  };
+  }
 
   const selecionarDiretorioBackup = async () => {
     if (electron) {
@@ -2289,9 +2320,9 @@ function App() {
 
   useEffect(() => {
     carregarConfiguracoes();
-  }, []);
+  }, [carregarConfiguracoes]);
 
-  useEffect(() => { if (isLoggedIn) carregarConfiguracoes(); }, [isLoggedIn]);
+  useEffect(() => { if (isLoggedIn) carregarConfiguracoes(); }, [isLoggedIn, carregarConfiguracoes]);
 
   // Slideshow na tela de login — avança automaticamente
   useEffect(() => {
@@ -2400,6 +2431,16 @@ function App() {
     }
   };
 
+  const sincronizarAlunoAtualizado = (alunoAtualizado: Aluno) => {
+    setAlunos(prev => prev.map(aluno => aluno.id === alunoAtualizado.id ? { ...aluno, ...alunoAtualizado } : aluno));
+    setAlunosDeletados(prev => prev.map(aluno => aluno.id === alunoAtualizado.id ? { ...aluno, ...alunoAtualizado } : aluno));
+    setAlunoPerfil(prev => prev?.id === alunoAtualizado.id ? { ...prev, ...alunoAtualizado } : prev);
+    setAlunoSelecionado(prev => prev?.id === alunoAtualizado.id ? { ...prev, ...alunoAtualizado } : prev);
+    setAlunoEdicao(prev => prev?.id === alunoAtualizado.id ? { ...prev, ...alunoAtualizado } : prev);
+    setAlunoParaCobrancaRapida(prev => prev?.id === alunoAtualizado.id ? { ...prev, ...alunoAtualizado } : prev);
+    setPagamentoAtivoInfo(prev => prev?.aluno?.id === alunoAtualizado.id ? { ...prev, aluno: { ...prev.aluno, ...alunoAtualizado } } : prev);
+  };
+
   // Função para abrir edição
   const abrirEdicao = (aluno: Aluno) => {
     setAlunoEdicao(aluno);
@@ -2417,8 +2458,10 @@ function App() {
       vencimento: aluno.vencimento,
       data_matricula: aluno.data_matricula || new Date().toISOString().split('T')[0],
       categoria: aluno.categoria || '',
-      modo_cobranca: aluno.modo_cobranca || 'mensalidade_movel'
-    });
+      modo_cobranca: aluno.modo_cobranca || 'mensalidade_movel',
+      modo_inscricao: (aluno as any).modo_inscricao || 'matricula',
+      dia_pagamento: (aluno as any).dia_pagamento || 1
+    } as typeof novoAlunoDefault);
     setMostrarFormEdicao(true);
     setMostrarForm(false);
     setAlunoSelecionado(null);
@@ -2456,6 +2499,7 @@ function App() {
 
       if (electron) {
         await electron.ipcRenderer.invoke('update-aluno-dados', alunoAtualizado);
+        sincronizarAlunoAtualizado(alunoAtualizado as Aluno);
         showToast('✅ Dados do aluno atualizados com sucesso!');
         setMostrarFormEdicao(false);
         setAlunoEdicao(null);
@@ -2484,11 +2528,67 @@ function App() {
     }
   };
 
+  const sincronizarNotasDoAluno = (alunoId: string, notas: Nota[], options: { atualizarContacto?: boolean; atualizarRapidas?: boolean } = {}) => {
+    const shouldUpdateContact = options.atualizarContacto || alunoPerfil?.id === alunoId;
+    const shouldUpdateQuick = options.atualizarRapidas || alunoNotasRapidas?.id === alunoId;
+
+    setNotasResumo(prev => ({ ...prev, [alunoId]: { aluno_id: alunoId, total: notas.length, ultimo_id: notas[0]?.id } }));
+    if (shouldUpdateContact) setNotasContacto(notas);
+    if (shouldUpdateQuick) setNotasRapidas(notas);
+  };
+
+  const carregarNotasRecentes = async () => {
+    if (!electron) return [];
+    const recentes = await electron.ipcRenderer.invoke('get-notas-recentes');
+    setNotasRecentes(recentes || []);
+    return recentes || [];
+  };
+
   const carregarNotas = async (alunoId: string) => {
     if (electron) {
       const notas = await electron.ipcRenderer.invoke('get-notas', alunoId);
-      setNotasContacto(notas);
+      sincronizarNotasDoAluno(alunoId, notas, { atualizarContacto: true });
+      return notas;
     }
+    return [];
+  };
+
+  const carregarNotasRapidas = async (alunoId: string, options: { abrirContacto?: boolean } = {}) => {
+    if (!electron) return [];
+    const notas = await electron.ipcRenderer.invoke('get-notas', alunoId);
+    sincronizarNotasDoAluno(alunoId, notas, { atualizarRapidas: true, atualizarContacto: options.abrirContacto });
+    return notas;
+  };
+
+  const abrirNotasRapidas = async (aluno: Aluno) => {
+    const alunoSeguro = { ...aluno, nome: getAlunoNomeSeguro(aluno) } as Aluno;
+    setAlunoNotasRapidas(alunoSeguro);
+    setNovaNotaRapida('');
+    await carregarNotasRapidas(aluno.id);
+  };
+
+  const adicionarNotaRapida = async () => {
+    if (!electron || !alunoNotasRapidas || !novaNotaRapida.trim()) return;
+    await electron.ipcRenderer.invoke('add-nota', { alunoId: alunoNotasRapidas.id, texto: novaNotaRapida.trim() });
+    setNovaNotaRapida('');
+    await carregarNotasRapidas(alunoNotasRapidas.id);
+    await carregarNotasRecentes();
+  };
+
+  const eliminarNotaRapida = async (notaId: number) => {
+    if (!electron || !alunoNotasRapidas) return;
+    await electron.ipcRenderer.invoke('delete-nota', notaId);
+    await carregarNotasRapidas(alunoNotasRapidas.id);
+    await carregarNotasRecentes();
+  };
+
+  const abrirContactoAPartirNotas = async () => {
+    if (!alunoNotasRapidas) return;
+    const alunoId = alunoNotasRapidas.id;
+    setAlunoPerfil({ ...alunoNotasRapidas, nome: getAlunoNomeSeguro(alunoNotasRapidas) } as Aluno);
+    setAba('contactos');
+    await carregarNotasRapidas(alunoId, { abrirContacto: true });
+    setAlunoNotasRapidas(null);
   };
 
   const enviarMensagemWhatsApp = (aluno: Aluno) => {
@@ -2508,14 +2608,16 @@ function App() {
     if (electron) {
       await electron.ipcRenderer.invoke('add-nota', { alunoId: alunoPerfil.id, texto: novaNota });
       setNovaNota('');
-      carregarNotas(alunoPerfil.id);
+      await carregarNotas(alunoPerfil.id);
+      await carregarNotasRecentes();
     }
   };
 
   const eliminarNota = async (notaId: number) => {
     if (electron) {
       await electron.ipcRenderer.invoke('delete-nota', notaId);
-      if (alunoPerfil) carregarNotas(alunoPerfil.id);
+      if (alunoPerfil) await carregarNotas(alunoPerfil.id);
+      await carregarNotasRecentes();
     }
   };
 
@@ -2533,8 +2635,8 @@ function App() {
         });
         if (result.success) {
           const alunoAtualizado = { ...alunoPerfil, foto_path: result.path };
-          setAlunoPerfil(alunoAtualizado);
-          carregarConfiguracoes();
+          sincronizarAlunoAtualizado(alunoAtualizado as Aluno);
+          await carregarConfiguracoes();
         }
       }
     };
@@ -2555,6 +2657,7 @@ function App() {
       await guardarConfiguracao('banner_academia', base64Data);
       showToast('Banner da academia atualizado.');
       adicionarNotificacao('Banner atualizado', 'A imagem principal da home foi atualizada.', 'sucesso');
+      e.target.value = '';
     };
     reader.readAsDataURL(file);
   };
@@ -2593,11 +2696,9 @@ function App() {
         await electron.ipcRenderer.invoke('update-aluno-status', alunoId, novoStatus);
         const aluno = alunos.find(a => a.id === alunoId);
         if (aluno) {
+          sincronizarAlunoAtualizado({ ...aluno, status: novoStatus } as Aluno);
           const statusLabel = getStudentStatusLabel(novoStatus).toUpperCase();
           adicionarNotificacao('Alteração de Status', `O aluno ${aluno.nome} agora está ${statusLabel}.`, isPausedStatus(novoStatus) ? 'alerta' : 'info');
-          if (alunoPerfil?.id === alunoId) {
-            setAlunoPerfil({ ...aluno, status: novoStatus });
-          }
         }
         setMenuAlunoAberto(null);
         await carregarConfiguracoes();
@@ -2663,7 +2764,7 @@ function App() {
     e.preventDefault();
     if (!alunoEdicao || !electron) return;
     try {
-      await electron.ipcRenderer.invoke('update-aluno-dados', {
+      const alunoAtivado = {
         id: alunoEdicao.id,
         nome: novoAluno.nome,
         telefone: novoAluno.telefone,
@@ -2679,8 +2780,11 @@ function App() {
         data_matricula: novoAluno.data_matricula,
         categoria: novoAluno.categoria,
         modo_cobranca: novoAluno.modo_cobranca,
-      });
+        status: 'ativo',
+      };
+      await electron.ipcRenderer.invoke('update-aluno-dados', alunoAtivado);
       await electron.ipcRenderer.invoke('update-aluno-status', alunoEdicao.id, 'ativo');
+      sincronizarAlunoAtualizado({ ...alunoEdicao, ...alunoAtivado } as Aluno);
       setMostrarFormEdicao(false);
       setAlunoEdicao(null);
       await carregarConfiguracoes();
@@ -2690,18 +2794,7 @@ function App() {
     }
   };
 
-  // Função unificada de ordenação inteligente (Termométrica)
-  const ordenacaoInteligente = (a: any, b: any) => {
-    const statusA = calcularStatusVencimento((a.vencimento || ''));
-    const statusB = calcularStatusVencimento(b.vencimento);
-    const prioridade = { 'atrasado': 0, 'hoje': 1, 'critico': 2, 'pendente': 3, 'alerta': 4, 'pago': 5, 'pausado': 6, 'suspenso': 6, 'bloqueado': 7 };
-    const pA = (isBlockedStatus(a.status) || isPausedStatus(a.status)) ? prioridade[a.status as keyof typeof prioridade] : prioridade[statusA.status as keyof typeof prioridade];
-    const pB = (isBlockedStatus(b.status) || isPausedStatus(b.status)) ? prioridade[b.status as keyof typeof prioridade] : prioridade[statusB.status as keyof typeof prioridade];
-    if (pA !== pB) return (pA ?? 99) - (pB ?? 99);
-    return statusA.diffDays - statusB.diffDays;
-  };
-
-  const ordenarAlunosPorModo = (lista: Aluno[], modo: StudentSortMode) => {
+  const ordenarAlunosPorModo = useCallback((lista: Aluno[], modo: StudentSortMode) => {
     const ordered = [...lista];
 
     if (modo === 'alfabetica') {
@@ -2724,8 +2817,16 @@ function App() {
       });
     }
 
-    return ordered.sort(ordenacaoInteligente);
-  };
+    return ordered.sort((a: any, b: any) => {
+      const statusA = calcularStatusVencimento((a.vencimento || ''));
+      const statusB = calcularStatusVencimento(b.vencimento);
+      const prioridade = { 'atrasado': 0, 'hoje': 1, 'critico': 2, 'pendente': 3, 'alerta': 4, 'pago': 5, 'pausado': 6, 'suspenso': 6, 'bloqueado': 7 };
+      const pA = (isBlockedStatus(a.status) || isPausedStatus(a.status)) ? prioridade[a.status as keyof typeof prioridade] : prioridade[statusA.status as keyof typeof prioridade];
+      const pB = (isBlockedStatus(b.status) || isPausedStatus(b.status)) ? prioridade[b.status as keyof typeof prioridade] : prioridade[statusB.status as keyof typeof prioridade];
+      if (pA !== pB) return (pA ?? 99) - (pB ?? 99);
+      return statusA.diffDays - statusB.diffDays;
+    });
+  }, []);
 
   // Cores pastéis leves para separação visual nas listas
   const coresPasteis = [
@@ -2786,7 +2887,7 @@ function App() {
       return statusMatch && pesquisaMatch;
     }),
     ordenacaoDirectorio
-  ), [alunosNoPeriodo, filtroDirectorioStatus, pesquisaDirectorio, ordenacaoDirectorio]);
+  ), [alunosNoPeriodo, filtroDirectorioStatus, pesquisaDirectorio, ordenacaoDirectorio, ordenarAlunosPorModo]);
 
   // Cálculos das Métricas
   const totalAlunos = alunos.length;
@@ -2820,6 +2921,15 @@ function App() {
     } else {
       showToast('❌ Aluno não encontrado para cobrança.');
     }
+  };
+
+  const abrirAcaoPagamentoDaLista = (aluno: Aluno, resumo: any) => {
+    if (!aluno) return;
+    if (resumo?.status === 'pago') {
+      setPagamentoAtivoInfo({ aluno, resumo });
+      return;
+    }
+    marcarComoPago(aluno.id);
   };
 
 
@@ -2937,7 +3047,7 @@ function App() {
       Plano: a.plano,
       Vencimento: (a.vencimento || ''),
       Categoria: a.categoria || 'Geral',
-      Status: a.status.toUpperCase()
+      Status: (a.status || 'ativo').toUpperCase()
     }));
 
     const worksheet = XLSX.utils.json_to_sheet(dataToExport);
@@ -2979,7 +3089,7 @@ function App() {
       if (exportConfig.colunas.includes('telefone')) row['Telefone'] = a.telefone;
       if (exportConfig.colunas.includes('plano')) row['Plano'] = a.plano;
       if (exportConfig.colunas.includes('vencimento')) row['Vencimento'] = (a.vencimento || '');
-      if (exportConfig.colunas.includes('status')) row['Status'] = a.status.toUpperCase();
+      if (exportConfig.colunas.includes('status')) row['Status'] = (a.status || 'ativo').toUpperCase();
       if (exportConfig.colunas.includes('categoria')) row['Categoria'] = a.categoria || 'Geral';
       if (exportConfig.colunas.includes('email')) row['Email'] = a.email || 'N/A';
       return row;
@@ -3043,6 +3153,245 @@ function App() {
     showToast(`Relatório ${mesRelatorio} ${anoRelatorio} exportado.`);
   };
 
+  const exportarRelatorioPdf = async () => {
+    const mesIdx = MONTH_OPTIONS.indexOf(mesRelatorio);
+    const periodoLabel = `${mesRelatorio.toUpperCase()} ${anoRelatorio}`;
+    const dataGeracao = new Date().toLocaleString('pt-PT');
+    const refRelatorio = new Date(anoRelatorio, mesIdx + 1, 0);
+    const alunosRelatorio = [...alunos]
+      .filter((aluno) => {
+        const entrada = parseFlexibleDate(aluno.data_matricula);
+        return entrada ? entrada.getTime() <= refRelatorio.getTime() : true;
+      })
+      .sort((a, b) => getAlunoNomeSeguro(a).localeCompare(getAlunoNomeSeguro(b)));
+
+    const resumosRelatorio = alunosRelatorio.map((aluno) => ({
+      aluno,
+      resumo: getStudentStatusForMonth(aluno, pagamentos, anoRelatorio, mesIdx, hojeReferencia),
+      pagamentoPeriodo: pagamentos
+        .filter((pagamento) => (pagamento.aluno_id || pagamento.alunoId) === aluno.id && isPaymentInsideMonth(pagamento, mesRelatorio, anoRelatorio))
+        .sort((left, right) => (right.id || 0) - (left.id || 0))[0],
+    }));
+
+    const pagamentosPeriodo = pagamentos.filter((pagamento) => isPaymentInsideMonth(pagamento, mesRelatorio, anoRelatorio));
+    const receitaRecebida = pagamentosPeriodo.reduce((sum, pagamento) => sum + normalizeAmount(pagamento.valor), 0);
+    const alunosOperacionais = alunosRelatorio.filter((aluno) => isOperationallyActive(aluno.status));
+    const receitaPrevistaPeriodo = alunosOperacionais.reduce((sum, aluno) => sum + normalizeAmount(aluno.plano), 0);
+    const alunosAtrasados = resumosRelatorio.filter(({ resumo }) => resumo.status === 'atrasado' || resumo.status === 'hoje');
+    const alunosPagos = resumosRelatorio.filter(({ resumo }) => resumo.status === 'pago');
+    const alunosComPagamentoPeriodo = resumosRelatorio.filter(({ pagamentoPeriodo }) => Boolean(pagamentoPeriodo));
+    const coberturaPercentual = alunosOperacionais.length > 0 ? Math.round((alunosPagos.length / alunosOperacionais.length) * 100) : 100;
+    const porCobrar = Math.max(0, receitaPrevistaPeriodo - receitaRecebida);
+
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const marginX = 12;
+
+    const sanitizeFilePart = (value: string) => String(value || 'Relatorio').replace(/[\\/:*?"<>|]/g, '_').replace(/\s+/g, '_');
+    const textOrDash = (value?: string | number | null) => {
+      const text = String(value ?? '').trim();
+      return text || '-';
+    };
+    const truncate = (value: string, max = 28) => {
+      const text = textOrDash(value);
+      return text.length > max ? `${text.slice(0, max - 1)}...` : text;
+    };
+    const statusTone = (status?: string) => {
+      if (status === 'pago') return { fill: [220, 252, 231], text: [22, 101, 52] };
+      if (status === 'atrasado' || status === 'hoje') return { fill: [254, 226, 226], text: [153, 27, 27] };
+      if (status === 'critico') return { fill: [255, 237, 213], text: [154, 52, 18] };
+      return { fill: [219, 234, 254], text: [30, 64, 175] };
+    };
+
+    // Header
+    doc.setFillColor(15, 23, 42);
+    doc.rect(0, 0, pageWidth, 48, 'F');
+    doc.setFillColor(37, 99, 235);
+    doc.roundedRect(marginX, 10, 15, 15, 2, 2, 'F');
+    doc.setFillColor(34, 197, 94);
+    doc.roundedRect(marginX + 3.2, 13.2, 8.6, 1.8, 0.8, 0.8, 'F');
+    doc.setFillColor(59, 130, 246);
+    doc.roundedRect(marginX + 3.2, 17, 8.6, 1.8, 0.8, 0.8, 'F');
+    doc.setFillColor(248, 113, 113);
+    doc.roundedRect(marginX + 3.2, 20.8, 8.6, 1.8, 0.8, 0.8, 'F');
+
+    doc.setTextColor(255, 255, 255);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(15);
+    doc.text(nomeAcademia || 'Academia', marginX + 20, 14);
+    doc.setFontSize(7.5);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(203, 213, 225);
+    doc.text(textOrDash(subtituloAcademia), marginX + 20, 20);
+    doc.text(truncate([moradaAcademia, telefoneAcademia, emailAcademia].filter(Boolean).join('  |  '), 56), marginX + 20, 26);
+    doc.text(`Next Level Academia by ${COMPANY_NAME}`, marginX + 20, 32);
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.5);
+    doc.setTextColor(226, 232, 240);
+    doc.text('RELATORIO', pageWidth - marginX, 14, { align: 'right' });
+    doc.setFontSize(12);
+    doc.setTextColor(255, 255, 255);
+    doc.text(periodoLabel, pageWidth - marginX, 21, { align: 'right' });
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6.8);
+    doc.setTextColor(148, 163, 184);
+    doc.text(`Gerado em ${dataGeracao}`, pageWidth - marginX, 28, { align: 'right' });
+    doc.text(truncate(sessionUser?.name || 'Administrador', 24), pageWidth - marginX, 34, { align: 'right' });
+
+    // Summary strip
+    doc.setFillColor(248, 250, 252);
+    doc.rect(0, 48, pageWidth, 52, 'F');
+    const stats: [string, string, [number, number, number]][] = [
+      ['Alunos no periodo', String(alunosRelatorio.length), [30, 64, 175]],
+      ['Operacionais', String(alunosOperacionais.length), [15, 118, 110]],
+      ['Pagos', String(alunosPagos.length), [22, 101, 52]],
+      ['Em atraso', String(alunosAtrasados.length), [153, 27, 27]],
+      ['Cobertura', `${coberturaPercentual}%`, [37, 99, 235]],
+      ['Previsto', formatCve(receitaPrevistaPeriodo), [30, 64, 175]],
+      ['Recebido', formatCve(receitaRecebida), [22, 101, 52]],
+      ['Por cobrar', formatCve(porCobrar), porCobrar > 0 ? [153, 27, 27] : [22, 101, 52]],
+    ];
+
+    const cardGap = 3;
+    const cardsPerRow = 4;
+    const cardWidth = (pageWidth - marginX * 2 - cardGap * (cardsPerRow - 1)) / cardsPerRow;
+    stats.forEach(([label, value, tone], index) => {
+      const row = Math.floor(index / cardsPerRow);
+      const col = index % cardsPerRow;
+      const x = marginX + col * (cardWidth + cardGap);
+      const y = 55 + row * 21;
+      doc.setFillColor(255, 255, 255);
+      doc.setDrawColor(226, 232, 240);
+      doc.roundedRect(x, y, cardWidth, 17, 2, 2, 'FD');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(5.8);
+      doc.setTextColor(100, 116, 139);
+      doc.text(String(label).toUpperCase(), x + 3, y + 5.2);
+      doc.setFontSize(String(value).length > 12 ? 8.2 : 10);
+      doc.setTextColor(tone[0], tone[1], tone[2]);
+      doc.text(String(value), x + 3, y + 12.4);
+    });
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(10);
+    doc.setTextColor(15, 23, 42);
+    doc.text('Lista detalhada de alunos', marginX, 110);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7);
+    doc.setTextColor(100, 116, 139);
+    doc.text(`${alunosComPagamentoPeriodo.length} aluno(s) com pagamento registado neste periodo. Valores em CVE.`, marginX, 115);
+
+    const tableRows = resumosRelatorio.map(({ aluno, resumo, pagamentoPeriodo }, index) => [
+      String(index + 1).padStart(2, '0'),
+      truncate(getAlunoNomeSeguro(aluno), 24),
+      truncate(textOrDash(aluno.telefone), 16),
+      truncate(aluno.categoria || 'Geral', 12),
+      formatCve(aluno.plano),
+      getBillingBadgeLabel(resumo.status),
+      textOrDash(resumo.nextChargeDate),
+      truncate(resumo.coverageStart && resumo.coverageEnd ? `${resumo.coverageStart} - ${resumo.coverageEnd}` : textOrDash(resumo.coverageEnd), 20),
+      textOrDash(resumo.lastPaymentDate),
+      pagamentoPeriodo ? formatCve(pagamentoPeriodo.valor) : '-',
+    ]);
+
+    autoTable(doc, {
+      startY: 120,
+      margin: { left: marginX, right: marginX, bottom: 16 },
+      head: [[
+        '#',
+        'Aluno',
+        'Contacto',
+        'Categoria',
+        'Plano',
+        'Estado',
+        'Prox. cobranca',
+        'Cobertura',
+        'Ult. pagamento',
+        'Pago periodo',
+      ]],
+      body: tableRows,
+      theme: 'grid',
+      tableLineColor: [226, 232, 240],
+      tableLineWidth: 0.1,
+      headStyles: {
+        fillColor: [15, 23, 42],
+        textColor: [255, 255, 255],
+        fontStyle: 'bold',
+        fontSize: 5.6,
+        cellPadding: { top: 1.8, right: 1, bottom: 1.8, left: 1 },
+      },
+      styles: {
+        font: 'helvetica',
+        fontSize: 5.3,
+        cellPadding: { top: 1.45, right: 1, bottom: 1.45, left: 1 },
+        textColor: [51, 65, 85],
+        overflow: 'linebreak',
+        valign: 'middle',
+        lineColor: [226, 232, 240],
+        lineWidth: 0.1,
+      },
+      alternateRowStyles: { fillColor: [248, 250, 252] },
+      columnStyles: {
+        0: { cellWidth: 6, halign: 'center', textColor: [100, 116, 139] },
+        1: { cellWidth: 32, fontStyle: 'bold', textColor: [15, 23, 42] },
+        2: { cellWidth: 20 },
+        3: { cellWidth: 17 },
+        4: { cellWidth: 16, halign: 'right', fontStyle: 'bold' },
+        5: { cellWidth: 18, halign: 'center', fontStyle: 'bold' },
+        6: { cellWidth: 20, halign: 'center' },
+        7: { cellWidth: 22 },
+        8: { cellWidth: 19, halign: 'center' },
+        9: { cellWidth: 16, halign: 'right', fontStyle: 'bold' },
+      },
+      didParseCell: (data) => {
+        if (data.section === 'body' && data.column.index === 5) {
+          const rowData = resumosRelatorio[data.row.index];
+          const tone = statusTone(rowData?.resumo?.status);
+          data.cell.styles.fillColor = tone.fill as any;
+          data.cell.styles.textColor = tone.text as any;
+        }
+      },
+    });
+
+    const totalPages = (doc as any).internal.getNumberOfPages();
+    for (let page = 1; page <= totalPages; page++) {
+      doc.setPage(page);
+      doc.setFillColor(248, 250, 252);
+      doc.rect(0, pageHeight - 12, pageWidth, 12, 'F');
+      doc.setDrawColor(226, 232, 240);
+      doc.line(0, pageHeight - 12, pageWidth, pageHeight - 12);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7);
+      doc.setTextColor(100, 116, 139);
+      doc.text(`${nomeAcademia} | ${periodoLabel} | Next Level Academia`, marginX, pageHeight - 5);
+      doc.text(`Pagina ${page} de ${totalPages}`, pageWidth - marginX, pageHeight - 5, { align: 'right' });
+    }
+
+    const fileName = `Relatorio_${sanitizeFilePart(nomeAcademia)}_${mesRelatorio}_${anoRelatorio}.pdf`;
+    const pdfBase64 = doc.output('datauristring').split(',')[1];
+
+    if (electron) {
+      const res = await electron.ipcRenderer.invoke('reports:export-current-pdf', {
+        fileName,
+        pdfBase64,
+      });
+
+      if (res?.success) {
+        showToast(`Relatório PDF guardado: ${res.path}`);
+        return;
+      }
+
+      if (!res?.canceled) {
+        showToast(res?.message || 'Não foi possível exportar o relatório em PDF.');
+      }
+      return;
+    }
+
+    doc.save(fileName);
+  };
+
   const exportarPDFPersonalizado = () => {
     const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.getWidth();
@@ -3073,7 +3422,7 @@ function App() {
     const headers = colunasSelecionadas.map(c => c.toUpperCase());
     
     const body = alunos.map(a => colunasSelecionadas.map(col => {
-      if (col === 'status') return a.status.toUpperCase();
+      if (col === 'status') return (a.status || 'ativo').toUpperCase();
       return (a as any)[col] || 'N/A';
     }));
 
@@ -3178,7 +3527,7 @@ function App() {
     prepararAcaoOperacionalNoMesAtual();
     setNovoAluno({ ...novoAlunoDefault, data_matricula: formatInputDate(hojeReferencia) });
     setMostrarForm(true);
-  }, [prepararAcaoOperacionalNoMesAtual, novoAlunoDefault, formatInputDate, hojeReferencia, setNovoAluno, setMostrarForm]);
+  }, [prepararAcaoOperacionalNoMesAtual, novoAlunoDefault, hojeReferencia, setNovoAluno, setMostrarForm]);
 
   // ── Setup Wizard Logic (Fase 3) ──────────────────────────────────
   useEffect(() => {
@@ -3425,7 +3774,7 @@ function App() {
                 <h2 className="text-xl font-bold text-slate-900">Dados da Sua Empresa</h2>
                 {/* Logo upload */}
                 <div className="flex items-center gap-4 p-4 rounded-lg bg-slate-50 border border-slate-200">
-                  <div className="w-16 h-16 rounded-[8px] bg-white border border-slate-200 flex items-center justify-center overflow-hidden shrink-0">
+                  <div className="w-16 h-16 rounded-[var(--radius-control)] bg-white border border-slate-200 flex items-center justify-center overflow-hidden shrink-0">
                     <img src={appLogo || APP_ICON_PATH} className="w-12 h-12 object-contain" alt="Logo" />
                   </div>
                   <div className="flex-1">
@@ -3849,7 +4198,9 @@ function App() {
                               electron?.ipcRenderer.invoke('users:set-current', { name: user.name });
                               setIsLoggedIn(true);
                             }
-                          } catch(e) {}
+                          } catch (e) {
+                            console.warn('Falha no acesso rápido:', e);
+                          }
                           setCarregandoLogin(false);
                         }}
                         className="flex items-center gap-2 px-3 py-2 rounded-[6px] border border-slate-200 bg-slate-50 hover:bg-slate-100 hover:border-slate-300 transition-all"
@@ -4012,6 +4363,12 @@ function App() {
         setMostrarSobreDoc={setMostrarSobreDoc}
         onMatricular={onMatricular}
         setMostrarRelatorioMensal={setMostrarRelatorioMensal}
+        listaStats={{
+          total: historicoMensalFiltrado.length,
+          atrasados: alunosEmDivida.length,
+          recebido: totalRecebidoPeriodo,
+        }}
+        larguraListas={larguraListas}
       />
 
       {/* Container Principal */}
@@ -4042,7 +4399,7 @@ function App() {
             alunosImportados={alunosImportados}
             relatorioMensalDisponivel={relatorioMensalDisponivel}
             setAba={setAba}
-            setFiltroStatus={setFiltroStatus}
+            setFiltroStatus={(status: string) => setFiltroStatus(status as any)}
             setMostrarForm={setMostrarForm}
             setMostrarImportar={setMostrarImportar}
             setNovoAluno={setNovoAluno}
@@ -4051,6 +4408,8 @@ function App() {
             prepararAcaoOperacionalNoMesAtual={prepararAcaoOperacionalNoMesAtual}
             novosInscritosRecentes={novosInscritosRecentes}
             abrirPerfilAluno={abrirPerfilAluno}
+            notasRecentes={notasRecentes}
+            onUploadBanner={handleUploadBanner}
           />
         )}
 
@@ -4068,7 +4427,9 @@ function App() {
             larguraListas={larguraListas}
             appLogo={appLogo}
             nomeAcademia={nomeAcademia}
+            sessionUser={sessionUser}
             onExportarExcel={exportarRelatorioExcel}
+            onExportarPdf={exportarRelatorioPdf}
           />
         )}
 
@@ -4078,8 +4439,6 @@ function App() {
             larguraListas={larguraListas}
             mostrarFiltroListaAlunos={mostrarFiltroListaAlunos}
             setMostrarFiltroListaAlunos={setMostrarFiltroListaAlunos}
-            mostrarOrdenacaoListaAlunos={mostrarOrdenacaoListaAlunos}
-            setMostrarOrdenacaoListaAlunos={setMostrarOrdenacaoListaAlunos}
             mostrarCalendarioMeses={mostrarCalendarioMeses}
             setMostrarCalendarioMeses={setMostrarCalendarioMeses}
             periodoAtualSelecionado={periodoAtualSelecionado}
@@ -4114,6 +4473,9 @@ function App() {
             irParaMesAtualOperacional={irParaMesAtualOperacional}
             abrirEdicao={abrirEdicao}
             abrirPerfilAluno={abrirPerfilAluno}
+            onEstadoPagamentoClick={abrirAcaoPagamentoDaLista}
+            notasResumo={notasResumo}
+            onNotasClick={abrirNotasRapidas}
             finalizarTodosImportados={finalizarTodosImportados}
             setAba={setAba}
           />
@@ -4129,14 +4491,13 @@ function App() {
             mesFinanceiroIndex={mesFinanceiroIndex}
             anoFinanceiro={anoFinanceiro}
             setAnoFinanceiro={setAnoFinanceiro}
-            mesFinanceiro={mesFinanceiro}
             setMesFinanceiro={setMesFinanceiro}
             timelineFinanceiraMinimizada={timelineFinanceiraMinimizada}
             setTimelineFinanceiraMinimizada={setTimelineFinanceiraMinimizada}
             pagamentos={pagamentos}
             notasContacto={notasContacto}
+            notasResumo={notasResumo}
             carregarNotas={carregarNotas}
-            alunos={alunos}
             hojeReferencia={hojeReferencia}
             larguraListas={larguraListas}
             larguraSidebarContactos={larguraSidebarContactos}
@@ -4150,6 +4511,7 @@ function App() {
             abrirEdicao={abrirEdicao}
             alterarStatus={alterarStatus}
             eliminarAluno={eliminarAluno}
+            onEstadoPagamentoClick={abrirAcaoPagamentoDaLista}
             abrirResolverPendencias={abrirResolverPendencias}
             adicionarNota={adicionarNota}
             eliminarNota={eliminarNota}
@@ -4424,7 +4786,7 @@ function App() {
                         key={opt.id}
                         type="button"
                         onClick={() => setNovoAluno({ ...novoAluno, modo_inscricao: opt.id })}
-                        className={`flex-1 flex items-center gap-2.5 px-3 py-2.5 rounded-[9px] border-2 text-left transition-all ${
+                        className={`flex-1 flex items-center gap-2.5 px-3 py-2.5 rounded-[var(--radius-surface)] border-2 text-left transition-all ${
                           active
                             ? 'border-[var(--color-primary)] bg-[var(--color-primary-light)]'
                             : 'border-[var(--border-light)] bg-[var(--color-secondary-lighter)]/40 hover:border-[var(--border)]'
@@ -4445,7 +4807,7 @@ function App() {
               </div>
 
               {/* Preview da próxima cobrança */}
-              <div className="flex items-center justify-between px-3 py-2.5 rounded-[8px] bg-[#EEF4FF] border border-[#C7DEFF]">
+              <div className="flex items-center justify-between px-3 py-2.5 rounded-[var(--radius-control)] bg-[#EEF4FF] border border-[#C7DEFF]">
                 <div className="flex items-center gap-2">
                   <Calendar size={13} className="text-[#1D4ED8]" />
                   <span className="text-[11px] font-bold text-[#1D4ED8] uppercase tracking-[0.1em]">
@@ -4679,7 +5041,7 @@ function App() {
                 <p className="text-[11px] nl-text-muted">Os grupos abaixo partilham o mesmo <b>nome</b> ou <b>número de telemóvel</b>.</p>
                 
                 {duplicadosEncontrados.map((grupo, idx) => (
-                  <div key={idx} className="rounded-[8px] border border-[var(--border)] bg-[var(--bg-surface)] overflow-hidden shadow-sm">
+                  <div key={idx} className="rounded-[var(--radius-control)] border border-[var(--border)] bg-[var(--bg-surface)] overflow-hidden shadow-sm">
                     <div className="px-4 py-2 bg-[var(--color-secondary-lighter)]/50 border-b border-[var(--border-light)] flex items-center justify-between">
                       <span className="text-[10px] font-black text-[var(--text-secondary)] uppercase tracking-widest">Grupo #{idx + 1}</span>
                       <span className="px-2 py-0.5 bg-blue-50 text-blue-600 text-[9px] font-black rounded-full uppercase">{grupo.length} ocorrências</span>
@@ -5284,7 +5646,7 @@ function App() {
 
             <div className="px-6 py-6 space-y-6">
               <div className="flex items-center gap-4 pb-4 border-b border-[var(--border-light)]">
-                <div className="w-12 h-12 rounded-[8px] bg-[var(--color-secondary-lighter)] border border-[var(--border)] flex items-center justify-center shrink-0">
+                <div className="w-12 h-12 rounded-[var(--radius-control)] bg-[var(--color-secondary-lighter)] border border-[var(--border)] flex items-center justify-center shrink-0">
                   <img src={appLogo || APP_ICON_PATH} className="w-8 h-8 object-contain" alt="NEXTLevel" />
                 </div>
                 <div>
@@ -5429,13 +5791,13 @@ function App() {
 
                 <div className="flex items-center gap-3">
                   <div className="relative group">
-                    <div className="w-14 h-14 rounded-[8px] overflow-hidden flex items-center justify-center font-bold text-[16px] border border-[var(--border)]"
+                    <div className="w-14 h-14 rounded-[var(--radius-control)] overflow-hidden flex items-center justify-center font-bold text-[16px] border border-[var(--border)]"
                          style={{ background: utilizadorAvatares[String(utilizadorEmEdicao.id)] ? 'transparent' : `hsl(${(utilizadorEmEdicao.name.charCodeAt(0) * 37) % 360}, 60%, 88%)`, color: `hsl(${(utilizadorEmEdicao.name.charCodeAt(0) * 37) % 360}, 60%, 35%)` }}>
                       {utilizadorAvatares[String(utilizadorEmEdicao.id)]
                         ? <img src={utilizadorAvatares[String(utilizadorEmEdicao.id)]} className="w-full h-full object-cover" />
                         : utilizadorEmEdicao.name.slice(0,2).toUpperCase()}
                     </div>
-                    <label className="absolute inset-0 bg-black/50 rounded-[8px] flex items-center justify-center opacity-0 group-hover:opacity-100 cursor-pointer transition-all">
+                    <label className="absolute inset-0 bg-black/50 rounded-[var(--radius-control)] flex items-center justify-center opacity-0 group-hover:opacity-100 cursor-pointer transition-all">
                       <Camera size={14} className="text-white" />
                       <input type="file" className="hidden" accept="image/*" onChange={(e) => {
                         const file = e.target.files?.[0];
@@ -5578,6 +5940,8 @@ function App() {
           .sort((a, b) => (b.id || 0) - (a.id || 0));
         const avatarBg = getAvatarColorByName(nomePerfil);
         const valorMensalidade = normalizeAmount(alunoPerfil.plano) || 0;
+        const totalNotasPerfil = notasResumo?.[alunoPerfil.id]?.total || 0;
+        const temNotasPerfil = totalNotasPerfil > 0;
 
         // Dados para a aba Cobrar (preview de cobertura)
         const perfilPreview = alunoPerfil
@@ -5627,13 +5991,13 @@ function App() {
         };
 
         const salvarEdicao = async () => {
-          if (!window.electron) return;
+          if (!(window as any).electron) return;
           const alunoAtualizado = { ...alunoPerfil, ...perfilEditForm };
-          await window.electron.ipcRenderer.invoke('update-aluno-dados', alunoAtualizado);
-          await carregarDados();
-          setAlunoPerfil(alunoAtualizado as Aluno);
+          await (window as any).electron.ipcRenderer.invoke('update-aluno-dados', alunoAtualizado);
+          sincronizarAlunoAtualizado(alunoAtualizado as Aluno);
+          await carregarConfiguracoes();
           setEditandoPerfil(false);
-          abrirNotificacao('sucesso', 'Dados Atualizados', `Perfil de ${getAlunoNomeSeguro(alunoAtualizado)} salvo com sucesso.`);
+          adicionarNotificacao('Dados Atualizados', `Perfil de ${getAlunoNomeSeguro(alunoAtualizado)} salvo com sucesso.`, 'sucesso');
         };
 
         // Registrar pagamento direto do perfil (aba Cobrar)
@@ -5736,7 +6100,7 @@ function App() {
                     <button
                       type="button"
                       onClick={() => electron?.ipcRenderer.invoke('open-external', whatsappUrlPerfil)}
-                      className="inline-flex items-center gap-2 h-10 px-6 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.97] text-white rounded-[8px] text-[12px] font-black shadow-lg shadow-emerald-200 transition-all"
+                      className="inline-flex items-center gap-2 h-10 px-6 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.97] text-white rounded-[var(--radius-control)] text-[12px] font-black shadow-lg shadow-emerald-200 transition-all"
                     >
                       <Send size={15} /> Enviar Recibo via WhatsApp
                     </button>
@@ -5761,14 +6125,14 @@ function App() {
                           <span className="text-[10px] nl-text-muted">· {alunoPerfil.categoria || 'Geral'}</span>
                         </div>
                       </div>
-                      <div className="text-right shrink-0 bg-white/60 px-3 py-1.5 rounded-[8px] border border-[var(--border-light)]">
+                      <div className="text-right shrink-0 bg-white/60 px-3 py-1.5 rounded-[var(--radius-control)] border border-[var(--border-light)]">
                         <p className="text-[8px] font-black uppercase tracking-[0.15em] text-[var(--text-secondary)]">Plano</p>
                         <p className="text-[15px] font-black text-[var(--color-primary)] tabular-nums leading-tight">{formatCve(valorMensalidade)}</p>
                       </div>
                     </div>
 
                     {/* Histórico Accordion */}
-                    <div className="rounded-[8px] border border-[var(--border-light)] overflow-hidden">
+                    <div className="rounded-[var(--radius-control)] border border-[var(--border-light)] overflow-hidden">
                       <button
                         onClick={() => setMostrarHistoricoPerfil(!mostrarHistoricoPerfil)}
                         className="w-full px-4 py-2.5 flex items-center justify-between bg-[var(--color-secondary-lighter)]/30 hover:bg-[var(--color-secondary-lighter)]/50 transition-colors"
@@ -5811,7 +6175,27 @@ function App() {
 
                     {/* Valor a Registar */}
                     <div className="space-y-3 pb-3">
-                      <p className="text-[9px] font-black uppercase tracking-[0.2em] text-[var(--text-secondary)]">Registar Pagamento</p>
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-[9px] font-black uppercase tracking-[0.2em] text-[var(--text-secondary)]">Registar Pagamento</p>
+                        <button
+                          type="button"
+                          onClick={() => abrirNotasRapidas(alunoPerfil)}
+                          className={`relative flex h-9 items-center gap-2 rounded-[var(--radius-compact)] border px-3 text-[10px] font-black uppercase tracking-[0.12em] transition-all ${
+                            temNotasPerfil
+                              ? 'border-amber-400 bg-amber-300 text-amber-950 shadow-sm hover:bg-amber-200'
+                              : 'border-slate-200 bg-slate-100 text-slate-400 hover:border-amber-300 hover:bg-amber-50 hover:text-amber-700'
+                          }`}
+                          title={temNotasPerfil ? `${totalNotasPerfil} nota(s) deste aluno` : 'Adicionar nota antes de cobrar'}
+                        >
+                          <StickyNote size={14} />
+                          Notas
+                          {temNotasPerfil && (
+                            <span className="ml-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-white/80 px-1 text-[9px] font-black text-amber-900">
+                              {totalNotasPerfil}
+                            </span>
+                          )}
+                        </button>
+                      </div>
 
                       <div className="relative">
                         <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[13px] font-bold text-[var(--text-secondary)] z-10">$</span>
@@ -5881,6 +6265,171 @@ function App() {
                 </>
               )}
               </div>
+          </div>
+        );
+      })()}
+
+      {/* Modal: notas rápidas */}
+      {alunoNotasRapidas && (
+        <div className="fixed inset-0 bg-black/45 backdrop-blur-[2px] flex items-center justify-center z-[220] p-4 animate-fade-in" onClick={() => setAlunoNotasRapidas(null)}>
+          <div
+            className="w-full max-w-[440px] overflow-hidden rounded-[4px] border border-amber-300 bg-[#FFF7C7] shadow-[0_24px_70px_rgba(0,0,0,0.28)] animate-scale-in"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-amber-300/70 px-5 py-4">
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-[4px] bg-amber-300 text-amber-950 shadow-sm">
+                  <StickyNote size={20} />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-amber-700">Notas do aluno</p>
+                  <h3 className="truncate text-[18px] font-black leading-tight text-amber-950">{getAlunoNomeSeguro(alunoNotasRapidas)}</h3>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAlunoNotasRapidas(null)}
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[4px] text-amber-800/60 transition-colors hover:bg-amber-200 hover:text-amber-950"
+                title="Fechar"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="px-5 py-4">
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={novaNotaRapida}
+                  onChange={(event) => setNovaNotaRapida(event.target.value)}
+                  onKeyDown={(event) => event.key === 'Enter' && adicionarNotaRapida()}
+                  placeholder="Escrever nota rápida..."
+                  className="h-10 flex-1 rounded-[4px] border border-amber-300 bg-white/70 px-3 text-[13px] text-amber-950 outline-none placeholder:text-amber-700/45 focus:border-amber-500"
+                />
+                <button
+                  type="button"
+                  onClick={adicionarNotaRapida}
+                  className="h-10 rounded-[4px] bg-amber-500 px-4 text-[11px] font-black uppercase tracking-[0.12em] text-white transition-colors hover:bg-amber-600"
+                >
+                  Adicionar
+                </button>
+              </div>
+
+              <div className="mt-4 max-h-[300px] overflow-y-auto custom-scrollbar space-y-2 pr-1">
+                {notasRapidas.length === 0 ? (
+                  <div className="rounded-[4px] border border-dashed border-amber-300 bg-white/30 px-4 py-8 text-center">
+                    <p className="text-[13px] font-bold text-amber-800/65">Este aluno ainda não tem notas.</p>
+                  </div>
+                ) : notasRapidas.map((nota) => (
+                  <div key={nota.id} className="group relative rounded-[4px] border border-amber-300/70 bg-white/45 p-3">
+                    <p className="pr-7 text-[13px] leading-relaxed text-amber-950">{nota.texto}</p>
+                    <p className="mt-2 text-[10px] font-semibold text-amber-700/65">{nota.data_criacao}</p>
+                    <button
+                      type="button"
+                      onClick={() => eliminarNotaRapida(nota.id)}
+                      className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded text-amber-700/35 opacity-0 transition-all hover:bg-red-50 hover:text-red-600 group-hover:opacity-100"
+                      title="Apagar nota"
+                    >
+                      <Trash2 size={11} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between border-t border-amber-300/70 bg-amber-100/55 px-5 py-4">
+              <span className="text-[11px] font-bold text-amber-800">{notasRapidas.length} nota(s) neste post-it</span>
+              <button
+                type="button"
+                onClick={abrirContactoAPartirNotas}
+                className="inline-flex h-9 items-center gap-2 rounded-[4px] bg-amber-900 px-4 text-[11px] font-black uppercase tracking-[0.12em] text-white transition-colors hover:bg-amber-950"
+              >
+                <BookUser size={14} /> Ver Contacto
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Pagamento ativo */}
+      {pagamentoAtivoInfo && (() => {
+        const alunoPago = pagamentoAtivoInfo.aluno;
+        const resumoPago = pagamentoAtivoInfo.resumo || {};
+        const nomePago = getAlunoNomeSeguro(alunoPago);
+        const ultimoPagamento = resumoPago.lastPaymentDate || 'Registado';
+        const proximaCobranca = resumoPago.nextChargeDate || alunoPago.vencimento || 'Sem data definida';
+        const cobertura = resumoPago.coverageStart && resumoPago.coverageEnd
+          ? `${resumoPago.coverageStart} até ${resumoPago.coverageEnd}`
+          : 'Cobertura ativa';
+
+        const reverPagamentoAtivo = () => {
+          setPagamentoAtivoInfo(null);
+          marcarComoPago(alunoPago.id);
+        };
+
+        return (
+          <div className="fixed inset-0 bg-black/55 backdrop-blur-[2px] flex items-center justify-center z-[210] p-4 animate-fade-in" onClick={() => setPagamentoAtivoInfo(null)}>
+            <div className="w-full max-w-[460px] overflow-hidden rounded-[var(--radius-control)] border border-emerald-200 bg-white shadow-[0_25px_80px_rgba(0,0,0,0.28)] animate-scale-in" onClick={e => e.stopPropagation()}>
+              <div className="bg-gradient-to-r from-emerald-600 to-emerald-500 px-5 py-4 text-white">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-11 w-11 items-center justify-center rounded-full bg-white/18 ring-1 ring-white/30">
+                      <CheckCircle2 size={24} />
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-[0.18em] text-white/75">Pagamento ativo</p>
+                      <h3 className="mt-0.5 text-[18px] font-black leading-tight">{nomePago}</h3>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setPagamentoAtivoInfo(null)}
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[6px] text-white/75 transition-colors hover:bg-white/15 hover:text-white"
+                    title="Fechar"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-4 px-5 py-5">
+                <div className="rounded-[var(--radius-control)] border border-emerald-100 bg-emerald-50 px-4 py-3">
+                  <p className="text-[13px] font-bold leading-relaxed text-emerald-800">
+                    Este aluno está em dia. A cobrança normal só deve voltar a acontecer em <span className="font-black">{proximaCobranca}</span>.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="rounded-[var(--radius-compact)] border border-slate-100 bg-slate-50 px-3 py-2.5">
+                    <p className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-400">Cobertura</p>
+                    <p className="mt-1 truncate text-[12px] font-bold text-slate-700">{cobertura}</p>
+                  </div>
+                  <div className="rounded-[var(--radius-compact)] border border-slate-100 bg-slate-50 px-3 py-2.5">
+                    <p className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-400">Último pagamento</p>
+                    <p className="mt-1 truncate text-[12px] font-bold text-slate-700">{ultimoPagamento}</p>
+                  </div>
+                </div>
+
+                <div className="rounded-[var(--radius-control)] border border-blue-100 bg-blue-50 px-4 py-3">
+                  <p className="text-[11px] font-semibold leading-relaxed text-blue-800">
+                    Se houver algum erro no valor, mês ou registo, use Rever para abrir a cobrança normal e lançar uma correção.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 border-t border-slate-100 bg-slate-50 px-5 py-4">
+                <button type="button" onClick={() => setPagamentoAtivoInfo(null)} className="nl-btn nl-btn-secondary !h-9 !px-5 !text-[11px] font-bold">
+                  Fechar
+                </button>
+                <button
+                  type="button"
+                  onClick={reverPagamentoAtivo}
+                  className="nl-btn !h-10 !px-6 !text-[12px] font-black !bg-gradient-to-r !from-blue-600 !to-blue-500 !text-white !border-none !shadow-lg !shadow-blue-500/10 hover:!scale-[1.02] active:!scale-[0.98] transition-all"
+                >
+                  <Pencil size={15} /> Rever e Corrigir
+                </button>
+              </div>
+            </div>
           </div>
         );
       })()}
@@ -5967,19 +6516,21 @@ function App() {
         const pagamentosAlunoCobranca = pagamentos
           .filter(p => (p.alunoId || p.aluno_id) === alunoParaCobrancaRapida.id)
           .sort((a, b) => (b.id || 0) - (a.id || 0));
+        const totalNotasCobranca = notasResumo?.[alunoParaCobrancaRapida.id]?.total || 0;
+        const temNotasCobranca = totalNotasCobranca > 0;
 
         return (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-[2px] flex items-center justify-center z-[200] p-4 animate-fade-in" onClick={fecharCobrancaRapida}>
-            <div className="bg-[var(--bg-surface)] w-full max-w-[500px] shadow-[0_25px_80px_rgba(0,0,0,0.35)] rounded-[6px] border border-[var(--border)] overflow-hidden flex flex-col animate-scale-in" style={{ maxHeight: 'calc(100vh - 40px)' }} onClick={e => e.stopPropagation()}>
-              <div className="bg-[#F1F4F9] border-b border-[#DDE2EB] h-12 flex items-center shrink-0">
+            <div className="bg-[var(--bg-surface)] w-full max-w-[560px] shadow-[0_28px_90px_rgba(0,0,0,0.36)] rounded-[var(--radius-control)] border border-[var(--border)] overflow-hidden flex flex-col animate-scale-in" style={{ maxHeight: 'calc(100vh - 32px)' }} onClick={e => e.stopPropagation()}>
+              <div className="bg-[#F1F4F9] border-b border-[#DDE2EB] h-14 flex items-center shrink-0">
                 <div className="flex-1 flex items-center gap-2.5 px-4">
-                  <div className="h-6 w-6 rounded-md bg-white/50 backdrop-blur-sm p-1 border border-white/40 shadow-sm flex items-center justify-center">
+                  <div className="h-8 w-8 rounded-md bg-white/65 backdrop-blur-sm p-1.5 border border-white/50 shadow-sm flex items-center justify-center">
                     <img src={appLogo || APP_ICON_PATH} alt="Logo" className="w-full h-full object-contain" />
                   </div>
                   <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] leading-none">NextLevel</span>
                 </div>
                 <div className="flex-1 text-center whitespace-nowrap">
-                  <h2 className="text-[12px] font-black text-slate-700 uppercase tracking-wider leading-none">Registar Pagamento</h2>
+                  <h2 className="text-[13px] font-black text-slate-700 uppercase tracking-wider leading-none">Registar Pagamento</h2>
                 </div>
                 <div className="flex-1 flex justify-end px-3">
                   <button onClick={fecharCobrancaRapida} className="h-8 w-8 flex items-center justify-center rounded-md text-slate-400 hover:bg-red-50 hover:text-red-500 transition-all" title="Fechar">
@@ -6003,7 +6554,7 @@ function App() {
                     <button
                       type="button"
                       onClick={() => electron?.ipcRenderer.invoke('open-external', whatsappUrl)}
-                      className="inline-flex items-center gap-2 h-10 px-6 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.97] text-white rounded-[8px] text-[12px] font-black shadow-lg shadow-emerald-200 transition-all"
+                      className="inline-flex items-center gap-2 h-10 px-6 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.97] text-white rounded-[var(--radius-control)] text-[12px] font-black shadow-lg shadow-emerald-200 transition-all"
                     >
                       <Send size={15} /> Enviar Recibo via WhatsApp
                     </button>
@@ -6011,17 +6562,21 @@ function App() {
                 </div>
               ) : (
                 <>
-                  <div className="px-5 pt-4 pb-3 space-y-3 overflow-y-auto custom-scrollbar">
-                    <p className="text-[9px] font-black uppercase tracking-[0.2em] text-[var(--text-secondary)]">Aluno</p>
+                  <div className="overflow-y-auto custom-scrollbar">
+                    <section className="px-6 py-5 border-b border-[var(--border-light)]">
+                      <div className="mb-3 flex items-center justify-between">
+                        <p className="text-[9px] font-black uppercase tracking-[0.22em] text-[var(--text-secondary)]">Aluno</p>
+                        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.14em] text-slate-500">Cobrança rápida</span>
+                      </div>
 
-                    <div className="flex items-center gap-3 rounded-[10px] border-2 border-[var(--border-light)] bg-gradient-to-br from-[var(--color-secondary-lighter)]/40 to-white p-3.5 shadow-sm">
-                      <div className={`w-12 h-12 rounded-full flex items-center justify-center text-[15px] font-black text-white overflow-hidden shadow-md ring-2 ring-white/60 ${avatarBg} shrink-0`}>
+                      <div className="flex items-center gap-3">
+                      <div className={`w-12 h-12 rounded-full flex items-center justify-center text-[15px] font-black text-white overflow-hidden shadow-sm ring-2 ring-white/70 ${avatarBg} shrink-0`}>
                         {alunoParaCobrancaRapida.foto_path
                           ? <img src={`local-resource://${alunoParaCobrancaRapida.foto_path}`} className="w-full h-full object-cover" />
                           : getAlunoIniciais(alunoParaCobrancaRapida)}
                       </div>
                       <div className="min-w-0 flex-1">
-                        <p className="text-[15px] font-black nl-text truncate leading-tight">{nomeCobranca}</p>
+                        <p className="text-[16px] font-black nl-text truncate leading-tight">{nomeCobranca}</p>
                         <p className="text-[11px] nl-text-muted truncate flex items-center gap-1.5 mt-0.5">
                           <Phone size={10} className="shrink-0 opacity-60" />
                           {alunoParaCobrancaRapida.telefone || 'Sem contacto'}
@@ -6029,54 +6584,66 @@ function App() {
                           {alunoParaCobrancaRapida.categoria || 'Geral'}
                         </p>
                       </div>
-                      <div className="text-right shrink-0 bg-white/60 px-3 py-1.5 rounded-[8px] border border-[var(--border-light)]">
+                      <button
+                        type="button"
+                        onClick={() => abrirNotasRapidas(alunoParaCobrancaRapida)}
+                        className={`relative flex h-10 w-10 shrink-0 items-center justify-center rounded-[var(--radius-control)] border transition-all ${
+                          temNotasCobranca
+                            ? 'border-amber-400 bg-amber-300 text-amber-950 shadow-sm hover:bg-amber-200 hover:shadow-md'
+                            : 'border-slate-200 bg-white/70 text-slate-300 hover:border-amber-300 hover:bg-amber-50 hover:text-amber-700'
+                        }`}
+                        title={temNotasCobranca ? `${totalNotasCobranca} nota(s) deste aluno` : 'Adicionar nota antes de registar pagamento'}
+                      >
+                        <StickyNote size={16} />
+                        {temNotasCobranca && (
+                          <span className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-white bg-amber-500 px-1 text-[9px] font-black text-white shadow-sm">
+                            {totalNotasCobranca}
+                          </span>
+                        )}
+                      </button>
+                      <div className="text-right shrink-0 bg-slate-50 px-3.5 py-2 rounded-[var(--radius-control)] border border-[var(--border-light)]">
                         <p className="text-[8px] font-black uppercase tracking-[0.15em] text-[var(--text-secondary)]">Plano</p>
-                        <p className="text-[15px] font-black text-[var(--color-primary)] tabular-nums leading-tight">{formatCve(valorOriginal)}</p>
+                        <p className="text-[16px] font-black text-[var(--color-primary)] tabular-nums leading-tight">{formatCve(valorOriginal)}</p>
                       </div>
                     </div>
+                    </section>
 
                     {pagamentosAlunoCobranca.length > 0 && (
-                      <div className="rounded-[8px] border border-[#C7DEFF] bg-gradient-to-r from-[#EEF4FF] to-white px-3 py-2.5 flex items-center justify-between">
+                      <div className="mx-6 mt-4 rounded-[var(--radius-control)] border border-[#D9E2F2] bg-slate-50 px-3 py-2.5 flex items-center justify-between">
                         <div className="flex items-center gap-2">
-                          <History size={13} className="text-[#1D4ED8]" />
-                          <span className="text-[10px] font-bold text-[#1D4ED8] uppercase tracking-[0.1em]">Último pagamento</span>
+                          <History size={13} className="text-slate-500" />
+                          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.1em]">Último pagamento</span>
                         </div>
-                        <span className="text-[11px] font-extrabold text-[#1D4ED8] truncate max-w-[210px]">
+                        <span className="text-[11px] font-extrabold text-slate-600 truncate max-w-[210px]">
                           {pagamentosAlunoCobranca[0].mes_referencia || pagamentosAlunoCobranca[0].data_pagamento || 'Registado'}
                         </span>
                       </div>
                     )}
-                  </div>
 
-                  <div style={{ borderTop: '1px dashed var(--border-light)', margin: '0 20px' }} />
+                    <section className="px-6 py-5 border-b border-[var(--border-light)]">
+                      <p className="mb-3 text-[9px] font-black uppercase tracking-[0.22em] text-[var(--text-secondary)]">Valor recebido</p>
 
-                  <div className="px-5 pt-4 pb-5 space-y-3">
-                    <p className="text-[9px] font-black uppercase tracking-[0.2em] text-[var(--text-secondary)]">Dados do Pagamento</p>
-
-                    <div>
-                      <label className="block text-[10px] font-bold nl-text-muted uppercase tracking-[0.12em] mb-1">
-                        Valor recebido (CVE) <span className="text-red-500">*</span>
-                      </label>
                       <div className="relative">
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[13px] font-bold text-[var(--text-secondary)]">$</span>
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[13px] font-black text-slate-400">CVE</span>
                         <input
                           type="text"
+                          inputMode="decimal"
                           value={pagamentoForm.valor}
                           onChange={e => setPagamentoForm(prev => ({ ...prev, valor: e.target.value }))}
-                          className="nl-input w-full h-12 pl-7 pr-3 text-[18px] font-black tracking-tight"
+                          className="nl-input w-full h-14 pl-14 pr-4 text-[26px] font-black tracking-tight !rounded-[var(--radius-control)] !bg-white text-slate-900 focus:!border-emerald-500 focus:!ring-4 focus:!ring-emerald-100"
                           placeholder={String(valorOriginal)}
                           style={{ fontVariantNumeric: 'tabular-nums' }}
                         />
                       </div>
-                    </div>
+                    </section>
 
-                    <div className="grid grid-cols-2 gap-3">
+                    <section className="grid grid-cols-2 gap-3 px-6 py-5 border-b border-[var(--border-light)]">
                       <div>
                         <label className="block text-[10px] font-bold nl-text-muted uppercase tracking-[0.12em] mb-1">Mês atual</label>
                         <select
                           value={mesAtualNome}
                           disabled
-                          className="nl-input w-full h-10 px-3 text-[13px] cursor-not-allowed capitalize !bg-emerald-50 !border-emerald-200 !text-emerald-700 !font-bold"
+                          className="nl-input w-full h-10 px-3 text-[13px] cursor-not-allowed capitalize !bg-slate-50 !border-slate-200 !text-slate-600 !font-bold"
                         >
                           <option value={mesAtualNome}>{mesAtualNome.charAt(0).toUpperCase() + mesAtualNome.slice(1)} {anoAtual}</option>
                         </select>
@@ -6090,37 +6657,54 @@ function App() {
                           className="nl-input w-full h-10 px-3 text-[13px]"
                         />
                       </div>
-                    </div>
+                    </section>
 
-                    <div>
+                    <section className="px-6 py-5 border-b border-[var(--border-light)]">
                       <label className="block text-[10px] font-bold nl-text-muted uppercase tracking-[0.12em] mb-1">Método</label>
-                      <select
-                        value={pagamentoForm.metodo}
-                        onChange={e => setPagamentoForm(prev => ({ ...prev, metodo: e.target.value }))}
-                        className="nl-input w-full h-10 px-3 text-[13px] cursor-pointer"
-                      >
-                        {PAYMENT_METHOD_OPTIONS.map((method, idx) => <option key={idx} value={method.label}>{method.label}</option>)}
-                      </select>
-                    </div>
+                      <div className="grid grid-cols-3 gap-2">
+                        {PAYMENT_METHOD_OPTIONS.map((method, idx) => {
+                          const selected = pagamentoForm.metodo === method.label;
+                          return (
+                            <button
+                              key={idx}
+                              type="button"
+                              onClick={() => setPagamentoForm(prev => ({ ...prev, metodo: method.label }))}
+                              className={`h-11 rounded-[var(--radius-control)] border px-2 text-[11px] font-black transition-all ${
+                                selected
+                                  ? 'border-emerald-600 bg-emerald-600 text-white shadow-sm'
+                                  : 'border-[var(--border-light)] bg-white text-[var(--text-secondary)] hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-700'
+                              }`}
+                            >
+                              {method.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </section>
 
-                    <div className="flex items-center justify-between px-4 py-3 rounded-[10px] bg-gradient-to-r from-emerald-500 to-emerald-600 shadow-lg shadow-emerald-200/50">
+                    <section className="px-6 py-5">
+                    <div className="flex items-center justify-between px-4 py-3 rounded-[10px] bg-emerald-600 shadow-sm">
                       <div className="flex items-center gap-2.5">
-                        <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
+                        <div className="w-8 h-8 rounded-full bg-white/15 flex items-center justify-center">
                           <Wallet size={15} className="text-white" />
                         </div>
-                        <span className="text-[12px] font-black text-white uppercase tracking-[0.12em]">Total a registar</span>
+                        <div>
+                          <span className="block text-[10px] font-black text-white/80 uppercase tracking-[0.14em]">Total a registar</span>
+                          <span className="block text-[10px] font-semibold text-white/70">{pagamentoForm.metodo} · {mesAtualNome} {anoAtual}</span>
+                        </div>
                       </div>
-                      <span className="text-[20px] font-black text-white drop-shadow-sm" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                      <span className="text-[22px] font-black text-white" style={{ fontVariantNumeric: 'tabular-nums' }}>
                         {formatCve(normalizeAmount(valorCobranca))}
                       </span>
                     </div>
+                    </section>
                   </div>
 
                   <div className="bg-[#F8F9FC] border-t border-[#DDE2EB] px-6 py-4 flex items-center justify-end gap-3 shrink-0">
-                    <button type="button" onClick={fecharCobrancaRapida} className="nl-btn nl-btn-secondary !h-9 !px-5 !text-[11px] font-bold">Cancelar</button>
-                    <button type="button" onClick={registrarCobrancaRapida} className="nl-btn !h-10 !px-7 !text-[12px] font-black !bg-gradient-to-r !from-emerald-600 !to-emerald-500 !text-white !border-none !shadow-lg !shadow-emerald-200/50 hover:!shadow-emerald-300/60 hover:!scale-[1.02] active:!scale-[0.98] transition-all">
+                      <button type="button" onClick={fecharCobrancaRapida} className="nl-btn nl-btn-secondary !h-10 !px-5 !text-[11px] font-bold">Cancelar</button>
+                      <button type="button" onClick={registrarCobrancaRapida} className="nl-btn !h-11 !px-8 !text-[12px] font-black !bg-emerald-600 !text-white !border-none !shadow-sm hover:!bg-emerald-700 active:!scale-[0.98] transition-all">
                       <CheckCircle2 size={16} /> Confirmar Pagamento
-                    </button>
+                      </button>
                   </div>
                 </>
               )}
