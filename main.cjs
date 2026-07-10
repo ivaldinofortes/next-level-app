@@ -1785,6 +1785,72 @@ app.whenReady().then(() => {
     }
   });
 
+  // ────────────── AUTO-UPDATER ──────────────
+  // Ativo apenas em produção (app.isPackaged) no Windows
+  if (app.isPackaged && process.platform === 'win32') {
+    try {
+      const { autoUpdater } = require('electron-updater');
+      autoUpdater.logger = console;
+      autoUpdater.autoDownload = false;
+
+      autoUpdater.on('update-available', (info) => {
+        const win = BrowserWindow.getFocusedWindow() || mainWindow;
+        if (win && !win.isDestroyed()) {
+          win.webContents.send('menu-action', 'update-available', info);
+        }
+      });
+
+      autoUpdater.on('download-progress', (progress) => {
+        const win = BrowserWindow.getFocusedWindow() || mainWindow;
+        if (win && !win.isDestroyed()) {
+          win.webContents.send('menu-action', 'update-progress', progress);
+        }
+      });
+
+      autoUpdater.on('update-downloaded', () => {
+        const win = BrowserWindow.getFocusedWindow() || mainWindow;
+        if (win && !win.isDestroyed()) {
+          win.webContents.send('menu-action', 'update-downloaded');
+        }
+      });
+
+      // Handler para acionar update manual
+      ipcMain.handle('app:check-update', async () => {
+        try {
+          await autoUpdater.checkForUpdates();
+          return { success: true };
+        } catch (err) {
+          return { success: false, message: err.message };
+        }
+      });
+
+      ipcMain.handle('app:download-update', async () => {
+        try {
+          await autoUpdater.downloadUpdate();
+          return { success: true };
+        } catch (err) {
+          return { success: false, message: err.message };
+        }
+      });
+
+      ipcMain.handle('app:install-update', async () => {
+        try {
+          autoUpdater.quitAndInstall(false, true);
+          return { success: true };
+        } catch (err) {
+          return { success: false, message: err.message };
+        }
+      });
+
+      // Verificar atualizações ao iniciar (com delay para não travar abertura)
+      setTimeout(() => {
+        autoUpdater.checkForUpdates().catch(() => {});
+      }, 10000);
+    } catch (e) {
+      console.log('Auto-updater não disponível (apenas em produção)');
+    }
+  }
+
   // Criar a janela principal
   createWindow();
 });

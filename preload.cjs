@@ -56,6 +56,9 @@ const allowedInvokeChannels = new Set([
   'users:set-password',
   'users:update',
   'window:resize',
+  'app:check-update',
+  'app:download-update',
+  'app:install-update',
 ]);
 
 contextBridge.exposeInMainWorld('electron', {

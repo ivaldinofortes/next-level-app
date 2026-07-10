@@ -1,0 +1,6 @@
+Next Level Academia - Sistema de Gestão
+Copyright (c) 2026 NEXT LAB. Todos os direitos reservados.
+
+Este software é propriedade exclusiva da NEXT LAB.
+Não é permitida a distribuição, modificação ou engenharia reversa
+sem autorização expressa por escrito.
