@@ -21,6 +21,7 @@ export interface Student {
   modo_cobranca?: string;
   foto_path?: string;
   notas?: string;
+  modalidade?: string;
   deleted?: number;
 }
 

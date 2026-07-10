@@ -1,7 +1,7 @@
-import { memo } from 'react';
+import { memo, useEffect, useState, type Dispatch, type SetStateAction } from 'react';
 import {
   Landmark, Users, Palette, Bell, Shield, Info, Sparkles,
-  Plus, CheckCircle2, Zap, ChevronRight, CreditCard, UserPlus,
+  Plus, CheckCircle2, Zap, ChevronRight, CreditCard, UserPlus, Activity,
   FileBarChart, FileSpreadsheet, Archive, AlertTriangle, Database,
   HelpCircle, Globe, Phone, Mail,
 } from 'lucide-react';
@@ -56,9 +56,9 @@ export interface ConfiguracoesPageProps {
   utilizadorEdicaoForm: { name: string; role: string; isActive: boolean; novaSenha: string };
   setUtilizadorEdicaoForm: (v: any) => void;
   quickAccessUsers: number[];
-  setQuickAccessUsers: (v: any) => void;
+  setQuickAccessUsers: Dispatch<SetStateAction<number[]>>;
   loginSlideshowUsers: any[];
-  setLoginSlideshowUsers: (v: any) => void;
+  setLoginSlideshowUsers: Dispatch<SetStateAction<any[]>>;
   desktopNotificationsEnabled: boolean;
   setDesktopNotificationsEnabled: (v: boolean) => void;
   notifSistema: boolean;
@@ -71,11 +71,11 @@ export interface ConfiguracoesPageProps {
   setNotifRelatorios: (v: boolean) => void;
   relatorioMensalDisponivel: string;
   notificacoes: any[];
-  setNotificacoes: (v: any) => void;
+  setNotificacoes: Dispatch<SetStateAction<any[]>>;
   diretorioBackup: string;
   setDiretorioBackup: (v: string) => void;
   resetSeguroForm: { password: string; confirmation: string };
-  setResetSeguroForm: (v: any) => void;
+  setResetSeguroForm: Dispatch<SetStateAction<{ password: string; confirmation: string }>>;
   resetSeguroLoading: boolean;
   carregandoDuplicados: boolean;
   mostrarImportar: boolean;
@@ -699,6 +699,9 @@ function ConfiguracoesPage({
                 </div>
               )}
 
+              {/* Notificação de relatório diário */}
+              <DailyReportSchedule />
+
               {/* Histórico de notificações */}
               <div className="space-y-4">
                 <div className="flex items-center justify-between border-b border-[var(--border-light)] pb-2">
@@ -1036,6 +1039,50 @@ function ConfiguracoesPage({
             </div>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+function DailyReportSchedule() {
+  const [ativo, setAtivo] = useState(() => localStorage.getItem('nl_daily_report_notif') === '1');
+  const [hora, setHora] = useState(() => localStorage.getItem('nl_daily_report_time') || '18:00');
+
+  useEffect(() => {
+    localStorage.setItem('nl_daily_report_notif', ativo ? '1' : '0');
+  }, [ativo]);
+
+  useEffect(() => {
+    localStorage.setItem('nl_daily_report_time', hora);
+  }, [hora]);
+
+  return (
+    <div className="space-y-4">
+      <p className="text-[11px] font-bold nl-text-muted uppercase tracking-wider border-b border-[var(--border-light)] pb-2">Relatório Diário</p>
+      <div className="rounded-[8px] border border-blue-100 bg-blue-50/60 p-4">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-[5px] bg-blue-100 border border-blue-200 flex items-center justify-center shrink-0">
+              <Activity size={16} className="text-blue-600" />
+            </div>
+            <div>
+              <p className="text-[13px] font-semibold text-blue-900">Resumo diário automático</p>
+              <p className="text-[11px] font-medium text-blue-700/70">Recebe uma notificação com o resumo do dia no horário definido</p>
+            </div>
+          </div>
+          <button onClick={() => setAtivo(!ativo)}
+            className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${ativo ? 'bg-blue-600' : 'bg-slate-300'}`}>
+            <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition-transform ${ativo ? 'translate-x-5' : 'translate-x-0'}`} />
+          </button>
+        </div>
+        {ativo && (
+          <div className="flex items-center gap-3">
+            <span className="text-[11px] font-bold text-blue-800">Horário da notificação:</span>
+            <input type="time" value={hora} onChange={e => setHora(e.target.value)}
+              className="h-8 rounded-[var(--radius-control)] border border-blue-200 bg-white px-3 text-[12px] font-bold text-blue-800 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-200/60" />
+            <span className="text-[10px] text-blue-600/70 font-semibold">O sistema mostrará uma notificação neste horário com o resumo diário.</span>
+          </div>
+        )}
       </div>
     </div>
   );

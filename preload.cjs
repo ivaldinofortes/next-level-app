@@ -26,12 +26,14 @@ const allowedInvokeChannels = new Set([
   'import-alunos',
   'license:validate-external',
   'login:quick-access',
+  'menu:update',
   'notify-system',
   'open-external',
   'refresh-app',
   'restore-aluno',
   'restore-backup',
   'reports:admin-data',
+  'reports:daily-summary',
   'reports:export-current-pdf',
   'root:create-user',
   'root:export-report',
@@ -63,6 +65,15 @@ contextBridge.exposeInMainWorld('electron', {
         throw new Error(`Canal IPC não permitido: ${channel}`);
       }
       return ipcRenderer.invoke(channel, ...args);
+    },
+    on(channel, callback) {
+      const allowed = ['navigate', 'menu-action', 'menu:refresh'];
+      if (!allowed.includes(channel)) {
+        throw new Error(`Canal IPC não permitido para on: ${channel}`);
+      }
+      const listener = (_event, ...args) => callback(...args);
+      ipcRenderer.on(channel, listener);
+      return () => ipcRenderer.removeListener(channel, listener);
     },
   },
 });

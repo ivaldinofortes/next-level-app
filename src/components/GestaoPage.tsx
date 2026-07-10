@@ -1,4 +1,4 @@
-import { memo, useEffect, useState, type CSSProperties } from 'react';
+import { memo, useEffect, useState, type CSSProperties, type Dispatch, type SetStateAction } from 'react';
 import {
   Calendar, ChevronLeft, ChevronRight, LayoutList, AlertCircle,
   CheckCircle2, FileSpreadsheet, ChevronDown, ArrowUpDown, Zap,
@@ -32,16 +32,16 @@ interface ResumoFinanceiroItem {
 export interface GestaoPageProps {
   larguraListas: number;
   mostrarFiltroListaAlunos: boolean;
-  setMostrarFiltroListaAlunos: (v: boolean) => void;
+  setMostrarFiltroListaAlunos: Dispatch<SetStateAction<boolean>>;
   mostrarCalendarioMeses: boolean;
-  setMostrarCalendarioMeses: (v: boolean) => void;
+  setMostrarCalendarioMeses: Dispatch<SetStateAction<boolean>>;
   periodoAtualSelecionado: boolean;
   periodoSelecionadoLabel: string;
   subtituloPeriodoSelecionado: string;
   historicoMensalFiltrado: HistoricoMensalItem[];
   alunosNovosNoPeriodo: HistoricoMensalItem[];
   anoFinanceiro: number;
-  setAnoFinanceiro: (v: number) => void;
+  setAnoFinanceiro: Dispatch<SetStateAction<number>>;
   anoAtual: number;
   mesFinanceiro: string;
   setMesFinanceiro: (v: string) => void;

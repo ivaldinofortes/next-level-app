@@ -1,5 +1,5 @@
 const electron = require('electron');
-const { app, BrowserWindow, ipcMain, protocol, Notification, dialog, shell, nativeImage } = electron;
+const { app, BrowserWindow, ipcMain, protocol, Notification, dialog, shell, nativeImage, Menu } = electron;
 const path = require('path');
 const Database = require('better-sqlite3');
 const fs = require('fs');
@@ -192,6 +192,9 @@ app.whenReady().then(() => {
   } catch (e) {}
   try {
     db.exec("ALTER TABLE alunos ADD COLUMN deleted INTEGER DEFAULT 0;");
+  } catch (e) {}
+  try {
+    db.exec("ALTER TABLE alunos ADD COLUMN modalidade TEXT;");
   } catch (e) {}
 
   db.exec(`
@@ -1556,6 +1559,228 @@ app.whenReady().then(() => {
       return { success: true, path: result.filePath };
     } catch (err) {
       console.error('Erro ao exportar relatório técnico:', err);
+      return { success: false, message: err.message };
+    }
+  });
+
+  // ────────────── RELATÓRIOS: RESUMO DIÁRIO ──────────────
+
+  ipcMain.handle('reports:daily-summary', async () => {
+    try {
+      const hoje = new Date();
+      const hojeStr = hoje.toLocaleString('pt-PT').split(',')[0];
+      const hojeIso = `${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}-${String(hoje.getDate()).padStart(2,'0')}`;
+
+      // Pagamentos de hoje
+      const pagamentosHoje = db.prepare(`
+        SELECT p.*, a.nome FROM pagamentos p
+        LEFT JOIN alunos a ON a.id = p.aluno_id
+        WHERE p.data_pagamento = ? OR p.data_pagamento LIKE ?
+      `).all(hojeStr, `${hojeStr}%`);
+
+      // Matrículas de hoje
+      const matriculasHoje = db.prepare(`
+        SELECT id, nome, data_matricula FROM alunos
+        WHERE data_matricula = ? AND deleted = 0
+      `).all(hojeIso);
+
+      // Logs de hoje
+      const logsHoje = db.prepare(`
+        SELECT * FROM logs WHERE data_hora LIKE ?
+        ORDER BY id DESC LIMIT 100
+      `).all(`${hojeStr}%`);
+
+      // Logins de hoje
+      const loginsHoje = db.prepare(`
+        SELECT id, name, email, role, last_login_at FROM users
+        WHERE last_login_at LIKE ?
+        ORDER BY last_login_at DESC
+      `).all(`${hojeStr}%`);
+
+      // Notas de hoje
+      const notasHoje = db.prepare(`
+        SELECT n.*, a.nome FROM notas_contacto n
+        LEFT JOIN alunos a ON a.id = n.aluno_id
+        WHERE n.data_criacao LIKE ?
+        ORDER BY n.id DESC
+      `).all(`${hojeStr}%`);
+
+      // Resumo de alunos (ativos, pendentes, etc)
+      const totalAlunos = db.prepare("SELECT COUNT(*) as total FROM alunos WHERE deleted = 0").get().total || 0;
+      const ativos = db.prepare("SELECT COUNT(*) as total FROM alunos WHERE deleted = 0 AND status = 'ativo'").get().total || 0;
+      const pausados = db.prepare("SELECT COUNT(*) as total FROM alunos WHERE deleted = 0 AND status = 'pausado'").get().total || 0;
+
+      return {
+        success: true,
+        pagamentosHoje,
+        matriculasHoje,
+        logsHoje,
+        loginsHoje,
+        notasHoje,
+        totalAlunos,
+        ativos,
+        pausados,
+      };
+    } catch (err) {
+      console.error('Erro no relatório diário:', err);
+      return { success: false, message: err.message };
+    }
+  });
+
+  // ────────────── MENU NATIVO ──────────────
+
+  const sendToView = (channel, ...args) => {
+    const win = BrowserWindow.getFocusedWindow() || mainWindow || BrowserWindow.getAllWindows()[0];
+    if (win && !win.isDestroyed()) {
+      win.webContents.send(channel, ...args);
+    }
+  };
+
+  const buildAppMenu = (role = null) => {
+    const isAdmin = role === 'admin';
+    const isRoot = role === 'root';
+
+    const template = [
+      {
+        label: 'NEXTLevel',
+        submenu: [
+          {
+            label: 'Sobre a NEXTLevel',
+            click: () => sendToView('menu-action', 'about'),
+          },
+          { type: 'separator' },
+          ...(isAdmin ? [
+            {
+              label: 'Definições…',
+              accelerator: 'CmdOrCtrl+,',
+              click: () => sendToView('navigate', 'configuracoes'),
+            },
+            { type: 'separator' },
+          ] : []),
+          { role: 'services' },
+          { type: 'separator' },
+          { role: 'hide' },
+          { role: 'hideOthers' },
+          { type: 'separator' },
+          { role: 'quit' },
+        ],
+      },
+      {
+        label: 'Ficheiro',
+        submenu: [
+          {
+            label: 'Matricular Novo Aluno',
+            accelerator: 'CmdOrCtrl+N',
+            click: () => sendToView('menu-action', 'new-student'),
+          },
+          {
+            label: 'Importar Dados…',
+            click: () => sendToView('menu-action', 'import-data'),
+          },
+          { type: 'separator' },
+          {
+            label: 'Exportar Backup…',
+            click: () => sendToView('menu-action', 'export-backup'),
+          },
+        ],
+      },
+      {
+        label: 'Páginas',
+        submenu: [
+          {
+            label: 'Início',
+            accelerator: 'CmdOrCtrl+1',
+            click: () => sendToView('navigate', 'home'),
+          },
+          {
+            label: 'Alunos',
+            accelerator: 'CmdOrCtrl+2',
+            click: () => sendToView('navigate', 'gestao'),
+          },
+          {
+            label: 'Contactos',
+            accelerator: 'CmdOrCtrl+3',
+            click: () => sendToView('navigate', 'contactos'),
+          },
+          {
+            label: 'Relatórios',
+            accelerator: 'CmdOrCtrl+4',
+            click: () => sendToView('navigate', 'relatorios_detalhado'),
+          },
+          ...(isAdmin ? [
+            { type: 'separator' },
+            {
+              label: 'Definições',
+              accelerator: 'CmdOrCtrl+5',
+              click: () => sendToView('navigate', 'configuracoes'),
+            },
+          ] : []),
+        ],
+      },
+      {
+        label: 'Ver',
+        submenu: [
+          { role: 'reload' },
+          { role: 'toggleDevTools' },
+          { type: 'separator' },
+          { role: 'zoomIn' },
+          { role: 'zoomOut' },
+          { role: 'resetZoom' },
+        ],
+      },
+      {
+        label: 'Ajuda',
+        submenu: [
+          {
+            label: 'Documentação',
+            click: () => sendToView('menu-action', 'documentation'),
+          },
+          { type: 'separator' },
+          {
+            label: 'Alternar Ferramentas de Desenvolvimento',
+            accelerator: 'F12',
+            click: () => {
+              const win = BrowserWindow.getFocusedWindow() || mainWindow;
+              if (win) win.webContents.toggleDevTools();
+            },
+          },
+        ],
+      },
+    ];
+
+    // No menu para root — usa o painel próprio
+    if (isRoot) {
+      template.splice(1, template.length - 1, {
+        label: 'Ferramentas',
+        submenu: [
+          {
+            label: 'Recarregar Painel',
+            accelerator: 'CmdOrCtrl+R',
+            click: () => sendToView('menu:refresh', 'reload'),
+          },
+          { type: 'separator' },
+          { role: 'toggleDevTools' },
+          { type: 'separator' },
+          { label: 'Sair', role: 'quit' },
+        ],
+      });
+    }
+
+    const menu = Menu.buildFromTemplate(template);
+    Menu.setApplicationMenu(menu);
+  };
+
+  // Menu padrão (antes do login)
+  buildAppMenu(null);
+
+  // Handler para atualizar menu após login/logout
+  ipcMain.handle('menu:update', async (event, payload) => {
+    try {
+      const role = payload?.role || null;
+      buildAppMenu(role);
+      return { success: true };
+    } catch (err) {
+      console.error('Erro ao atualizar menu:', err);
       return { success: false, message: err.message };
     }
   });
