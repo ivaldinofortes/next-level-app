@@ -16,19 +16,7 @@ import {
   formatPtDate,
   parseFlexibleDate,
 } from '../lib/billing';
-
-const getAlunoIniciais = (aluno?: { nome?: string } | null) => {
-  const nome = String(aluno?.nome || '').trim();
-  return (nome || 'Aluno sem nome').slice(0, 2).toUpperCase();
-};
-
-const getAvatarColorByName = (nome?: string) => {
-  const avatarColors = [
-    'bg-blue-500', 'bg-violet-500', 'bg-emerald-500',
-    'bg-rose-500', 'bg-amber-500', 'bg-teal-500', 'bg-indigo-500',
-  ];
-  return avatarColors[(String(nome || 'A').charCodeAt(0) || 65) % avatarColors.length];
-};
+import { getAlunoIniciais, getAvatarColorByName } from '../utils/formatting';
 
 const normalizeDateLabel = (value?: string) => {
   const date = parseFlexibleDate(value || '');

@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { memo } from 'react';
 import {
   Landmark, Users, Palette, Bell, Shield, Info, Sparkles,

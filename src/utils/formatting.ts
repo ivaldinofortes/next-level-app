@@ -1,3 +1,20 @@
+// Student display helpers
+export const getAlunoNomeSeguro = (aluno?: { nome?: string } | null) => {
+  const nome = String(aluno?.nome || '').trim();
+  return nome || 'Aluno sem nome';
+};
+
+export const getAlunoIniciais = (aluno?: { nome?: string } | null) =>
+  getAlunoNomeSeguro(aluno).slice(0, 2).toUpperCase();
+
+export const getAvatarColorByName = (nome?: string) => {
+  const avatarColors = [
+    'bg-blue-500', 'bg-violet-500', 'bg-emerald-500',
+    'bg-rose-500', 'bg-amber-500', 'bg-teal-500', 'bg-indigo-500',
+  ];
+  return avatarColors[(String(nome || 'A').charCodeAt(0) || 65) % avatarColors.length];
+};
+
 // Format and parsing utilities
 
 export const formatInputDate = (date = new Date()) => {

@@ -38,6 +38,32 @@ import {
   parseFlexibleDate,
   summarizeStudentBilling,
 } from './lib/billing';
+import {
+  MONTH_OPTIONS,
+  APP_ICON_PATH,
+  DEFAULT_ACADEMY_BANNER,
+  DEFAULT_PAYMENT_METHOD,
+  COMPANY_EMAIL,
+  COMPANY_PHONE,
+  COMPANY_WEBSITE,
+  COMPANY_NAME,
+  COMPANY_AUTHOR,
+  NEXT_LAB_ICON,
+  getStudentStatusLabel,
+  getBillingBadgeLabel,
+  getGenderBucket,
+  PAYMENT_METHOD_OPTIONS,
+  LEGACY_HOME_SUBTITLE,
+  DEFAULT_HOME_SUBTITLE,
+  getBillingTone,
+  prioridadeResumoAlunos,
+} from './constants';
+import {
+  formatInputDate, isFutureMonth, getMonthKey, isSameMonthAndYear,
+  getPaymentMethodMeta, formatPaymentRecordId, buildPaymentCardNumber,
+  getTimelineMetricLabel, getTimelineMetricWidth, getTimelineMetricBarClass,
+  getAlunoIniciais, getAlunoNomeSeguro, getAvatarColorByName,
+} from './utils/formatting';
 
 interface Notificacao {
   id: string;
@@ -70,186 +96,12 @@ interface PaymentFormState {
   mesReferencia?: string;
 }
 
-const DEFAULT_PAYMENT_METHOD = 'Dinheiro';
-const APP_ICON_PATH = new URL('./next-level-v01-2026.svg', document.baseURI).toString();
-const NEXT_LAB_ICON = new URL('./next.svg', document.baseURI).toString();
-const COMPANY_NAME = 'NEXT Lab';
-const COMPANY_WEBSITE = 'https://linktr.ee/next.lab';
-const COMPANY_AUTHOR = 'Ivaldino da Luz Fortes';
-const COMPANY_EMAIL = 'ivaldinofortes@gmail.com';
-const COMPANY_PHONE = '+238 9597220';
-const DEFAULT_ACADEMY_BANNER = '/next-oficial%20wallpapers.jpg';
-const MONTH_OPTIONS = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+
 
 const isPausedStatus = (status?: string) => status === 'pausado' || status === 'suspenso';
 const isBlockedStatus = (status?: string) => status === 'bloqueado';
 const isImportedStatus = (status?: string) => status === 'importado';
 const isOperationallyActive = (status?: string) => !isPausedStatus(status) && !isBlockedStatus(status);
-
-const getStudentStatusLabel = (status?: string) => {
-  if (isPausedStatus(status)) return 'pausado';
-  if (status === 'bloqueado') return 'bloqueado';
-  return status || 'ativo';
-};
-
-const getBillingBadgeLabel = (status?: string) => {
-  switch (status) {
-    case 'atrasado':
-      return 'Mensalidade em Atraso';
-    case 'hoje':
-      return 'Vence hoje';
-    case 'critico':
-      return 'Crítico';
-    case 'pendente':
-      return 'Pendente';
-    case 'alerta':
-      return 'Em dia';
-    case 'pago':
-      return 'Pago';
-    case 'pausado':
-      return 'Pausado';
-    case 'suspenso':
-      return 'Suspenso';
-    case 'bloqueado':
-      return 'Bloqueado';
-    default:
-      return 'Ativo';
-  }
-};
-
-const getGenderBucket = (sexo?: string) => {
-  const value = (sexo || '').trim().toLowerCase();
-  if (value.startsWith('m')) return 'masculino';
-  if (value.startsWith('f')) return 'feminino';
-  return 'nao_definido';
-};
-
-const PAYMENT_METHOD_OPTIONS = [
-  {
-    value: 'Dinheiro',
-    label: 'Dinheiro',
-    shortLabel: 'Cash',
-    description: 'Recebido diretamente na receção.',
-    accent: 'from-[#0f172a] via-[#1d4ed8] to-[#3b82f6]',
-  },
-  {
-    value: 'Multicaixa',
-    label: 'Multicaixa',
-    shortLabel: 'POS',
-    description: 'Pagamento no terminal ou cartão.',
-    accent: 'from-[#0b3b2e] via-[#0f766e] to-[#14b8a6]',
-  },
-  {
-    value: 'Transferência',
-    label: 'Transferência',
-    shortLabel: 'Bank',
-    description: 'Recebido por transferência bancária.',
-    accent: 'from-[#3b0764] via-[#7c3aed] to-[#a855f7]',
-  },
-];
-
-const formatInputDate = (date = new Date()) => {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-};
-
-const LEGACY_HOME_SUBTITLE = 'Operação diária, mensalidades e acompanhamento num só painel.';
-const DEFAULT_HOME_SUBTITLE = 'Gestão diária num só painel.';
-
-const getMonthKey = (monthName: string, year: number) => `${monthName}-${year}`;
-
-const isFutureMonth = (monthIndex: number, year: number, reference = new Date()) => {
-  const currentYear = reference.getFullYear();
-  const currentMonth = reference.getMonth();
-  return year > currentYear || (year === currentYear && monthIndex > currentMonth);
-};
-
-const isSameMonthAndYear = (date: Date | null, monthIndex: number, year: number) =>
-  !!date && date.getMonth() === monthIndex && date.getFullYear() === year;
-
-const getPaymentMethodMeta = (method?: string) =>
-  PAYMENT_METHOD_OPTIONS.find((item) => item.value === method) || PAYMENT_METHOD_OPTIONS[0];
-
-const formatPaymentRecordId = (payment?: { id?: number }) =>
-  payment?.id ? `PAY-${String(payment.id).padStart(6, '0')}` : 'PAY-PREVIEW';
-
-const buildPaymentCardNumber = (studentId?: string, paymentId?: number) => {
-  const studentDigits = String(studentId || '0000').replace(/\D/g, '').slice(-4).padStart(4, '0');
-  const paymentDigits = String(paymentId || 0).replace(/\D/g, '').slice(-4).padStart(4, '0');
-  const checksum = String((Number(studentDigits) + Number(paymentDigits) + 1701) % 10000).padStart(4, '0');
-  return `${studentDigits} ${paymentDigits} ${checksum}`;
-};
-
-const getBillingTone = (status?: string) => {
-  switch (status) {
-    case 'atrasado':
-      return {
-        badge: 'badge-error',
-        surface: 'border-red-200 bg-red-50/80',
-        accent: 'text-red-700',
-        subtle: 'text-red-700/70',
-        button: 'bg-red-600 hover:bg-red-700 text-white',
-        color: '#DC2626',
-      };
-    case 'pago':
-      return {
-        badge: 'badge-success',
-        surface: 'border-emerald-200 bg-emerald-50/80',
-        accent: 'text-emerald-700',
-        subtle: 'text-emerald-700/70',
-        button: 'bg-emerald-600 hover:bg-emerald-700 text-white',
-        color: '#16A34A',
-      };
-    case 'hoje':
-    case 'critico':
-    case 'pendente':
-    case 'alerta':
-    default:
-      return {
-        badge: 'badge-info',
-        surface: 'border-blue-200 bg-blue-50/80',
-        accent: 'text-blue-700',
-        subtle: 'text-blue-700/70',
-        button: 'bg-blue-600 hover:bg-blue-700 text-white',
-        color: '#2563EB',
-      };
-  }
-};
-
-const getTimelineMetricLabel = (summary: { status?: string; daysUntilCharge?: number; overdueDays?: number }, status?: string) => {
-  if (isPausedStatus(status)) return 'Em pausa';
-  if (isBlockedStatus(status)) return 'Bloqueado';
-  if (summary.status === 'atrasado') return `${summary.overdueDays || 0}d atraso`;
-  if (summary.status === 'hoje') return 'vence hoje';
-  return `${Math.max(summary.daysUntilCharge || 0, 0)}d restantes`;
-};
-
-const getTimelineMetricWidth = (summary: { status?: string; daysUntilCharge?: number }, status?: string) => {
-  if (isPausedStatus(status) || isBlockedStatus(status)) return 0;
-  if (summary.status === 'atrasado' || summary.status === 'hoje') return 100;
-  return Math.max(8, Math.min(100, (Math.max(summary.daysUntilCharge || 0, 0) / 30) * 100));
-};
-
-const getTimelineMetricBarClass = (summaryStatus?: string) => {
-  if (summaryStatus === 'atrasado' || summaryStatus === 'hoje') return 'bg-red-500';
-  if (summaryStatus === 'pago') return 'bg-emerald-500';
-  // "Dentro do prazo" -> Azul
-  return 'bg-blue-600';
-};
-
-const prioridadeResumoAlunos = {
-  atrasado: 0,
-  hoje: 1,
-  critico: 2,
-  pendente: 3,
-  alerta: 4,
-  pago: 5,
-  pausado: 6,
-  suspenso: 6,
-  bloqueado: 7,
-};
 
 // ─── Design System — Light / Dark / Claude ────────────────────────
 const themeVars = {
@@ -1298,16 +1150,6 @@ function App() {
   };
 
   const parseDate = (dateStr?: string) => parseFlexibleDate(dateStr) || new Date();
-  const getAlunoNomeSeguro = (aluno?: Partial<Aluno> | null) => {
-    const nome = String(aluno?.nome || '').trim();
-    return nome || 'Aluno sem nome';
-  };
-  const getAlunoIniciais = (aluno?: Partial<Aluno> | null) =>
-    getAlunoNomeSeguro(aluno).slice(0, 2).toUpperCase();
-  const getAvatarColorByName = (nome?: string) => {
-    const avatarColors = ['bg-blue-500','bg-violet-500','bg-emerald-500','bg-rose-500','bg-amber-500','bg-teal-500','bg-indigo-500'];
-    return avatarColors[(String(nome || 'A').charCodeAt(0) || 65) % avatarColors.length];
-  };
   const abrirPerfilAluno = (aluno?: Aluno | null) => {
     if (!aluno?.id) {
       showToast('❌ Não foi possível abrir este aluno. Dados incompletos.');

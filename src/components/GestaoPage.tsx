@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { memo, useEffect, useState, type CSSProperties } from 'react';
 import {
   Calendar, ChevronLeft, ChevronRight, LayoutList, AlertCircle,
@@ -11,34 +10,14 @@ import {
   isFutureMonth,
   getTimelineMetricWidth,
   getTimelineMetricBarClass,
+  getAlunoIniciais,
+  getAlunoNomeSeguro,
 } from '../utils/formatting';
-import { MONTH_OPTIONS } from '../constants';
-import type { StudentSortMode } from '../types';
-
-interface Aluno {
-  id: string;
-  nome: string;
-  telefone: string;
-  email?: string;
-  sexo?: string;
-  data_nascimento?: string;
-  morada?: string;
-  alergias?: string;
-  objetivos?: string;
-  horario_preferido?: string;
-  plano: string;
-  vencimento: string;
-  progresso: number;
-  data_matricula?: string;
-  status?: string;
-  categoria?: string;
-  modo_cobranca?: string;
-  foto_path?: string;
-  notas?: string;
-}
+import { MONTH_OPTIONS, STUDENT_STATUS_HELPERS } from '../constants';
+import type { StudentSortMode, Student } from '../types';
 
 interface HistoricoMensalItem {
-  aluno: Aluno;
+  aluno: Student;
   resumo: MonthlyBillingSummary;
   dataMatricula: Date | null;
   entrouNesteMes: boolean;
@@ -46,7 +25,7 @@ interface HistoricoMensalItem {
 }
 
 interface ResumoFinanceiroItem {
-  aluno: Aluno;
+  aluno: Student;
   resumo: MonthlyBillingSummary;
 }
 
@@ -75,7 +54,7 @@ export interface GestaoPageProps {
   pesquisa: string;
   setPesquisa: (v: string) => void;
   alunosEmDivida: ResumoFinanceiroItem[];
-  alunosImportados: Aluno[];
+  alunosImportados: Student[];
   totalRecebidoPeriodo: number;
   previsaoRecuperacao: number;
   progressoPeriodoPercentual: number;
@@ -84,20 +63,16 @@ export interface GestaoPageProps {
   diaProgressoPeriodo: number;
   periodoSelecionadoFuturo: boolean;
   estiloTabelaAlunos: CSSProperties;
-  setAlunoPerfil: (v: Aluno | null) => void;
+  setAlunoPerfil: (v: Student | null) => void;
   irParaMesAtualOperacional: (mostrarAviso?: boolean) => void;
-  abrirEdicao: (aluno: Aluno) => void;
-  abrirPerfilAluno: (aluno?: Aluno | null) => void;
-  onEstadoPagamentoClick: (aluno: Aluno, resumo: MonthlyBillingSummary) => void;
+  abrirEdicao: (aluno: Student) => void;
+  abrirPerfilAluno: (aluno?: Student | null) => void;
+  onEstadoPagamentoClick: (aluno: Student, resumo: MonthlyBillingSummary) => void;
   notasResumo: Record<string, { total: number }>;
-  onNotasClick: (aluno: Aluno) => void;
+  onNotasClick: (aluno: Student) => void;
   finalizarTodosImportados: () => void;
   setAba: (v: string) => void;
 }
-
-const isPausedStatus = (status?: string) => status === 'pausado' || status === 'suspenso';
-const isBlockedStatus = (status?: string) => status === 'bloqueado';
-const isImportedStatus = (status?: string) => status === 'importado';
 
 function GestaoPage({
   larguraListas,
@@ -141,13 +116,6 @@ function GestaoPage({
   onNotasClick,
   finalizarTodosImportados,
 }: GestaoPageProps) {
-  const getAlunoNomeSeguro = (aluno?: Partial<Aluno> | null) => {
-    const nome = String(aluno?.nome || '').trim();
-    return nome || 'Aluno sem nome';
-  };
-
-  const getAlunoIniciais = (aluno?: Partial<Aluno> | null) =>
-    getAlunoNomeSeguro(aluno).slice(0, 2).toUpperCase();
 
   const [pesquisaAberta, setPesquisaAberta] = useState(Boolean(pesquisa));
   const [reguaFerramentasMinimizada, setReguaFerramentasMinimizada] = useState(false);
@@ -552,10 +520,10 @@ function GestaoPage({
                   </thead>
                   <tbody>
                     {historicoMensalFiltrado.map(({ aluno, resumo, entrouNesteMes }, index) => {
-                      const isImported = isImportedStatus(aluno.status);
+                      const isImported = STUDENT_STATUS_HELPERS.isImported(aluno.status);
                       const progressoDias = getTimelineMetricWidth(resumo, aluno.status);
-                      const paused = isPausedStatus(aluno.status);
-                      const blocked = isBlockedStatus(aluno.status);
+                      const paused = STUDENT_STATUS_HELPERS.isPaused(aluno.status);
+                      const blocked = STUDENT_STATUS_HELPERS.isBlocked(aluno.status);
                       const isAtrasado = resumo.status === 'atrasado' || resumo.status === 'hoje';
                       const isPago = resumo.status === 'pago';
                       const isDentroDoPrazo = !isAtrasado && !isPago;

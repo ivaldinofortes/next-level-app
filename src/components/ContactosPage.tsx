@@ -1,4 +1,3 @@
-// @ts-nocheck
 import React from 'react';
 import {
   Users, Search, Sparkles, ChevronLeft, ChevronRight, ChevronDown,
@@ -10,72 +9,11 @@ import {
   formatCve,
   getStudentStatusForMonth,
 } from '../lib/billing';
-
-const isPausedStatus = (status?: string) => status === 'pausado' || status === 'suspenso';
-const isBlockedStatus = (status?: string) => status === 'bloqueado';
-const isImportedStatus = (status?: string) => status === 'importado';
-
-const getAlunoIniciais = (aluno?: { nome?: string } | null) => {
-  const nome = String(aluno?.nome || '').trim();
-  return (nome || '?').slice(0, 2).toUpperCase();
-};
-
-const getAvatarColorByName = (nome?: string) => {
-  const avatarColors = [
-    'bg-blue-500', 'bg-violet-500', 'bg-emerald-500',
-    'bg-rose-500', 'bg-amber-500', 'bg-teal-500', 'bg-indigo-500',
-  ];
-  return avatarColors[(String(nome || 'A').charCodeAt(0) || 65) % avatarColors.length];
-};
-
-const getAlunoNomeSeguro = (aluno?: Partial<{ nome?: string }> | null) => {
-  return String(aluno?.nome || '').trim() || 'Aluno sem nome';
-};
-
-interface Aluno {
-  id: string;
-  nome: string;
-  telefone: string;
-  email?: string;
-  sexo?: string;
-  data_nascimento?: string;
-  morada?: string;
-  alergias?: string;
-  objetivos?: string;
-  horario_preferido?: string;
-  plano: string;
-  vencimento: string;
-  progresso: number;
-  data_matricula?: string;
-  status?: string;
-  categoria?: string;
-  modo_cobranca?: string;
-  foto_path?: string;
-  notas?: string;
-}
-
-interface Nota {
-  id: number;
-  aluno_id: string;
-  texto: string;
-  data_criacao: string;
-}
-
-interface Pagamento {
-  id?: number;
-  alunoId: string;
-  aluno_id?: string;
-  nome?: string;
-  valor: string;
-  status: 'pago' | 'pendente';
-  data_pagamento?: string;
-  metodo_pagamento?: string;
-  mes_referencia?: string;
-  referencia_inicio?: string;
-  referencia_fim?: string;
-}
-
-type DirectoryFilterStatus = 'todos' | 'ativos' | 'pausados' | 'bloqueados';
+import { STUDENT_STATUS_HELPERS } from '../constants';
+import {
+  getAlunoIniciais, getAvatarColorByName, getAlunoNomeSeguro,
+} from '../utils/formatting';
+import type { Student, Payment, ContactNote, DirectoryFilterStatus } from '../types';
 
 interface TimelineMonth {
   id: string;
@@ -93,9 +31,9 @@ interface TimelineMonth {
 }
 
 interface ContactosPageProps {
-  alunoPerfil: Aluno | null;
-  setAlunoPerfil: (aluno: Aluno) => void;
-  pagamentos: Pagamento[];
+  alunoPerfil: Student | null;
+  setAlunoPerfil: (aluno: Student) => void;
+  pagamentos: Payment[];
   anoFinanceiro: number;
   setAnoFinanceiro: React.Dispatch<React.SetStateAction<number>>;
   mesFinanceiroIndex: number;
@@ -106,7 +44,7 @@ interface ContactosPageProps {
   setTimelineFinanceiraMinimizada: React.Dispatch<React.SetStateAction<boolean>>;
   larguraListas: number;
   larguraSidebarContactos: number;
-  alunosDirectorio: Aluno[];
+  alunosDirectorio: Student[];
   pesquisaDirectorio: string;
   setPesquisaDirectorio: (s: string) => void;
   filtroDirectorioStatus: DirectoryFilterStatus;
@@ -116,16 +54,16 @@ interface ContactosPageProps {
   menuAcoesRef: React.RefObject<HTMLDivElement | null>;
   novaNota: string;
   setNovaNota: (s: string) => void;
-  notasContacto: Nota[];
+  notasContacto: ContactNote[];
   notasResumo: Record<string, { total?: number }>;
   carregarNotas: (alunoId: string) => void;
   handleUploadFoto: (e: React.ChangeEvent<HTMLInputElement>) => void;
-  enviarMensagemWhatsApp: (aluno: Aluno) => void;
-  abrirEdicao: (aluno: Aluno) => void;
+  enviarMensagemWhatsApp: (aluno: Student) => void;
+  abrirEdicao: (aluno: Student) => void;
   alterarStatus: (alunoId: string, novoStatus: string) => void;
   eliminarAluno: (id: string) => void;
-  onEstadoPagamentoClick: (aluno: Aluno, resumo: any) => void;
-  abrirResolverPendencias: (aluno: Aluno) => void;
+  onEstadoPagamentoClick: (aluno: Student, resumo: any) => void;
+  abrirResolverPendencias: (aluno: Student) => void;
   adicionarNota: () => void;
   eliminarNota: (notaId: number) => void;
   buscarDuplicados: () => void;
@@ -280,9 +218,9 @@ function ContactosPageComponent({
                     return { dot: 'bg-red-500', label: resumoItem.status === 'hoje' ? 'Hoje' : `${resumoItem.overdueDays || 0}d`, tone: 'text-red-700 bg-red-50 border-red-100' };
                   }
                   if (resumoItem.status === 'pago') return { dot: 'bg-emerald-500', label: 'Em dia', tone: 'text-emerald-700 bg-emerald-50 border-emerald-100' };
-                  if (isImportedStatus(aluno.status)) return { dot: 'bg-amber-400', label: 'Rever', tone: 'text-amber-700 bg-amber-50 border-amber-100' };
-                  if (isPausedStatus(aluno.status)) return { dot: 'bg-slate-400', label: 'Pausa', tone: 'text-slate-600 bg-slate-50 border-slate-100' };
-                  if (isBlockedStatus(aluno.status)) return { dot: 'bg-red-800', label: 'Bloq.', tone: 'text-red-800 bg-red-50 border-red-100' };
+                  if (STUDENT_STATUS_HELPERS.isImported(aluno.status)) return { dot: 'bg-amber-400', label: 'Rever', tone: 'text-amber-700 bg-amber-50 border-amber-100' };
+                  if (STUDENT_STATUS_HELPERS.isPaused(aluno.status)) return { dot: 'bg-slate-400', label: 'Pausa', tone: 'text-slate-600 bg-slate-50 border-slate-100' };
+                  if (STUDENT_STATUS_HELPERS.isBlocked(aluno.status)) return { dot: 'bg-red-800', label: 'Bloq.', tone: 'text-red-800 bg-red-50 border-red-100' };
                   return { dot: 'bg-blue-400', label: `${Math.max(resumoItem.daysUntilCharge || 0, 0)}d`, tone: 'text-blue-700 bg-blue-50 border-blue-100' };
                 })();
 
@@ -294,7 +232,7 @@ function ContactosPageComponent({
                 return (
                   <button
                     key={aluno.id}
-                    onClick={() => { setAlunoPerfil({ ...aluno, nome: getAlunoNomeSeguro(aluno) } as Aluno); carregarNotas(aluno.id); }}
+                      onClick={() => { setAlunoPerfil({ ...aluno, nome: getAlunoNomeSeguro(aluno) } as Student); carregarNotas(aluno.id); }}
                     className={`w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors border-b border-[var(--border-light)]/60 ${
                       isSelected
                         ? 'bg-[var(--color-primary-light)] border-l-2 border-l-[var(--color-primary)]'
@@ -347,7 +285,7 @@ function ContactosPageComponent({
                 ? 'text-red-600 bg-red-50 border-red-200'
                 : resumoContacto.status === 'pago'
                   ? 'text-emerald-600 bg-emerald-50 border-emerald-200'
-                  : isImportedStatus(alunoPerfil.status)
+                  : STUDENT_STATUS_HELPERS.isImported(alunoPerfil.status)
                     ? 'text-amber-600 bg-amber-50 border-amber-200'
                     : 'text-blue-600 bg-blue-50 border-blue-200';
 
@@ -435,11 +373,11 @@ function ContactosPageComponent({
                         <button onClick={() => setMostrarMenuAcoes(!mostrarMenuAcoes)} title="Mais opções" className={`w-9 h-9 rounded-[6px] flex items-center justify-center nl-text-muted bg-white hover:bg-slate-100 border border-slate-100 transition-all ${mostrarMenuAcoes ? 'bg-slate-100' : ''}`}><MoreVertical size={14} /></button>
                         {mostrarMenuAcoes && (
                           <div className="absolute right-0 top-full mt-1 w-48 bg-white border border-[var(--border)] rounded-[var(--radius-control)] shadow-lg z-[110] overflow-hidden py-1">
-                            <button onClick={() => { setMostrarMenuAcoes(false); alterarStatus(alunoPerfil.id, isPausedStatus(alunoPerfil.status) ? 'ativo' : 'pausado'); }} className="w-full px-4 py-2.5 text-left text-[12px] font-medium nl-text hover:bg-slate-50 flex items-center gap-2.5 transition-colors">
-                              {isPausedStatus(alunoPerfil.status) ? <><RotateCw size={13} className="text-blue-500" /> Retomar</> : <><Pause size={13} className="text-amber-500" /> Pausar</>}
+                            <button onClick={() => { setMostrarMenuAcoes(false); alterarStatus(alunoPerfil.id, STUDENT_STATUS_HELPERS.isPaused(alunoPerfil.status) ? 'ativo' : 'pausado'); }} className="w-full px-4 py-2.5 text-left text-[12px] font-medium nl-text hover:bg-slate-50 flex items-center gap-2.5 transition-colors">
+                              {STUDENT_STATUS_HELPERS.isPaused(alunoPerfil.status) ? <><RotateCw size={13} className="text-blue-500" /> Retomar</> : <><Pause size={13} className="text-amber-500" /> Pausar</>}
                             </button>
-                            <button onClick={() => { setMostrarMenuAcoes(false); alterarStatus(alunoPerfil.id, isBlockedStatus(alunoPerfil.status) ? 'ativo' : 'bloqueado'); }} className="w-full px-4 py-2.5 text-left text-[12px] font-medium nl-text hover:bg-slate-50 flex items-center gap-2.5 transition-colors">
-                              {isBlockedStatus(alunoPerfil.status) ? <><Shield size={13} className="text-blue-500" /> Desbloquear</> : <><Ban size={13} className="text-red-500" /> Bloquear</>}
+                            <button onClick={() => { setMostrarMenuAcoes(false); alterarStatus(alunoPerfil.id, STUDENT_STATUS_HELPERS.isBlocked(alunoPerfil.status) ? 'ativo' : 'bloqueado'); }} className="w-full px-4 py-2.5 text-left text-[12px] font-medium nl-text hover:bg-slate-50 flex items-center gap-2.5 transition-colors">
+                              {STUDENT_STATUS_HELPERS.isBlocked(alunoPerfil.status) ? <><Shield size={13} className="text-blue-500" /> Desbloquear</> : <><Ban size={13} className="text-red-500" /> Bloquear</>}
                             </button>
                             <div className="h-px bg-slate-100 my-1" />
                             <button onClick={() => { setMostrarMenuAcoes(false); eliminarAluno(alunoPerfil.id); }} className="w-full px-4 py-2.5 text-left text-[12px] font-medium text-red-600 hover:bg-red-50 flex items-center gap-2.5 transition-colors">

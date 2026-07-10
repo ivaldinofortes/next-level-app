@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { memo, useEffect, useMemo, useState } from 'react';
 import {
   AlertCircle,
@@ -29,12 +28,8 @@ import {
   getBillingBadgeLabel,
   STUDENT_STATUS_HELPERS,
 } from '../constants';
-
-const isFutureMonth = (monthIndex: number, year: number, reference = new Date()) => {
-  const currentYear = reference.getFullYear();
-  const currentMonth = reference.getMonth();
-  return year > currentYear || (year === currentYear && monthIndex > currentMonth);
-};
+import { isFutureMonth } from '../utils/formatting';
+import type { Student, Payment } from '../types';
 
 const parseAdminDate = (value?: string | null) => {
   if (!value) return null;
@@ -58,31 +53,6 @@ const isInsideMonth = (value: string | null | undefined, monthIndex: number, yea
   const date = parseAdminDate(value);
   return Boolean(date && date.getFullYear() === year && date.getMonth() === monthIndex);
 };
-
-interface Aluno {
-  id: string;
-  nome: string;
-  telefone: string;
-  plano: string;
-  vencimento: string;
-  data_matricula?: string;
-  status?: string;
-  categoria?: string;
-}
-
-interface Pagamento {
-  id?: number;
-  alunoId: string;
-  aluno_id?: string;
-  nome?: string;
-  valor: string;
-  status: 'pago' | 'pendente';
-  data_pagamento?: string;
-  metodo_pagamento?: string;
-  mes_referencia?: string;
-  referencia_inicio?: string;
-  referencia_fim?: string;
-}
 
 type AdminUser = {
   id: number | string;
@@ -136,8 +106,8 @@ export interface RelatoriosPageProps {
   setAnoRelatorio: React.Dispatch<React.SetStateAction<number>>;
   timelineFinanceiraMinimizada: boolean;
   setTimelineFinanceiraMinimizada: React.Dispatch<React.SetStateAction<boolean>>;
-  alunos: Aluno[];
-  pagamentos: Pagamento[];
+  alunos: Student[];
+  pagamentos: Payment[];
   hojeReferencia: Date;
   larguraListas: number;
   appLogo: string;
