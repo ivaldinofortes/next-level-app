@@ -694,7 +694,7 @@ const HomePage: React.FC<HomePageProps> = React.memo(({
             }}
             header={(
               <div className="flex items-center gap-2" style={{ color: POSTIT_INK }}>
-                <StickyNote size={16} />
+                <StickyNote size={16} style={{ color: '#EAB308' }} />
                 <div>
                   <p className="text-[15px] font-semibold leading-none">Notas</p>
                   <p className="mt-0.5 text-[11px] font-medium" style={{ color: POSTIT_MUTED }}>

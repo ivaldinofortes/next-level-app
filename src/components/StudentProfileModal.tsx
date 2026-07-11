@@ -244,7 +244,12 @@ export default function StudentProfileModal({ model }: { model: any }) {
           onClick={() => abrirNotasRapidas?.(alunoPerfil)}
           className="nl-btn nl-btn-ghost nl-btn-sm"
         >
-          <StickyNote size={14} />
+          <StickyNote
+            size={15}
+            strokeWidth={2}
+            color={totalNotas > 0 ? '#EAB308' : 'var(--text-tertiary, #9CA3AF)'}
+            fill={totalNotas > 0 ? '#FDE047' : 'none'}
+          />
           Notas{totalNotas > 0 ? ` (${totalNotas})` : ''}
         </button>
         <div className="flex items-center gap-2">

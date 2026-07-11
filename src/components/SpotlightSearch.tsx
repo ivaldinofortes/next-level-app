@@ -150,7 +150,7 @@ export default function SpotlightSearch({
         title: 'Contactos e notas',
         subtitle: 'Post-its e follow-up',
         keywords: 'notas postit sticky',
-        icon: <StickyNote size={16} />,
+        icon: <StickyNote size={16} style={{ color: '#EAB308' }} />,
         run: () => onNavigate('contactos'),
       },
     ];

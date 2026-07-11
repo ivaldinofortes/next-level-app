@@ -620,7 +620,7 @@ function ContactosPageComponent({
                       >
                         <div className="mb-2.5 flex shrink-0 items-center justify-between px-0.5">
                           <div className="flex items-center gap-2">
-                            <StickyNote size={16} style={{ color: POSTIT_INK }} />
+                            <StickyNote size={16} style={{ color: '#EAB308' }} />
                             <div>
                               <p className="text-[15px] font-semibold leading-none" style={{ color: POSTIT_INK }}>Notas</p>
                               <p className="mt-0.5 text-[11px] font-medium" style={{ color: POSTIT_MUTED }}>

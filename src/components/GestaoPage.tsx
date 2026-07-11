@@ -18,6 +18,9 @@ import { MONTH_OPTIONS, STUDENT_STATUS_HELPERS, getManualStatusTone } from '../c
 import type { StudentSortMode, Student } from '../types';
 import TimeRuler from './TimeRuler';
 
+const POSTIT_YELLOW = '#EAB308';
+const POSTIT_FILL = '#FDE047';
+
 interface HistoricoMensalItem {
   aluno: Student;
   resumo: MonthlyBillingSummary;
@@ -648,21 +651,27 @@ function GestaoPage({
                               </div>
                             </div>
                           </td>
-                          {/* Notas */}
+                          {/* Notas — amarelo só com notas; monocrómatico se vazio; ícone cru */}
                           <td className="align-middle text-center" style={{ padding: 'var(--list-row-py) var(--list-row-px)' }}>
                             <button
                               type="button"
                               onClick={() => onNotasClick(aluno)}
-                              className={`relative inline-flex h-8 w-8 items-center justify-center rounded-[var(--radius-compact)] border transition-all ${
-                                temNotas
-                                  ? 'border-[var(--color-warning)] bg-[color-mix(in_srgb,var(--color-warning)_22%,var(--bg-surface))] text-[color-mix(in_srgb,var(--color-warning)_70%,#000)]'
-                                  : 'border-[var(--border)] bg-[var(--bg-surface)]/70 nl-text-muted hover:bg-[var(--color-secondary-light)]'
-                              }`}
+                              className="relative inline-flex items-center justify-center p-0.5 transition-opacity hover:opacity-80"
+                              style={{ background: 'none', border: 'none', boxShadow: 'none' }}
                               title={temNotas ? `${totalNotas} nota(s)` : 'Adicionar nota'}
                             >
-                              <StickyNote size={13} />
+                              <StickyNote
+                                size={21}
+                                strokeWidth={2}
+                                color={temNotas ? POSTIT_YELLOW : 'var(--text-tertiary, #9CA3AF)'}
+                                fill={temNotas ? POSTIT_FILL : 'none'}
+                                aria-hidden
+                              />
                               {temNotas && (
-                                <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--color-warning)] px-0.5 text-[9px] font-bold text-white">
+                                <span
+                                  className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full px-0.5 text-[9px] font-bold text-white"
+                                  style={{ backgroundColor: POSTIT_YELLOW }}
+                                >
                                   {totalNotas}
                                 </span>
                               )}

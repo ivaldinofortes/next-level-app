@@ -147,6 +147,9 @@ const themeVars = {
     '--text-tertiary':           '#77767b',
     '--border':                  '#deddda',
     '--border-light':            '#e8e7e5',
+    // Relatórios — canvas cinza frio (contraste com --bg-app quente)
+    '--reports-canvas':          '#cfd3da',
+    '--reports-canvas-deep':     '#c2c7d0',
     // Adwaita favors borders over heavy drop-shadows
     '--shadow-xs':               '0 1px 1px rgba(0,0,0,0.04)',
     '--shadow-sm':               '0 1px 2px rgba(0,0,0,0.06), 0 0 0 1px rgba(0,0,0,0.04)',
@@ -208,6 +211,9 @@ const themeVars = {
     '--text-tertiary':           '#9a9996',
     '--border':                  'rgba(255,255,255,0.12)',
     '--border-light':            'rgba(255,255,255,0.08)',
+    // Relatórios — slate mais frio/profundo (contraste com --bg-app roxo)
+    '--reports-canvas':          '#0c0e13',
+    '--reports-canvas-deep':     '#080a0e',
     '--shadow-xs':               '0 1px 1px rgba(0,0,0,0.28)',
     '--shadow-sm':               '0 1px 3px rgba(0,0,0,0.32), 0 0 0 1px rgba(0,0,0,0.24)',
     '--shadow-md':               '0 3px 10px rgba(0,0,0,0.36), 0 0 0 1px rgba(0,0,0,0.24)',
@@ -270,6 +276,9 @@ const themeVars = {
     '--text-tertiary':           '#9c8a7a',
     '--border':                  '#ddd4c8',
     '--border-light':            '#eae2d9',
+    // Relatórios — cinza quente-neutro (contraste com canvas bege Claude)
+    '--reports-canvas':          '#d0cbc3',
+    '--reports-canvas-deep':     '#c4beb5',
     '--shadow-xs':               '0 1px 1px rgba(60,30,10,0.04)',
     '--shadow-sm':               '0 1px 2px rgba(60,30,10,0.06), 0 0 0 1px rgba(60,30,10,0.04)',
     '--shadow-md':               '0 2px 6px rgba(60,30,10,0.08), 0 0 0 1px rgba(60,30,10,0.05)',
@@ -396,6 +405,35 @@ const GlobalStyles = ({ theme }: { theme: 'light' | 'dark' | 'claude' }) => {
       }
       .nl-card:hover {
         border-color: color-mix(in srgb, var(--border) 70%, var(--color-secondary));
+      }
+
+      /* ── Relatórios: canvas cinza distinto (claro + escuro) ── */
+      .nl-reports-page {
+        background: var(--reports-canvas, var(--bg-app));
+      }
+      .nl-reports-page .nl-reports-scroll {
+        background:
+          linear-gradient(
+            180deg,
+            var(--reports-canvas-deep, var(--reports-canvas)) 0%,
+            var(--reports-canvas) 32%,
+            var(--reports-canvas) 100%
+          );
+      }
+      .nl-reports-page .nl-reports-toolbar {
+        background: color-mix(in srgb, var(--bg-surface) 92%, var(--reports-canvas-deep));
+        border-bottom: 1px solid var(--border);
+        box-shadow:
+          inset 0 -1px 0 color-mix(in srgb, #c64600 26%, transparent),
+          0 1px 0 color-mix(in srgb, #000 4%, transparent);
+      }
+      .nl-reports-page .nl-reports-kpi {
+        background: var(--bg-surface);
+        box-shadow: var(--shadow-sm);
+        border-color: color-mix(in srgb, var(--border) 80%, transparent);
+      }
+      .nl-reports-page .nl-reports-kpi:hover {
+        box-shadow: var(--shadow-md);
       }
 
       /* ── Buttons (libadwaita-like) ── */
@@ -3250,7 +3288,7 @@ function App() {
       />
 
       {/* Container Principal */}
-      <main className={`flex-1 overflow-hidden relative flex flex-col ${aba === 'gestao' || aba === 'contactos' || aba === 'configuracoes' ? 'px-0 pb-0 pt-0' : 'p-5 pt-3'}`}>
+      <main className={`flex-1 overflow-hidden relative flex flex-col ${aba === 'gestao' || aba === 'contactos' || aba === 'configuracoes' || aba === 'relatorios_detalhado' ? 'px-0 pb-0 pt-0' : 'p-5 pt-3'}`}>
         {sessionUser?.role === 'operational' && aba === 'configuracoes' && (
           <div className="h-full w-full flex items-center justify-center opacity-70">
             <div className="text-center">
@@ -3598,9 +3636,6 @@ function App() {
         />
       )}
 
-      {/* Modal: notas rápidas */}
-      {alunoNotasRapidas && <StudentNotesModal aluno={alunoNotasRapidas} notas={notasRapidas} novaNota={novaNotaRapida} onNovaNotaChange={setNovaNotaRapida} onAdd={adicionarNotaRapida} onDelete={eliminarNotaRapida} onOpenContact={abrirContactoAPartirNotas} onClose={() => setAlunoNotasRapidas(null)} />}
-
       {/* Modal único de cobrança (cartão da barra de dias) */}
       {mostrarCobrancaRapida && alunoParaCobrancaRapida && (
         <QuickPaymentModal
@@ -3635,6 +3670,19 @@ function App() {
             abrirNotasRapidas,
             parseDate,
           }}
+        />
+      )}
+
+      {/* Post-it de notas (sempre por cima — z-index 400) */}
+      {alunoNotasRapidas && (
+        <StudentNotesModal
+          aluno={alunoNotasRapidas}
+          notas={notasRapidas}
+          novaNota={novaNotaRapida}
+          onNovaNotaChange={setNovaNotaRapida}
+          onAdd={adicionarNotaRapida}
+          onDelete={eliminarNotaRapida}
+          onClose={() => setAlunoNotasRapidas(null)}
         />
       )}
 

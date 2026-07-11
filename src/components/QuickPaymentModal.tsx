@@ -188,9 +188,14 @@ export default function QuickPaymentModal({ model }: { model: any }) {
           className="nl-icon-btn relative"
           title={totalNotas ? `${totalNotas} nota(s)` : 'Notas do aluno'}
         >
-          <StickyNote size={15} />
+          <StickyNote
+            size={16}
+            strokeWidth={2}
+            color={totalNotas > 0 ? '#EAB308' : 'var(--text-tertiary, #9CA3AF)'}
+            fill={totalNotas > 0 ? '#FDE047' : 'none'}
+          />
           {totalNotas > 0 && (
-            <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--color-warning)] px-1 text-[9px] font-bold text-white">
+            <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#EAB308] px-1 text-[9px] font-bold text-white">
               {totalNotas}
             </span>
           )}

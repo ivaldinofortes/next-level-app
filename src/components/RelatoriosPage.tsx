@@ -1,6 +1,7 @@
 import { memo, useEffect, useMemo, useState } from 'react';
 import {
   Activity,
+  AlertCircle,
   Banknote,
   BookUser,
   CalendarDays,
@@ -70,20 +71,21 @@ function BentoPanel({
   heightOpen?: string;
 }) {
   const toneCls: Record<BentoTone, string> = {
-    default: 'border-[var(--border)] bg-[var(--bg-surface)]',
-    green: 'border-[color-mix(in_srgb,var(--color-success)_38%,var(--border))] bg-[color-mix(in_srgb,var(--color-success)_8%,var(--bg-surface))]',
-    red: 'border-[color-mix(in_srgb,var(--color-error)_38%,var(--border))] bg-[color-mix(in_srgb,var(--color-error)_8%,var(--bg-surface))]',
-    blue: 'border-[color-mix(in_srgb,var(--color-primary)_38%,var(--border))] bg-[color-mix(in_srgb,var(--color-primary)_8%,var(--bg-surface))]',
-    orange: 'border-[color-mix(in_srgb,#e66100_40%,var(--border))] bg-[color-mix(in_srgb,#e66100_8%,var(--bg-surface))]',
-    teal: 'border-[color-mix(in_srgb,#0f766e_40%,var(--border))] bg-[color-mix(in_srgb,#14b8a6_9%,var(--bg-surface))]',
-    violet: 'border-[color-mix(in_srgb,#6d28d9_38%,var(--border))] bg-[color-mix(in_srgb,#8b5cf6_9%,var(--bg-surface))]',
+    // Superfície elevada sobre canvas cinza da página
+    default: 'border-[var(--border)] bg-[var(--bg-surface)] shadow-[var(--shadow-sm)]',
+    green: 'border-[color-mix(in_srgb,var(--color-success)_38%,var(--border))] bg-[color-mix(in_srgb,var(--color-success)_8%,var(--bg-surface))] shadow-[var(--shadow-sm)]',
+    red: 'border-[color-mix(in_srgb,var(--color-error)_38%,var(--border))] bg-[color-mix(in_srgb,var(--color-error)_8%,var(--bg-surface))] shadow-[var(--shadow-sm)]',
+    blue: 'border-[color-mix(in_srgb,var(--color-primary)_38%,var(--border))] bg-[color-mix(in_srgb,var(--color-primary)_8%,var(--bg-surface))] shadow-[var(--shadow-sm)]',
+    orange: 'border-[color-mix(in_srgb,#e66100_40%,var(--border))] bg-[color-mix(in_srgb,#e66100_8%,var(--bg-surface))] shadow-[var(--shadow-sm)]',
+    teal: 'border-[color-mix(in_srgb,#0f766e_40%,var(--border))] bg-[color-mix(in_srgb,#14b8a6_9%,var(--bg-surface))] shadow-[var(--shadow-sm)]',
+    violet: 'border-[color-mix(in_srgb,#6d28d9_38%,var(--border))] bg-[color-mix(in_srgb,#8b5cf6_9%,var(--bg-surface))] shadow-[var(--shadow-sm)]',
   };
 
   const openSpan = spanOpen || (expandMode === 'width' ? 'col-span-12' : spanClosed);
   const openH = heightOpen || (expandMode === 'width' ? 'min-h-[320px] max-h-[520px]' : 'min-h-[360px] max-h-[560px]');
   const sizeCls = isOpen
     ? `${openH} shadow-[var(--shadow-md)]`
-    : `${heightClosed} shadow-[var(--shadow-xs)]`;
+    : `${heightClosed}`;
 
   return (
     <div
@@ -414,6 +416,7 @@ const RelatoriosPage = memo(function RelatoriosPage({
     const bloqueados = inactivos.filter((r) => STUDENT_STATUS_HELPERS.isBlocked(r.aluno.status));
 
     const previsao = operacionais.reduce((s, { aluno }) => s + normalizeAmount(aluno.plano), 0);
+    const dividaValor = atrasados.reduce((s, { aluno }) => s + normalizeAmount(aluno.plano), 0);
 
     const pagamentosFiltrados =
       filtroMetodo === 'todos'
@@ -430,6 +433,7 @@ const RelatoriosPage = memo(function RelatoriosPage({
       atrasados,
       pagos,
       previsao,
+      dividaValor,
       pendente: Math.max(0, previsao - receitaMes),
       media: pagamentosMes.length ? Math.round(receitaMes / pagamentosMes.length) : 0,
       count: pagamentosMes.length,
@@ -566,8 +570,8 @@ const RelatoriosPage = memo(function RelatoriosPage({
 
   if (!isAdmin) {
     return (
-      <div className="flex h-full w-full items-center justify-center nl-bg-app">
-        <div className="nl-card max-w-md text-center !p-8">
+      <div className="nl-reports-page flex h-full w-full items-center justify-center animate-fade-in">
+        <div className="nl-card max-w-md text-center !p-8 shadow-[var(--shadow-md)]">
           <ShieldCheck size={32} className="mx-auto text-[var(--color-error)]" />
           <h2 className="mt-3 text-[17px] font-semibold nl-text">Acesso reservado</h2>
           <p className="mt-2 text-[13px] nl-text-sub">
@@ -584,9 +588,9 @@ const RelatoriosPage = memo(function RelatoriosPage({
   });
 
   return (
-    <div className="flex h-full w-full flex-col overflow-hidden nl-bg-app animate-fade-in">
-      {/* Barra única: esquerda | régua | direita + sub-abas na mesma linha */}
-      <div className="shrink-0 border-b border-[var(--border)] bg-[var(--bg-header)]">
+    <div className="nl-reports-page flex h-full w-full flex-col overflow-hidden animate-fade-in">
+      {/* Barra de ferramentas — superfície elevada sobre o canvas cinza */}
+      <div className="nl-reports-toolbar shrink-0">
         <div className="flex h-11 items-center gap-2 px-3">
           <div className="flex shrink-0 items-center gap-1">
             <button type="button" onClick={() => setAnoRelatorio((y) => y - 1)} className="nl-icon-btn nl-icon-btn-sm" title="Ano anterior">
@@ -661,69 +665,172 @@ const RelatoriosPage = memo(function RelatoriosPage({
         </div>
       )}
 
-      {/* Conteúdo — bento (como a Início) */}
-      <div className="min-h-0 flex-1 overflow-y-auto custom-scrollbar px-4 py-4">
+      {/* Conteúdo — canvas cinza; cards em superfície elevada */}
+      <div className="nl-reports-scroll min-h-0 flex-1 overflow-y-auto custom-scrollbar px-4 py-4">
         <div className="mx-auto flex flex-col gap-3" style={{ maxWidth: larguraListas }}>
           {mainTab === 'financeiro' ? (
             <>
-              {/* KPIs fixos — faixa superior */}
-              <section className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
-                {[
-                  { label: 'Receita do mês', value: formatCve(finance.receitaMes), sub: `${finance.count} pagamentos`, accent: 'text-[var(--color-success)]', icon: <TrendingUp size={15} /> },
-                  { label: 'Média / pagamento', value: formatCve(finance.media), sub: 'neste período', accent: 'text-[var(--color-primary)]', icon: <Wallet size={15} /> },
-                  { label: 'Por recuperar', value: formatCve(finance.pendente), sub: `${finance.atrasados.length} em atraso`, accent: finance.pendente > 0 ? 'text-[var(--color-error)]' : 'text-[var(--color-success)]', icon: <Users size={15} /> },
-                  { label: 'Activos no mês', value: String(finance.operacionaisCount), sub: `${finance.inactivos.length} fora da conta`, accent: 'text-[var(--color-primary)]', icon: <CheckCircle2 size={15} /> },
-                ].map((kpi) => (
-                  <div key={kpi.label} className="nl-card !p-3 transition-all hover:-translate-y-0.5">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-[11px] font-medium nl-text-muted">{kpi.label}</span>
-                      <span className={kpi.accent}>{kpi.icon}</span>
-                    </div>
-                    <p className={`mt-1 text-[19px] font-semibold tabular-nums leading-tight ${kpi.accent}`}>{kpi.value}</p>
-                    <p className="mt-0.5 text-[10px] font-medium nl-text-muted">{kpi.sub}</p>
+              {/* Cabeçalho — só texto + ícones, sem fundo/borda/card */}
+              <section className="px-0.5">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between lg:gap-6">
+                  {/* Esquerda — título + mês */}
+                  <div className="min-w-0 shrink-0">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.16em] nl-text-muted">
+                      Relatório financeiro
+                    </p>
+                    <h1 className="mt-1 text-[22px] font-semibold leading-tight nl-text capitalize">
+                      {mesRelatorio}{' '}
+                      <span className="font-medium tabular-nums nl-text-sub">{anoRelatorio}</span>
+                    </h1>
+                    <p className="mt-1 text-[12px] font-medium nl-text-muted">
+                      {finance.count} pagamento{finance.count === 1 ? '' : 's'} registado{finance.count === 1 ? '' : 's'}
+                      {finance.inactivos.length > 0 ? ` · ${finance.inactivos.length} fora da conta` : ''}
+                    </p>
                   </div>
-                ))}
+
+                  {/* Direita — métricas soltas (ícone + texto) */}
+                  <div className="flex min-w-0 flex-1 flex-wrap items-start justify-start gap-x-6 gap-y-3 lg:justify-end">
+                    {[
+                      {
+                        label: 'Alunos',
+                        value: String(finance.operacionaisCount),
+                        icon: <Users size={15} strokeWidth={2.2} />,
+                        color: 'var(--color-primary)',
+                      },
+                      {
+                        label: 'Pagos',
+                        value: formatCve(finance.receitaMes),
+                        icon: <CheckCircle2 size={15} strokeWidth={2.2} />,
+                        color: 'var(--color-success)',
+                      },
+                      {
+                        label: 'Por cobrar',
+                        value: formatCve(finance.pendente),
+                        icon: <Wallet size={15} strokeWidth={2.2} />,
+                        color: finance.pendente > 0 ? 'var(--color-warning)' : 'var(--color-success)',
+                      },
+                      {
+                        label: 'Total esperado',
+                        value: formatCve(finance.previsao),
+                        icon: <TrendingUp size={15} strokeWidth={2.2} />,
+                        color: 'var(--text-primary)',
+                      },
+                      {
+                        label: 'Em dívida',
+                        value: formatCve(finance.dividaValor),
+                        icon: <AlertCircle size={15} strokeWidth={2.2} />,
+                        color: finance.atrasados.length > 0 ? 'var(--color-error)' : 'var(--color-success)',
+                        sub: finance.atrasados.length > 0 ? `${finance.atrasados.length} aluno(s)` : '0 alunos',
+                      },
+                    ].map((item) => (
+                      <div key={item.label} className="flex min-w-[6.5rem] items-start gap-1.5">
+                        <span className="mt-0.5 shrink-0" style={{ color: item.color }}>
+                          {item.icon}
+                        </span>
+                        <div className="min-w-0">
+                          <p className="text-[10px] font-semibold uppercase tracking-[0.08em] nl-text-muted">
+                            {item.label}
+                          </p>
+                          <p
+                            className="mt-0.5 text-[15px] font-semibold tabular-nums leading-none"
+                            style={{ color: item.color }}
+                          >
+                            {item.value}
+                          </p>
+                          {'sub' in item && item.sub ? (
+                            <p className="mt-0.5 text-[10px] font-medium nl-text-muted">{item.sub}</p>
+                          ) : null}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Linha de totais — texto puro sob o fundo */}
+                <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px]">
+                  <span className="font-semibold nl-text-muted">Soma do mês</span>
+                  <span className="text-[var(--border)]">·</span>
+                  <span className="font-medium nl-text-sub">
+                    <strong className="tabular-nums nl-text">{finance.operacionaisCount}</strong> alunos
+                  </span>
+                  <span className="text-[var(--border)]">·</span>
+                  <span className="font-medium text-[var(--color-success)]">
+                    Pagos <strong className="tabular-nums">{formatCve(finance.receitaMes)}</strong>
+                  </span>
+                  <span className="text-[var(--border)]">·</span>
+                  <span className="font-medium" style={{ color: finance.pendente > 0 ? 'var(--color-warning)' : 'var(--color-success)' }}>
+                    Por cobrar <strong className="tabular-nums">{formatCve(finance.pendente)}</strong>
+                  </span>
+                  <span className="text-[var(--border)]">·</span>
+                  <span className="font-medium text-[var(--color-error)]">
+                    Dívida <strong className="tabular-nums">{formatCve(finance.dividaValor)}</strong>
+                  </span>
+                  <span className="text-[var(--border)]">·</span>
+                  <span className="ml-auto font-semibold nl-text">
+                    Total esperado{' '}
+                    <strong className="tabular-nums text-[var(--color-primary)]">{formatCve(finance.previsao)}</strong>
+                  </span>
+                </div>
               </section>
 
-              {/* Grelha bento 12 cols */}
-              <section className="grid grid-cols-12 gap-3 items-start">
-                {/* Métodos — card largo, expande em largura */}
+              {/* Grelha 3 colunas — cards compactos e funcionais */}
+              <section className="mt-[60px] grid grid-cols-12 gap-2.5 items-start">
+                {/* 1 · Métodos (filtro clicável) */}
                 <BentoPanel
                   isOpen={openPanels.metodos}
                   onToggle={() => togglePanel('metodos')}
                   tone="green"
-                  expandMode="width"
-                  spanClosed="col-span-12 md:col-span-7 xl:col-span-8"
-                  spanOpen="col-span-12"
-                  heightClosed="h-[240px]"
+                  expandMode="height"
+                  spanClosed="col-span-12 md:col-span-4"
+                  spanOpen="col-span-12 md:col-span-4"
+                  heightClosed="h-[196px]"
+                  heightOpen="min-h-[300px] max-h-[420px]"
                   header={(
                     <div className="min-w-0">
                       <div className="flex items-center gap-1.5">
-                        <Wallet size={14} className="text-[var(--color-success)]" />
-                        <h2 className="text-[14px] font-semibold nl-text">Formas de pagamento</h2>
-                        <span className="badge badge-success tabular-nums">{finance.byMethod.length}</span>
+                        <Wallet size={13} className="text-[var(--color-success)]" />
+                        <h2 className="text-[13px] font-semibold nl-text">Métodos</h2>
+                        {filtroMetodo !== 'todos' && (
+                          <span className="badge badge-success !text-[9px]">{filtroMetodo}</span>
+                        )}
                       </div>
-                      <p className="mt-0.5 truncate text-[11px] font-medium text-[var(--color-success)]">
-                        {formatCve(finance.receitaMes)} · distribuição do mês
+                      <p className="mt-0.5 text-[10px] font-medium text-[var(--color-success)]">
+                        Clique para filtrar · {formatCve(finance.receitaMes)}
                       </p>
                     </div>
                   )}
                   preview={(
-                    <div className="grid h-full grid-cols-1 gap-2 sm:grid-cols-3 content-start">
-                      {finance.byMethod.slice(0, 3).map((m) => {
+                    <div className="space-y-1.5">
+                      {finance.byMethod.map((m) => {
                         const pct = finance.receitaMes > 0 ? Math.round((m.total / finance.receitaMes) * 100) : 0;
+                        const active = filtroMetodo === m.method;
                         return (
-                          <div key={m.method} className="rounded-[var(--radius-control)] border border-[var(--border-light)] bg-[var(--bg-surface)]/70 p-2.5" style={{ borderLeftColor: m.meta.color, borderLeftWidth: 3 }}>
-                            <div className="flex items-center gap-1.5" style={{ color: m.meta.color }}>{m.meta.icon}<span className="text-[12px] font-semibold nl-text">{m.method}</span></div>
-                            <p className="mt-1.5 text-[15px] font-semibold tabular-nums nl-text">{formatCve(m.total)}</p>
-                            <p className="text-[10px] nl-text-muted">{m.count} pag. · {pct}%</p>
-                          </div>
+                          <button
+                            key={m.method}
+                            type="button"
+                            onClick={() => setFiltroMetodo(active ? 'todos' : m.method)}
+                            className={`flex w-full items-center gap-2 rounded-[6px] px-1.5 py-1 text-left transition-colors ${
+                              active ? 'bg-[color-mix(in_srgb,var(--color-success)_14%,transparent)]' : 'hover:bg-[var(--color-secondary-light)]'
+                            }`}
+                          >
+                            <span className="shrink-0" style={{ color: m.meta.color }}>{m.meta.icon}</span>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center justify-between gap-1">
+                                <span className="truncate text-[11px] font-semibold nl-text">{m.method}</span>
+                                <span className="text-[11px] font-semibold tabular-nums nl-text">{formatCve(m.total)}</span>
+                              </div>
+                              <div className="mt-0.5 h-1 overflow-hidden rounded-full bg-[var(--border-light)]">
+                                <div className="h-full rounded-full" style={{ width: `${pct}%`, background: m.meta.color }} />
+                              </div>
+                            </div>
+                            <span className="w-7 shrink-0 text-right text-[10px] tabular-nums nl-text-muted">{pct}%</span>
+                          </button>
                         );
                       })}
                     </div>
                   )}
                 >
-                  <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                  <div className="space-y-1.5">
                     {finance.byMethod.map((m) => {
                       const pct = finance.receitaMes > 0 ? Math.round((m.total / finance.receitaMes) * 100) : 0;
                       const active = filtroMetodo === m.method;
@@ -732,275 +839,297 @@ const RelatoriosPage = memo(function RelatoriosPage({
                           key={m.method}
                           type="button"
                           onClick={() => setFiltroMetodo(active ? 'todos' : m.method)}
-                          className={`rounded-[var(--radius-control)] border p-3 text-left transition-all ${
-                            active ? 'border-[var(--color-primary)] ring-2 ring-[var(--shadow-primary-focus)]' : 'border-[var(--border)]'
+                          className={`flex w-full items-center gap-2.5 rounded-[8px] border px-2.5 py-2 text-left transition-all ${
+                            active ? 'border-[var(--color-primary)] ring-1 ring-[var(--color-primary)]' : 'border-[var(--border-light)]'
                           }`}
                           style={{ background: m.meta.soft }}
                         >
-                          <div className="flex items-center gap-2" style={{ color: m.meta.color }}>
-                            {m.meta.icon}
-                            <span className="text-[13px] font-semibold nl-text">{m.method}</span>
+                          <span style={{ color: m.meta.color }}>{m.meta.icon}</span>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-[12px] font-semibold nl-text">{m.method}</p>
+                            <p className="text-[10px] nl-text-muted">{m.count} pag. · {pct}%</p>
                           </div>
-                          <p className="mt-2 text-[18px] font-semibold tabular-nums nl-text">{formatCve(m.total)}</p>
-                          <p className="mt-0.5 text-[11px] font-medium nl-text-muted">{m.count} pag. · {pct}%</p>
+                          <p className="text-[13px] font-semibold tabular-nums nl-text">{formatCve(m.total)}</p>
                         </button>
                       );
                     })}
+                    {filtroMetodo !== 'todos' && (
+                      <button type="button" className="nl-btn nl-btn-ghost nl-btn-sm w-full" onClick={() => setFiltroMetodo('todos')}>
+                        Limpar filtro · ver todos
+                      </button>
+                    )}
                   </div>
-                  {filtroMetodo !== 'todos' && (
-                    <button type="button" className="nl-btn nl-btn-ghost nl-btn-sm mt-2" onClick={() => setFiltroMetodo('todos')}>
-                      Limpar filtro
-                    </button>
-                  )}
                 </BentoPanel>
 
-                {/* Mix donut — card estreito, expande em altura */}
+                {/* 2 · Mix + cobertura rápida */}
                 <BentoPanel
                   isOpen={openPanels.mix}
                   onToggle={() => togglePanel('mix')}
                   tone="blue"
                   expandMode="height"
-                  spanClosed="col-span-12 md:col-span-5 xl:col-span-4"
-                  spanOpen="col-span-12 md:col-span-5 xl:col-span-4"
-                  heightClosed="h-[240px]"
-                  heightOpen="min-h-[320px] max-h-[420px]"
+                  spanClosed="col-span-12 md:col-span-4"
+                  spanOpen="col-span-12 md:col-span-4"
+                  heightClosed="h-[196px]"
+                  heightOpen="min-h-[300px] max-h-[420px]"
                   header={(
                     <div className="min-w-0">
                       <div className="flex items-center gap-1.5">
-                        <CreditCard size={14} className="text-[var(--color-primary)]" />
-                        <h2 className="text-[14px] font-semibold nl-text">Mix de métodos</h2>
+                        <CreditCard size={13} className="text-[var(--color-primary)]" />
+                        <h2 className="text-[13px] font-semibold nl-text">Mix & cobertura</h2>
                       </div>
-                      <p className="mt-0.5 text-[11px] font-medium nl-text-muted">Proporção visual da receita</p>
+                      <p className="mt-0.5 text-[10px] font-medium nl-text-muted">Receita + estado dos activos</p>
                     </div>
                   )}
                   preview={(
-                    <div className="flex h-full flex-col items-center justify-center gap-1">
+                    <div className="flex h-full items-center gap-3">
                       <Donut
-                        size={108}
+                        size={92}
                         segments={finance.byMethod
                           .filter((m) => m.total > 0)
                           .map((m) => ({ label: m.method, value: m.total, color: m.meta.color }))}
                       />
+                      <div className="min-w-0 flex-1 space-y-2">
+                        <div>
+                          <p className="text-[10px] nl-text-muted">Em dia</p>
+                          <p className="text-[18px] font-semibold tabular-nums text-[var(--color-success)]">{finance.pagos.length}</p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] nl-text-muted">Em atraso</p>
+                          <p className="text-[16px] font-semibold tabular-nums text-[var(--color-error)]">{finance.atrasados.length}</p>
+                        </div>
+                        <div className="h-1.5 overflow-hidden rounded-full bg-[var(--border-light)]">
+                          <div
+                            className="h-full rounded-full bg-[var(--color-success)]"
+                            style={{
+                              width: `${finance.operacionaisCount > 0 ? Math.round((finance.pagos.length / finance.operacionaisCount) * 100) : 0}%`,
+                            }}
+                          />
+                        </div>
+                        <p className="text-[10px] nl-text-muted">
+                          {finance.operacionaisCount > 0
+                            ? `${Math.round((finance.pagos.length / finance.operacionaisCount) * 100)}% cobertos`
+                            : '—'}
+                        </p>
+                      </div>
                     </div>
                   )}
                 >
-                  <div className="flex flex-col items-center gap-3">
-                    <Donut
-                      size={148}
-                      segments={finance.byMethod
-                        .filter((m) => m.total > 0)
-                        .map((m) => ({ label: m.method, value: m.total, color: m.meta.color }))}
-                    />
-                    <ul className="w-full space-y-1.5">
-                      {finance.byMethod.map((m) => {
-                        const pct = finance.receitaMes > 0 ? Math.round((m.total / finance.receitaMes) * 100) : 0;
-                        return (
-                          <li key={m.method} className="flex items-center justify-between gap-2 text-[12px]">
-                            <span className="flex items-center gap-1.5 font-medium nl-text" style={{ color: m.meta.color }}>
-                              <span className="h-2 w-2 rounded-full" style={{ background: m.meta.color }} />
-                              {m.method}
-                            </span>
-                            <span className="tabular-nums nl-text-muted">{pct}%</span>
-                          </li>
-                        );
-                      })}
-                    </ul>
+                  <div className="flex flex-col gap-3">
+                    <div className="flex items-center gap-3">
+                      <Donut
+                        size={120}
+                        segments={finance.byMethod
+                          .filter((m) => m.total > 0)
+                          .map((m) => ({ label: m.method, value: m.total, color: m.meta.color }))}
+                      />
+                      <ul className="min-w-0 flex-1 space-y-1">
+                        {finance.byMethod.map((m) => {
+                          const pct = finance.receitaMes > 0 ? Math.round((m.total / finance.receitaMes) * 100) : 0;
+                          return (
+                            <li key={m.method} className="flex items-center justify-between gap-1 text-[11px]">
+                              <span className="flex items-center gap-1.5 font-medium" style={{ color: m.meta.color }}>
+                                <span className="h-1.5 w-1.5 rounded-full" style={{ background: m.meta.color }} />
+                                {m.method}
+                              </span>
+                              <span className="tabular-nums nl-text-muted">{pct}%</span>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </div>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      <div className="rounded-[6px] border border-[var(--border-light)] px-2 py-1.5 text-center">
+                        <p className="text-[9px] nl-text-muted">Em dia</p>
+                        <p className="text-[15px] font-semibold text-[var(--color-success)]">{finance.pagos.length}</p>
+                      </div>
+                      <div className="rounded-[6px] border border-[var(--border-light)] px-2 py-1.5 text-center">
+                        <p className="text-[9px] nl-text-muted">Atraso</p>
+                        <p className="text-[15px] font-semibold text-[var(--color-error)]">{finance.atrasados.length}</p>
+                      </div>
+                      <div className="rounded-[6px] border border-[var(--border-light)] px-2 py-1.5 text-center">
+                        <p className="text-[9px] nl-text-muted">Activos</p>
+                        <p className="text-[15px] font-semibold nl-text">{finance.operacionaisCount}</p>
+                      </div>
+                    </div>
                   </div>
                 </BentoPanel>
 
-                {/* Evolução — laranja relatórios, expande em largura */}
+                {/* 3 · Evolução 6 meses (clique muda o mês) */}
                 <BentoPanel
                   isOpen={openPanels.graficos}
                   onToggle={() => togglePanel('graficos')}
                   tone="orange"
-                  expandMode="width"
-                  spanClosed="col-span-12 md:col-span-8"
-                  spanOpen="col-span-12"
-                  heightClosed="h-[230px]"
+                  expandMode="height"
+                  spanClosed="col-span-12 md:col-span-4"
+                  spanOpen="col-span-12 md:col-span-4"
+                  heightClosed="h-[196px]"
+                  heightOpen="min-h-[320px] max-h-[440px]"
                   header={(
                     <div className="min-w-0">
                       <div className="flex items-center gap-1.5">
-                        <TrendingUp size={14} className="text-[#c64600]" />
-                        <h2 className="text-[14px] font-semibold nl-text">Evolução</h2>
+                        <TrendingUp size={13} className="text-[#c64600]" />
+                        <h2 className="text-[13px] font-semibold nl-text">Evolução</h2>
                       </div>
-                      <p className="mt-0.5 truncate text-[11px] font-medium capitalize text-[#c64600]">
-                        {mesRelatorio} {anoRelatorio} · 6 meses
+                      <p className="mt-0.5 text-[10px] font-medium capitalize text-[#c64600]">
+                        6 meses · clique num mês
                       </p>
                     </div>
                   )}
                   preview={(
-                    <MiniBar
-                      height={140}
-                      data={finance.receita6.map((r) => ({ label: r.label, value: r.value, color: r.color }))}
-                    />
-                  )}
-                >
-                  <div className="grid gap-4 lg:grid-cols-2">
-                    <div>
-                      <p className="mb-2 text-[12px] font-medium nl-text-muted">Entradas diárias</p>
-                      <MiniBar data={finance.dailySeries} height={140} />
-                    </div>
-                    <div>
-                      <p className="mb-2 text-[12px] font-medium nl-text-muted">Últimos 6 meses</p>
+                    <div className="flex h-full flex-col">
                       <MiniBar
-                        data={finance.receita6.map((r) => ({ label: r.label, value: r.value, color: r.color }))}
-                        height={140}
+                        height={108}
+                        data={finance.receita6.map((r) => ({
+                          label: r.label,
+                          value: r.value,
+                          color: r.mes === mesRelatorio && r.ano === anoRelatorio ? 'var(--color-primary)' : r.color,
+                        }))}
                       />
-                      <div className="mt-2 flex flex-wrap gap-1">
-                        {finance.receita6.map((r) => (
-                          <button
-                            key={`${r.mes}-${r.ano}`}
-                            type="button"
-                            onClick={() => {
-                              setMesRelatorio(r.mes);
-                              setAnoRelatorio(r.ano);
-                              setSelectedDay(null);
-                            }}
-                            className="nl-chip"
-                          >
-                            {r.label} {String(r.ano).slice(2)}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                </BentoPanel>
-
-                {/* Cobertura — card compacto */}
-                <BentoPanel
-                  isOpen={openPanels.cobertura}
-                  onToggle={() => togglePanel('cobertura')}
-                  tone={finance.atrasados.length > 0 ? 'red' : 'green'}
-                  expandMode="height"
-                  spanClosed="col-span-12 md:col-span-4"
-                  spanOpen="col-span-12 md:col-span-4"
-                  heightClosed="h-[230px]"
-                  heightOpen="min-h-[280px] max-h-[360px]"
-                  header={(
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-1.5">
-                        <CheckCircle2 size={14} className={finance.atrasados.length > 0 ? 'text-[var(--color-error)]' : 'text-[var(--color-success)]'} />
-                        <h2 className="text-[14px] font-semibold nl-text">Cobertura</h2>
-                      </div>
-                      <p className="mt-0.5 text-[11px] font-medium nl-text-muted">Só activos na contabilidade</p>
-                    </div>
-                  )}
-                  preview={(
-                    <div className="flex h-full flex-col justify-center gap-3">
-                      <div>
-                        <p className="text-[11px] nl-text-muted">Em dia</p>
-                        <p className="text-[28px] font-semibold tabular-nums text-[var(--color-success)]">{finance.pagos.length}</p>
-                      </div>
-                      <div>
-                        <p className="text-[11px] nl-text-muted">Em atraso</p>
-                        <p className="text-[22px] font-semibold tabular-nums text-[var(--color-error)]">{finance.atrasados.length}</p>
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        {finance.receita6.map((r) => {
+                          const active = r.mes === mesRelatorio && r.ano === anoRelatorio;
+                          return (
+                            <button
+                              key={`${r.mes}-${r.ano}`}
+                              type="button"
+                              onClick={() => {
+                                setMesRelatorio(r.mes);
+                                setAnoRelatorio(r.ano);
+                                setSelectedDay(null);
+                              }}
+                              className={`rounded-full px-2 py-0.5 text-[9px] font-semibold transition-colors ${
+                                active
+                                  ? 'bg-[var(--color-primary)] text-white'
+                                  : 'bg-[var(--color-secondary-light)] nl-text-sub hover:bg-[var(--color-secondary)]'
+                              }`}
+                            >
+                              {r.label}
+                            </button>
+                          );
+                        })}
                       </div>
                     </div>
                   )}
                 >
-                  <div className="grid gap-2">
-                    <div className="rounded-[var(--radius-control)] border border-[var(--border-light)] bg-[var(--bg-surface)]/70 p-3">
-                      <p className="text-[11px] font-medium nl-text-muted">Alunos em dia</p>
-                      <p className="mt-1 text-[24px] font-semibold text-[var(--color-success)]">{finance.pagos.length}</p>
+                  <div className="space-y-3">
+                    <div>
+                      <p className="mb-1.5 text-[11px] font-medium nl-text-muted">Últimos 6 meses</p>
+                      <MiniBar
+                        height={120}
+                        data={finance.receita6.map((r) => ({
+                          label: r.label,
+                          value: r.value,
+                          color: r.mes === mesRelatorio && r.ano === anoRelatorio ? 'var(--color-primary)' : r.color,
+                        }))}
+                      />
                     </div>
-                    <div className="rounded-[var(--radius-control)] border border-[var(--border-light)] bg-[var(--bg-surface)]/70 p-3">
-                      <p className="text-[11px] font-medium nl-text-muted">Em atraso / vence hoje</p>
-                      <p className="mt-1 text-[24px] font-semibold text-[var(--color-error)]">{finance.atrasados.length}</p>
+                    <div>
+                      <p className="mb-1.5 text-[11px] font-medium nl-text-muted">Entradas diárias · {mesRelatorio}</p>
+                      <MiniBar data={finance.dailySeries} height={100} />
                     </div>
-                    <div className="rounded-[var(--radius-control)] border border-[var(--border-light)] bg-[var(--bg-surface)]/70 p-3">
-                      <p className="text-[11px] font-medium nl-text-muted">Previsão (activos)</p>
-                      <p className="mt-1 text-[20px] font-semibold text-[var(--color-primary)]">{formatCve(finance.previsao)}</p>
+                    <div className="flex flex-wrap gap-1">
+                      {finance.receita6.map((r) => (
+                        <button
+                          key={`${r.mes}-${r.ano}-x`}
+                          type="button"
+                          onClick={() => {
+                            setMesRelatorio(r.mes);
+                            setAnoRelatorio(r.ano);
+                            setSelectedDay(null);
+                          }}
+                          className="nl-chip !text-[10px]"
+                        >
+                          {r.label} {String(r.ano).slice(2)} · {formatCve(r.value)}
+                        </button>
+                      ))}
                     </div>
                   </div>
                 </BentoPanel>
 
-                {/* Movimentos — médio, expande em altura */}
+                {/* 4 · Movimentos (dias + filtro) */}
                 <BentoPanel
                   isOpen={openPanels.movimentos}
                   onToggle={() => togglePanel('movimentos')}
                   tone="default"
                   expandMode="height"
-                  spanClosed="col-span-12 md:col-span-7"
-                  spanOpen="col-span-12 md:col-span-7 xl:col-span-8"
-                  heightClosed="h-[250px]"
-                  heightOpen="min-h-[400px] max-h-[560px]"
+                  spanClosed="col-span-12 md:col-span-4"
+                  spanOpen="col-span-12 md:col-span-4"
+                  heightClosed="h-[196px]"
+                  heightOpen="min-h-[360px] max-h-[520px]"
                   header={(
                     <div className="min-w-0">
                       <div className="flex items-center gap-1.5">
-                        <CalendarDays size={14} className="text-[var(--color-primary)]" />
-                        <h2 className="text-[14px] font-semibold nl-text">Movimentos</h2>
-                        <span className="badge badge-info tabular-nums">{finance.count}</span>
+                        <CalendarDays size={13} className="text-[var(--color-primary)]" />
+                        <h2 className="text-[13px] font-semibold nl-text">Movimentos</h2>
+                        <span className="badge badge-info !text-[9px] tabular-nums">{finance.count}</span>
                       </div>
-                      <p className="mt-0.5 text-[11px] font-medium nl-text-muted">Dias e pagamentos do mês</p>
+                      <p className="mt-0.5 text-[10px] font-medium nl-text-muted">
+                        {selectedDay ? formatDayLabel(selectedDay) : 'Dias com entradas'}
+                      </p>
                     </div>
                   )}
                   preview={(
-                    <div className="space-y-1">
+                    <div className="space-y-0.5">
                       {finance.dailySeries
                         .filter((d) => d.count > 0)
                         .slice()
                         .reverse()
                         .slice(0, 5)
                         .map((d) => (
-                          <div key={d.key} className="flex items-center justify-between rounded-[var(--radius-compact)] px-1.5 py-1.5 hover:bg-[var(--color-secondary-light)]">
-                            <span className="text-[12px] font-medium nl-text">{formatDayLabel(d.key)}</span>
-                            <span className="text-[12px] font-semibold tabular-nums text-[var(--color-success)]">{formatCve(d.value)}</span>
-                          </div>
+                          <button
+                            key={d.key}
+                            type="button"
+                            onClick={() => setSelectedDay(d.key === selectedDay ? null : d.key)}
+                            className={`flex w-full items-center justify-between rounded-[6px] px-1.5 py-1 text-left transition-colors ${
+                              selectedDay === d.key
+                                ? 'bg-[color-mix(in_srgb,var(--color-primary)_12%,transparent)]'
+                                : 'hover:bg-[var(--color-secondary-light)]'
+                            }`}
+                          >
+                            <span className="text-[11px] font-medium nl-text">{formatDayLabel(d.key)}</span>
+                            <span className="text-[11px] font-semibold tabular-nums text-[var(--color-success)]">
+                              {formatCve(d.value)}
+                            </span>
+                          </button>
                         ))}
                       {finance.dailySeries.filter((d) => d.count > 0).length === 0 && (
-                        <p className="py-6 text-center text-[12px] nl-text-muted">Sem movimentos neste mês.</p>
+                        <p className="py-6 text-center text-[11px] nl-text-muted">Sem movimentos.</p>
                       )}
                     </div>
                   )}
                 >
-                  <div className="grid gap-3 lg:grid-cols-2">
-                    <div className="overflow-hidden rounded-[var(--radius-control)] border border-[var(--border-light)] bg-[var(--bg-surface)]/60">
-                      <div className="border-b border-[var(--border-light)] px-3 py-2">
-                        <p className="text-[12px] font-semibold nl-text">Dias com entradas</p>
-                      </div>
-                      <div className="max-h-[280px] overflow-y-auto custom-scrollbar">
-                        {finance.dailySeries.filter((d) => d.count > 0).length === 0 ? (
-                          <p className="px-4 py-8 text-center text-[13px] nl-text-muted">Sem pagamentos neste mês.</p>
-                        ) : (
-                          finance.dailySeries
-                            .filter((d) => d.count > 0)
-                            .slice()
-                            .reverse()
-                            .map((d) => (
-                              <button
-                                key={d.key}
-                                type="button"
-                                onClick={() => setSelectedDay(d.key === selectedDay ? null : d.key)}
-                                className={`flex w-full items-center justify-between border-b border-[var(--border-light)] px-3 py-2 text-left transition-colors hover:bg-[var(--color-secondary-light)] ${
-                                  selectedDay === d.key ? 'bg-[var(--color-primary-light)]' : ''
-                                }`}
-                              >
-                                <div>
-                                  <p className="text-[13px] font-semibold nl-text">{formatDayLabel(d.key)}</p>
-                                  <p className="text-[11px] nl-text-muted">{d.count} pagamento(s)</p>
-                                </div>
-                                <p className="text-[13px] font-semibold tabular-nums text-[var(--color-success)]">{formatCve(d.value)}</p>
-                              </button>
-                            ))
-                        )}
-                      </div>
+                  <div className="space-y-2">
+                    <div className="max-h-[120px] space-y-0.5 overflow-y-auto custom-scrollbar">
+                      {finance.dailySeries
+                        .filter((d) => d.count > 0)
+                        .slice()
+                        .reverse()
+                        .map((d) => (
+                          <button
+                            key={d.key}
+                            type="button"
+                            onClick={() => setSelectedDay(d.key === selectedDay ? null : d.key)}
+                            className={`flex w-full items-center justify-between rounded-[6px] border px-2 py-1.5 text-left ${
+                              selectedDay === d.key
+                                ? 'border-[var(--color-primary)] bg-[color-mix(in_srgb,var(--color-primary)_10%,var(--bg-surface))]'
+                                : 'border-[var(--border-light)]'
+                            }`}
+                          >
+                            <div>
+                              <p className="text-[12px] font-semibold nl-text">{formatDayLabel(d.key)}</p>
+                              <p className="text-[10px] nl-text-muted">{d.count} pag.</p>
+                            </div>
+                            <p className="text-[12px] font-semibold tabular-nums text-[var(--color-success)]">{formatCve(d.value)}</p>
+                          </button>
+                        ))}
                     </div>
-                    <div className="overflow-hidden rounded-[var(--radius-control)] border border-[var(--border-light)] bg-[var(--bg-surface)]/60">
-                      <div className="border-b border-[var(--border-light)] px-3 py-2">
-                        <p className="text-[12px] font-semibold nl-text">
-                          {dayDetail ? formatDayLabel(dayDetail.key) : 'Pagamentos do período'}
-                        </p>
-                        <p className="text-[11px] nl-text-muted">
-                          {dayDetail
-                            ? `${dayDetail.count} registo(s)`
-                            : filtroMetodo === 'todos'
-                              ? `${finance.pagamentosFiltrados.length} no mês`
-                              : `${finance.pagamentosFiltrados.length} · ${filtroMetodo}`}
-                        </p>
-                      </div>
-                      <div className="max-h-[280px] overflow-y-auto custom-scrollbar">
+                    <div className="border-t border-[var(--border-light)] pt-2">
+                      <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide nl-text-muted">
+                        {dayDetail ? formatDayLabel(dayDetail.key) : filtroMetodo === 'todos' ? 'Pagamentos do mês' : filtroMetodo}
+                      </p>
+                      <div className="max-h-[200px] space-y-0.5 overflow-y-auto custom-scrollbar">
                         {(dayDetail ? dayDetail.items : finance.pagamentosFiltrados).length === 0 ? (
-                          <p className="px-4 py-8 text-center text-[13px] nl-text-muted">Sem registos.</p>
+                          <p className="py-4 text-center text-[11px] nl-text-muted">Sem registos.</p>
                         ) : (
                           (dayDetail ? dayDetail.items : finance.pagamentosFiltrados)
                             .slice()
@@ -1011,20 +1140,16 @@ const RelatoriosPage = memo(function RelatoriosPage({
                               return (
                                 <div
                                   key={p.id || `${p.alunoId}-${p.data_pagamento}-${p.valor}`}
-                                  className="flex items-center gap-3 border-b border-[var(--border-light)] px-3 py-2"
+                                  className="flex items-center gap-2 rounded-[6px] px-1.5 py-1.5 hover:bg-[var(--color-secondary-light)]"
                                 >
-                                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full" style={{ background: meta.soft, color: meta.color }}>
-                                    {meta.icon}
-                                  </span>
+                                  <span className="shrink-0" style={{ color: meta.color }}>{meta.icon}</span>
                                   <div className="min-w-0 flex-1">
-                                    <p className="truncate text-[13px] font-semibold nl-text">
+                                    <p className="truncate text-[11px] font-semibold nl-text">
                                       {(p as any).nome || p.alunoId || p.aluno_id || 'Aluno'}
                                     </p>
-                                    <p className="text-[11px] nl-text-muted">
-                                      {p.data_pagamento} · {method}
-                                    </p>
+                                    <p className="text-[9px] nl-text-muted">{p.data_pagamento} · {method}</p>
                                   </div>
-                                  <p className="text-[13px] font-semibold tabular-nums text-[var(--color-success)]">{formatCve(p.valor)}</p>
+                                  <p className="text-[11px] font-semibold tabular-nums text-[var(--color-success)]">{formatCve(p.valor)}</p>
                                 </div>
                               );
                             })
@@ -1034,79 +1159,190 @@ const RelatoriosPage = memo(function RelatoriosPage({
                   </div>
                 </BentoPanel>
 
-                {/* Inactivos — violeta/teal, expande em altura */}
+                {/* 5 · Cobertura / dívida */}
+                <BentoPanel
+                  isOpen={openPanels.cobertura}
+                  onToggle={() => togglePanel('cobertura')}
+                  tone={finance.atrasados.length > 0 ? 'red' : 'green'}
+                  expandMode="height"
+                  spanClosed="col-span-12 md:col-span-4"
+                  spanOpen="col-span-12 md:col-span-4"
+                  heightClosed="h-[196px]"
+                  heightOpen="min-h-[320px] max-h-[460px]"
+                  header={(
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <CheckCircle2
+                          size={13}
+                          className={finance.atrasados.length > 0 ? 'text-[var(--color-error)]' : 'text-[var(--color-success)]'}
+                        />
+                        <h2 className="text-[13px] font-semibold nl-text">Cobertura</h2>
+                      </div>
+                      <p className="mt-0.5 text-[10px] font-medium nl-text-muted">
+                        Média {formatCve(finance.media)} / pag.
+                      </p>
+                    </div>
+                  )}
+                  preview={(
+                    <div className="flex h-full flex-col justify-between gap-2">
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <p className="text-[10px] nl-text-muted">Em dia</p>
+                          <p className="text-[22px] font-semibold tabular-nums text-[var(--color-success)]">{finance.pagos.length}</p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] nl-text-muted">Atraso</p>
+                          <p className="text-[22px] font-semibold tabular-nums text-[var(--color-error)]">{finance.atrasados.length}</p>
+                        </div>
+                      </div>
+                      <div>
+                        <div className="mb-1 flex justify-between text-[10px]">
+                          <span className="nl-text-muted">Taxa de cobertura</span>
+                          <span className="font-semibold tabular-nums nl-text">
+                            {finance.operacionaisCount > 0
+                              ? `${Math.round((finance.pagos.length / finance.operacionaisCount) * 100)}%`
+                              : '—'}
+                          </span>
+                        </div>
+                        <div className="h-2 overflow-hidden rounded-full bg-[var(--border-light)]">
+                          <div
+                            className="h-full rounded-full bg-[var(--color-success)]"
+                            style={{
+                              width: `${finance.operacionaisCount > 0 ? Math.round((finance.pagos.length / finance.operacionaisCount) * 100) : 0}%`,
+                            }}
+                          />
+                        </div>
+                      </div>
+                      <div className="flex justify-between text-[11px]">
+                        <span className="nl-text-muted">Dívida</span>
+                        <span className="font-semibold tabular-nums text-[var(--color-error)]">{formatCve(finance.dividaValor)}</span>
+                      </div>
+                      <div className="flex justify-between text-[11px]">
+                        <span className="nl-text-muted">Previsão</span>
+                        <span className="font-semibold tabular-nums text-[var(--color-primary)]">{formatCve(finance.previsao)}</span>
+                      </div>
+                    </div>
+                  )}
+                >
+                  <div className="space-y-2">
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <div className="rounded-[6px] border border-[var(--border-light)] px-2.5 py-2">
+                        <p className="text-[10px] nl-text-muted">Em dia</p>
+                        <p className="text-[20px] font-semibold text-[var(--color-success)]">{finance.pagos.length}</p>
+                      </div>
+                      <div className="rounded-[6px] border border-[var(--border-light)] px-2.5 py-2">
+                        <p className="text-[10px] nl-text-muted">Em atraso</p>
+                        <p className="text-[20px] font-semibold text-[var(--color-error)]">{finance.atrasados.length}</p>
+                      </div>
+                    </div>
+                    <p className="text-[10px] font-semibold uppercase tracking-wide nl-text-muted">Alunos em atraso</p>
+                    <div className="max-h-[220px] space-y-0.5 overflow-y-auto custom-scrollbar">
+                      {finance.atrasados.length === 0 ? (
+                        <p className="py-3 text-center text-[11px] nl-text-muted">Ninguém em atraso.</p>
+                      ) : (
+                        finance.atrasados.map(({ aluno, resumo }) => (
+                          <div
+                            key={aluno.id}
+                            className="flex items-center justify-between gap-2 rounded-[6px] px-1.5 py-1.5 hover:bg-[var(--color-secondary-light)]"
+                            style={{ boxShadow: 'inset 3px 0 0 var(--color-error)' }}
+                          >
+                            <div className="min-w-0">
+                              <p className="truncate text-[11px] font-semibold nl-text">{aluno.nome}</p>
+                              <p className="text-[9px] nl-text-muted">{resumo.statusLabel || resumo.status}</p>
+                            </div>
+                            <p className="text-[11px] font-semibold tabular-nums text-[var(--color-error)]">
+                              {formatCve(aluno.plano)}
+                            </p>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                </BentoPanel>
+
+                {/* 6 · Fora da contabilidade */}
                 <BentoPanel
                   isOpen={openPanels.inactivos}
                   onToggle={() => togglePanel('inactivos')}
                   tone="violet"
                   expandMode="height"
-                  spanClosed="col-span-12 md:col-span-5"
-                  spanOpen="col-span-12 md:col-span-5 xl:col-span-4"
-                  heightClosed="h-[250px]"
-                  heightOpen="min-h-[400px] max-h-[560px]"
+                  spanClosed="col-span-12 md:col-span-4"
+                  spanOpen="col-span-12 md:col-span-4"
+                  heightClosed="h-[196px]"
+                  heightOpen="min-h-[360px] max-h-[520px]"
                   header={(
                     <div className="min-w-0">
                       <div className="flex items-center gap-1.5">
-                        <UserX size={14} className="text-[#6d28d9]" />
-                        <h2 className="text-[14px] font-semibold nl-text">Fora da contabilidade</h2>
-                        <span className="badge badge-quit tabular-nums">{finance.inactivos.length}</span>
+                        <UserX size={13} className="text-[#6d28d9]" />
+                        <h2 className="text-[13px] font-semibold nl-text">Fora da conta</h2>
+                        <span className="badge badge-quit !text-[9px] tabular-nums">{finance.inactivos.length}</span>
                       </div>
-                      <p className="mt-0.5 text-[11px] font-medium text-[#6d28d9]">Pausa · férias · desistentes</p>
+                      <p className="mt-0.5 text-[10px] font-medium text-[#6d28d9]">Pausa · férias · desist.</p>
                     </div>
                   )}
                   preview={(
-                    <div className="grid grid-cols-2 gap-1.5 content-start">
-                      {[
-                        { label: 'Pausa', count: finance.emPausa.length, tone: getManualStatusTone('pausado'), icon: <Pause size={12} /> },
-                        { label: 'Férias', count: finance.ferias.length, tone: getManualStatusTone('ferias'), icon: <Palmtree size={12} /> },
-                        { label: 'Desist.', count: finance.desistentes.length, tone: getManualStatusTone('desistente'), icon: <UserX size={12} /> },
-                        { label: 'Bloq.', count: finance.bloqueados.length, tone: getManualStatusTone('bloqueado'), icon: <ShieldCheck size={12} /> },
-                      ].map((item) => (
-                        <div
-                          key={item.label}
-                          className="rounded-[var(--radius-control)] border px-2 py-2"
-                          style={{ borderColor: item.tone.border, background: item.tone.bg }}
-                        >
-                          <div className="flex items-center gap-1" style={{ color: item.tone.fg }}>
-                            {item.icon}
-                            <span className="text-[10px] font-semibold">{item.label}</span>
+                    <div className="flex h-full flex-col gap-1.5">
+                      <div className="grid grid-cols-4 gap-1">
+                        {[
+                          { label: 'Pausa', count: finance.emPausa.length, tone: getManualStatusTone('pausado'), icon: <Pause size={11} /> },
+                          { label: 'Férias', count: finance.ferias.length, tone: getManualStatusTone('ferias'), icon: <Palmtree size={11} /> },
+                          { label: 'Desist.', count: finance.desistentes.length, tone: getManualStatusTone('desistente'), icon: <UserX size={11} /> },
+                          { label: 'Bloq.', count: finance.bloqueados.length, tone: getManualStatusTone('bloqueado'), icon: <ShieldCheck size={11} /> },
+                        ].map((item) => (
+                          <div key={item.label} className="rounded-[6px] px-1 py-1.5 text-center" style={{ background: item.tone.bg }}>
+                            <div className="flex justify-center" style={{ color: item.tone.fg }}>{item.icon}</div>
+                            <p className="mt-0.5 text-[14px] font-semibold tabular-nums nl-text">{item.count}</p>
+                            <p className="text-[8px] font-semibold" style={{ color: item.tone.fg }}>{item.label}</p>
                           </div>
-                          <p className="mt-0.5 text-[18px] font-semibold tabular-nums nl-text">{item.count}</p>
-                        </div>
-                      ))}
+                        ))}
+                      </div>
+                      <div className="min-h-0 flex-1 space-y-0.5 overflow-hidden">
+                        {finance.inactivos.slice(0, 3).map(({ aluno }) => {
+                          const tone = getManualStatusTone(aluno.status);
+                          return (
+                            <div key={aluno.id} className="flex items-center justify-between gap-1 px-0.5">
+                              <p className="truncate text-[11px] font-medium nl-text">{aluno.nome}</p>
+                              <span className={`badge ${tone.badge} shrink-0 !text-[8px] !py-0`}>{tone.label}</span>
+                            </div>
+                          );
+                        })}
+                        {finance.inactivos.length > 3 && (
+                          <p className="text-center text-[10px] nl-text-muted">+{finance.inactivos.length - 3} mais · expandir</p>
+                        )}
+                      </div>
                     </div>
                   )}
                 >
                   <div className="mb-2 grid grid-cols-2 gap-1.5">
                     {[
-                      { label: 'Em pausa', count: finance.emPausa.length, icon: <Pause size={14} />, tone: getManualStatusTone('pausado') },
-                      { label: 'Férias', count: finance.ferias.length, icon: <Palmtree size={14} />, tone: getManualStatusTone('ferias') },
-                      { label: 'Desistentes', count: finance.desistentes.length, icon: <UserX size={14} />, tone: getManualStatusTone('desistente') },
-                      { label: 'Bloqueados', count: finance.bloqueados.length, icon: <ShieldCheck size={14} />, tone: getManualStatusTone('bloqueado') },
+                      { label: 'Em pausa', count: finance.emPausa.length, icon: <Pause size={13} />, tone: getManualStatusTone('pausado') },
+                      { label: 'Férias', count: finance.ferias.length, icon: <Palmtree size={13} />, tone: getManualStatusTone('ferias') },
+                      { label: 'Desistentes', count: finance.desistentes.length, icon: <UserX size={13} />, tone: getManualStatusTone('desistente') },
+                      { label: 'Bloqueados', count: finance.bloqueados.length, icon: <ShieldCheck size={13} />, tone: getManualStatusTone('bloqueado') },
                     ].map((item) => (
                       <div
                         key={item.label}
-                        className="flex items-center gap-2 rounded-[var(--radius-control)] border px-2.5 py-2"
+                        className="flex items-center gap-2 rounded-[6px] border px-2 py-1.5"
                         style={{ borderColor: item.tone.border, background: item.tone.bg }}
                       >
                         <span style={{ color: item.tone.fg }}>{item.icon}</span>
                         <div>
-                          <p className="text-[10px] font-medium" style={{ color: item.tone.fg }}>{item.label}</p>
-                          <p className="text-[15px] font-semibold tabular-nums nl-text">{item.count}</p>
+                          <p className="text-[9px] font-medium" style={{ color: item.tone.fg }}>{item.label}</p>
+                          <p className="text-[14px] font-semibold tabular-nums nl-text">{item.count}</p>
                         </div>
                       </div>
                     ))}
                   </div>
                   {finance.inactivos.length === 0 ? (
-                    <p className="py-4 text-center text-[12px] nl-text-muted">Nenhum aluno fora da contabilidade.</p>
+                    <p className="py-4 text-center text-[11px] nl-text-muted">Nenhum aluno fora da contabilidade.</p>
                   ) : (
-                    <div className="space-y-0.5">
+                    <div className="max-h-[280px] space-y-0.5 overflow-y-auto custom-scrollbar">
                       {finance.inactivos.map(({ aluno }) => {
                         const tone = getManualStatusTone(aluno.status);
                         return (
                           <div
                             key={aluno.id}
-                            className="flex items-center justify-between gap-2 rounded-[var(--radius-control)] px-2 py-1.5 hover:bg-[var(--bg-surface)]/80"
+                            className="flex items-center justify-between gap-2 rounded-[6px] px-2 py-1.5 hover:bg-[var(--bg-surface)]/80"
                             style={{ boxShadow: `inset 3px 0 0 ${tone.fg}` }}
                           >
                             <div className="min-w-0">
@@ -1130,11 +1366,14 @@ const RelatoriosPage = memo(function RelatoriosPage({
               <section className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
                 {[
                   { label: 'Eventos no mês', value: String(activity.totalEvents), accent: 'text-[var(--color-primary)]', icon: <Activity size={15} /> },
-                  { label: 'Notas', value: String(activity.notesMes.length), accent: 'text-[var(--color-warning)]', icon: <StickyNote size={15} /> },
+                  { label: 'Notas', value: String(activity.notesMes.length), accent: 'text-[var(--color-warning)]', icon: <StickyNote size={15} style={{ color: '#EAB308' }} /> },
                   { label: 'Logs', value: String(activity.logsMes.length), accent: 'text-[var(--color-primary)]', icon: <BookUser size={15} /> },
                   { label: 'Utilizadores', value: String(activity.usersList.length), accent: 'text-[var(--color-success)]', icon: <Users size={15} /> },
                 ].map((kpi) => (
-                  <div key={kpi.label} className="nl-card !p-3 transition-all hover:-translate-y-0.5">
+                  <div
+                    key={kpi.label}
+                    className="nl-card nl-reports-kpi !p-3 transition-all hover:-translate-y-0.5"
+                  >
                     <div className="flex items-center justify-between">
                       <span className="text-[11px] font-medium nl-text-muted">{kpi.label}</span>
                       <span className={kpi.accent}>{kpi.icon}</span>
@@ -1315,7 +1554,7 @@ const RelatoriosPage = memo(function RelatoriosPage({
                                       : 'border-[var(--border)] bg-[var(--color-secondary-light)] nl-text-sub'
                                 }`}
                               >
-                                {isPay ? <Wallet size={13} /> : isNote ? <StickyNote size={13} /> : <Activity size={13} />}
+                                {isPay ? <Wallet size={13} /> : isNote ? <StickyNote size={13} style={{ color: '#EAB308' }} /> : <Activity size={13} />}
                               </span>
                               <div className="min-w-0 flex-1">
                                 <div className="flex flex-wrap items-baseline justify-between gap-2">
