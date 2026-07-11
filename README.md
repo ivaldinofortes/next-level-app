@@ -8,7 +8,7 @@
 
 **Desenvolvido por [NEXT LAB](https://github.com/ivaldinofortes) · Cabo Verde 🇨🇻**
 
-[![Versão](https://img.shields.io/badge/versão-1.0.0--beta.1.1-blue?style=for-the-badge)](https://github.com/ivaldinofortes/next-level-app/releases)
+[![Versão](https://img.shields.io/badge/versão-1.0.0--beta.2.2-blue?style=for-the-badge)](https://github.com/ivaldinofortes/next-level-app/releases)
 [![Electron](https://img.shields.io/badge/Electron-31.7.7-47848F?style=for-the-badge&logo=electron)](https://electronjs.org)
 [![React](https://img.shields.io/badge/React-19.2.5-61DAFB?style=for-the-badge&logo=react)](https://react.dev)
 [![TypeScript](https://img.shields.io/badge/TypeScript-6.0-3178C6?style=for-the-badge&logo=typescript)](https://typescriptlang.org)

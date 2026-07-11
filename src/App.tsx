@@ -1,17 +1,64 @@
-import { useState, useEffect, useRef, useMemo, useCallback, type CSSProperties, lazy, Suspense } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback, lazy, Suspense } from 'react';
 import Header from './components/Header';
 import HomePage from './components/HomePage';
 import GestaoPage from './components/GestaoPage';
 import RelatoriosPage from './components/RelatoriosPage';
 import ContactosPage from './components/ContactosPage';
 import ConfiguracoesPage from './components/ConfiguracoesPage';
-import type { Student } from './types';
+import type { Aluno, DirectoryFilterStatus, FinanceQuickFilter, Nota, NotaRecente, NotaResumo, Notificacao, Pagamento, PaymentFormState, StudentSortMode } from './types/app';
 
 const RootPanel = lazy(() => import('./RootPanel'));
 const ImportarDadosModal = lazy(() => import('./ImportarDadosModal'));
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
-import * as XLSX from 'xlsx';
+import { loadAutoTable, loadJsPDF, loadXLSX } from './lib/lazyLoaders';
+import { isBlockedStatus, isImportedStatus, isOperationallyActive, isPausedStatus } from './lib/studentStatus';
+import { useConnectivity } from './hooks/useConnectivity';
+import { useBackupReminder } from './hooks/useBackupReminder';
+import { useMonthlyReportReminder } from './hooks/useMonthlyReportReminder';
+import { useFinancialSummaries } from './hooks/useFinancialSummaries';
+import { useTimelineMonths } from './hooks/useTimelineMonths';
+import { sortStudents } from './utils/studentSorting';
+import { calculateDueStatus } from './lib/dueStatus';
+import { useStudentList } from './hooks/useStudentList';
+import { useDirectoryStudents } from './hooks/useDirectoryStudents';
+import { useToast } from './hooks/useToast';
+import { useNotifications } from './hooks/useNotifications';
+import { useListLayout } from './hooks/useListLayout';
+import { useCurrentTime } from './hooks/useCurrentTime';
+import { isValidEmail, isValidPhone } from './utils/validation';
+import { useCategories } from './hooks/useCategories';
+import { usePaymentHistory } from './hooks/usePaymentHistory';
+import { useAppRefresh } from './hooks/useAppRefresh';
+import { useConfirmDialog } from './hooks/useConfirmDialog';
+import { useSystemNotification } from './hooks/useSystemNotification';
+import { useLoginPreferences } from './hooks/useLoginPreferences';
+import { useAutoSlideshow } from './hooks/useAutoSlideshow';
+import { useUnpaidAlert } from './hooks/useUnpaidAlert';
+import { buildMonthlyPayment } from './lib/paymentBuilder';
+import ConfirmDialogModal from './components/ConfirmDialogModal';
+import ToastNotification from './components/ToastNotification';
+import QuickPaymentModal from './components/QuickPaymentModal';
+import StudentFormModal from './components/StudentFormModal';
+import StudentProfileModal from './components/StudentProfileModal';
+import StudentNotesModal from './components/StudentNotesModal';
+import ActivePaymentModal from './components/ActivePaymentModal';
+import MonthlyReportModal from './components/MonthlyReportModal';
+import NotificationsPanel from './components/NotificationsPanel';
+import WelcomeStudentModal from './components/WelcomeStudentModal';
+import CreateUserModal from './components/CreateUserModal';
+import EditUserModal from './components/EditUserModal';
+import ResolvePendingModal from './components/ResolvePendingModal';
+import DuplicateStudentsModal from './components/DuplicateStudentsModal';
+import AboutAppModal from './components/AboutAppModal';
+import LegacyStudentProfileModal from './components/LegacyStudentProfileModal';
+import StudentContextMenu from './components/StudentContextMenu';
+import AppStatusBar from './components/AppStatusBar';
+import LoginPage from './components/LoginPage';
+import InitialSetupPage from './components/InitialSetupPage';
+import LicenseBlockedPage from './components/LicenseBlockedPage';
+import SplashScreen from './components/SplashScreen';
+import { useSetupState } from './hooks/useSetupState';
+import { useSetupController } from './hooks/useSetupController';
+import { registerPaymentAtomically } from './services/paymentRegistration';
 import { 
   Users, CreditCard, Smartphone, Plus, RefreshCw, FileText,
   Search, Eye, EyeOff, Trash2, Edit, Pause, Ban,
@@ -66,43 +113,8 @@ import {
   getAlunoIniciais, getAlunoNomeSeguro, getAvatarColorByName,
 } from './utils/formatting';
 
-interface Notificacao {
-  id: string;
-  titulo: string;
-  mensagem: string;
-  data: string;
-  lida: boolean;
-  tipo: 'info' | 'sucesso' | 'alerta' | 'erro';
-  categoria?: 'prioritaria' | 'relatorio' | 'app';
-  alunoId?: string;
-}
-
-interface ConfirmDialogState {
-  visible: boolean;
-  title: string;
-  message: string;
-  confirmLabel: string;
-  tone?: 'danger' | 'warning' | 'primary';
-  onConfirm?: () => void | Promise<void>;
-}
-
-type FinanceQuickFilter = 'todos' | 'atrasados' | 'vence_hoje' | '7_dias' | 'cobertos';
-type StudentSortMode = 'inteligente' | 'alfabetica' | 'inscricao_recente' | 'inscricao_antiga';
-type DirectoryFilterStatus = 'todos' | 'ativos' | 'pausados' | 'bloqueados';
-
-interface PaymentFormState {
-  valor: string;
-  dataPagamento: string;
-  metodo: string;
-  mesReferencia?: string;
-}
 
 
-
-const isPausedStatus = (status?: string) => status === 'pausado' || status === 'suspenso';
-const isBlockedStatus = (status?: string) => status === 'bloqueado';
-const isImportedStatus = (status?: string) => status === 'importado';
-const isOperationallyActive = (status?: string) => !isPausedStatus(status) && !isBlockedStatus(status);
 
 // ─── Design System — Light / Dark / Claude ────────────────────────
 const themeVars = {
@@ -761,41 +773,6 @@ const electron = (window as any).electron || null;
 // Tema Padrão
 const DEFAULT_THEME = '#217346';
 
-type Aluno = Student;
-
-interface Nota {
-  id: number;
-  aluno_id: string;
-  texto: string;
-  data_criacao: string;
-}
-
-interface NotaRecente extends Nota {
-  nome?: string;
-  telefone?: string;
-  categoria?: string;
-}
-
-interface NotaResumo {
-  aluno_id: string;
-  total: number;
-  ultimo_id?: number;
-}
-
-interface Pagamento {
-  id?: number;
-  alunoId: string;
-  aluno_id?: string;
-  nome?: string;
-  valor: string;
-  status: 'pago' | 'pendente';
-  data_pagamento?: string;
-  metodo_pagamento?: string;
-  mes_referencia?: string;
-  referencia_inicio?: string;
-  referencia_fim?: string;
-}
-
 function App() {
   const [aba, setAba] = useState('home');
   const [alunos, setAlunos] = useState<Aluno[]>([]);
@@ -829,8 +806,6 @@ function App() {
   const [moradaAcademia, setMoradaAcademia] = useState(() => localStorage.getItem('nl_morada_academia') || 'Avenida Principal, Mindelo');
   const [emailAcademia, setEmailAcademia] = useState(() => localStorage.getItem('nl_email_academia') || 'contacto@nextlevel.cv');
   const [telefoneAcademia, setTelefoneAcademia] = useState(() => localStorage.getItem('nl_telefone_academia') || '+238 000 00 00');
-  const [categorias, setCategorias] = useState<string[]>([]);
-  const [novaCategoria, setNovaCategoria] = useState('');
 
   // Estados para Controle Financeiro
   const [mostrarModalPagamento, setMostrarModalPagamento] = useState(false);
@@ -843,7 +818,7 @@ function App() {
     dataPagamento: formatInputDate(),
     metodo: DEFAULT_PAYMENT_METHOD,
   });
-  const [historicoPagamentos, setHistoricoPagamentos] = useState<Pagamento[]>([]);
+  const { historicoPagamentos, setHistoricoPagamentos, carregarHistorico } = usePaymentHistory(electron);
   const [alunoParaPagamento, setAlunoParaPagamento] = useState<Aluno | null>(null);
   const [timelineFinanceiraMinimizada, setTimelineFinanceiraMinimizada] = useState(true);
 
@@ -958,8 +933,6 @@ function App() {
   const [configAba, setConfigAba] = useState<'geral' | 'operacao' | 'notificacoes' | 'tema' | 'utilizadores' | 'lixeira' | 'ajuda' | 'sobre'>('geral');
   const [mostrarSenha, setMostrarSenha] = useState(false);
   const [carregandoLogin, setCarregandoLogin] = useState(false);
-  const [online, setOnline] = useState(navigator.onLine);
-  const [sincronizando, setSincronizando] = useState(false);
   const [zoomLista, setZoomLista] = useState(() => Number(localStorage.getItem('nl_zoom_lista')) || 90); 
   const [fontSizeLista, setFontSizeLista] = useState(() => Number(localStorage.getItem('nl_font_size_lista')) || 13);
   const [desktopNotificationsEnabled, setDesktopNotificationsEnabled] = useState(true);
@@ -1003,25 +976,7 @@ function App() {
   };
   
   // Estados de Licenciamento e Setup (Fase 3)
-  const [setupStep, setSetupStep] = useState(1);
-  const [setupData, setSetupData] = useState({
-    nomeAcademia: '',
-    email: '',
-    telefone: '',
-    morada: '',
-    adminEmail: '',
-    adminSenha: '',
-    confirmarSenha: '',
-    licenca: '',
-  });
-  const [setupLicenseInfo, setSetupLicenseInfo] = useState<any>(null);
-  const [setupError, setSetupError] = useState('');
-  const [licencaAtiva, setLicencaAtiva] = useState<boolean>(true);
-  const [licencaDados, setLicencaDados] = useState({ chave: '', expiracao: '', tipo: '' });
-  const [configuracoes, setConfiguracoes] = useState<any>(null);
-  const [loadingConfig, setLoadingConfig] = useState(true);
-  const [chaveReativacao, setChaveReativacao] = useState('');
-  const [erroReativacao, setErroReativacao] = useState('');
+  const { setupStep, setSetupStep, setupData, setSetupData, setupLicenseInfo, setSetupLicenseInfo, setupError, setSetupError, licencaAtiva, setLicencaAtiva, licencaDados, setLicencaDados, configuracoes, setConfiguracoes, loadingConfig, setLoadingConfig, chaveReativacao, setChaveReativacao, erroReativacao, setErroReativacao } = useSetupState();
   const [mostrarUserMenu, setMostrarUserMenu] = useState(false);
   const [mostrarConfigModal, setMostrarConfigModal] = useState(false);
   const [mostrarSobreDoc, setMostrarSobreDoc] = useState(false);
@@ -1031,7 +986,7 @@ function App() {
   const [mesRelatorio, setMesRelatorio] = useState(new Date().toLocaleString('pt-PT', { month: 'long' }).toLowerCase());
   const [anoRelatorio, setAnoRelatorio] = useState(new Date().getFullYear());
   const [mostrarListaMatriculas, setMostrarListaMatriculas] = useState(false);
-  const [notificacoes, setNotificacoes] = useState<Notificacao[]>(() => JSON.parse(localStorage.getItem('nl_notificacoes') || '[]'));
+  const { notificacoes, setNotificacoes, adicionarNotificacao, marcarComoLida, limparNotificacoes, notificacoesNaoLidas } = useNotifications();
   const [mostrarNotificacoes, setMostrarNotificacoes] = useState(false);
   const [mostrarDailyReport, setMostrarDailyReport] = useState(false);
   const [mostrarResolverPendencias, setMostrarResolverPendencias] = useState(false);
@@ -1043,49 +998,15 @@ function App() {
   const [msgBoasVindas, setMsgBoasVindas] = useState('');
 
   // Quick Access — login sem senha
-  const [quickAccessUsers, setQuickAccessUsers] = useState<number[]>(() => {
-    try { return JSON.parse(localStorage.getItem('nl_quick_access_users') || '[]'); } catch { return []; }
-  });
+  const { quickAccessUsers, setQuickAccessUsers, slideshowImages, setSlideshowImages, slideshowTimer, setSlideshowTimer, slideshowTextEnabled, setSlideshowTextEnabled, loginSlideshowUsers, setLoginSlideshowUsers } = useLoginPreferences();
   const [quickAccessExpanded, setQuickAccessExpanded] = useState(false);
 
-  // Slideshow de login
-  const [slideshowImages, setSlideshowImages] = useState<string[]>(() => {
-    try { return JSON.parse(localStorage.getItem('nl_slideshow_images') || '[]'); } catch { return []; }
-  });
-  const [slideshowTimer, setSlideshowTimer] = useState(() => Number(localStorage.getItem('nl_slideshow_timer') || '6'));
-  const [slideshowTextEnabled, setSlideshowTextEnabled] = useState(() => localStorage.getItem('nl_slideshow_text') !== '0');
   const [currentSlide, setCurrentSlide] = useState(0);
-  const [loginSlideshowUsers, setLoginSlideshowUsers] = useState<any[]>([]);
   const [mostrarSobreApp, setMostrarSobreApp] = useState(false);
-  const [agora, setAgora] = useState(new Date());
-  const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState>({
-    visible: false,
-    title: '',
-    message: '',
-    confirmLabel: 'Confirmar',
-  });
-  const zoomListaNormalizado = Math.max(60, Math.min(100, zoomLista));
-  const larguraListas = Math.round(1120 + ((zoomListaNormalizado - 60) / 40) * 360);
-  const larguraSidebarContactos = Math.round(280 + ((zoomListaNormalizado - 60) / 40) * 80);
-  const densidadeLista = (zoomListaNormalizado - 60) / 40;
-  const paddingLinhaY = `${((7.5 + densidadeLista * 5.5) * 0.64).toFixed(1)}px`;
-  const paddingLinhaX = `${(12 + densidadeLista * 7).toFixed(1)}px`;
-  const tamanhoAvatarLista = `${Math.round(29 + densidadeLista * 6)}px`;
-  const tamanhoFonteLista = `${(13 + densidadeLista * 1.6).toFixed(1)}px`;
-  const tamanhoFonteSecundariaLista = `${(11.2 + densidadeLista * 1.25).toFixed(1)}px`;
-  const estiloTabelaAlunos = {
-    '--list-row-py': paddingLinhaY,
-    '--list-row-px': paddingLinhaX,
-    '--list-avatar-size': tamanhoAvatarLista,
-    '--list-font-primary': tamanhoFonteLista,
-    '--list-font-secondary': tamanhoFonteSecundariaLista,
-  } as CSSProperties;
+  const agora = useCurrentTime();
+  const { confirmDialog, setConfirmDialog, abrirConfirmacao, fecharConfirmacao } = useConfirmDialog();
+  const { zoomListaNormalizado, larguraListas, larguraSidebarContactos, estiloTabelaAlunos, obterTomPastel } = useListLayout(zoomLista);
   const timelineAnnouncementRef = useRef('');
-
-  // Efeito para salvar notificações sempre que mudarem
-  useEffect(() => {
-    localStorage.setItem('nl_notificacoes', JSON.stringify(notificacoes));
-  }, [notificacoes]);
 
   // Notificação automática de relatório diário
   useEffect(() => {
@@ -1111,89 +1032,22 @@ function App() {
         'info'
       );
     }
-  }, [isLoggedIn, sessionUser]);
+  }, [isLoggedIn, sessionUser, adicionarNotificacao]);
 
   useEffect(() => {
     localStorage.setItem('nl_zoom_lista', String(zoomListaNormalizado));
   }, [zoomListaNormalizado]);
 
-  useEffect(() => {
-    const intervalId = window.setInterval(() => setAgora(new Date()), 60_000);
-    return () => window.clearInterval(intervalId);
-  }, []);
-
-  const adicionarNotificacao = (titulo: string, mensagem: string, tipo: Notificacao['tipo'] = 'info', alunoId?: string) => {
-    // Auto-categorizar por tipo de evento
-    const tituloBaixo = titulo.toLowerCase();
-    let categoria: Notificacao['categoria'] = 'app';
-    if (
-      tituloBaixo.includes('matr') ||
-      tituloBaixo.includes('atraso') ||
-      tituloBaixo.includes('pagamento') ||
-      tituloBaixo.includes('status') ||
-      tituloBaixo.includes('cancelamento') ||
-      tipo === 'alerta' || tipo === 'erro'
-    ) {
-      categoria = 'prioritaria';
-    } else if (
-      tituloBaixo.includes('relat') ||
-      tituloBaixo.includes('export') ||
-      tituloBaixo.includes('dossier') ||
-      tituloBaixo.includes('mensal') ||
-      tituloBaixo.includes('receita') ||
-      tituloBaixo.includes('taxa')
-    ) {
-      categoria = 'relatorio';
-    }
-    const nova: Notificacao = {
-      id: Date.now().toString(),
-      titulo,
-      mensagem,
-      data: new Date().toLocaleString('pt-PT'),
-      lida: false,
-      tipo,
-      categoria,
-      alunoId,
-    };
-    setNotificacoes(prev => [nova, ...prev]);
-  };
-
-  const marcarComoLida = (id: string) => {
-    setNotificacoes(prev => prev.map(n => n.id === id ? { ...n, lida: true } : n));
-  };
-
-  const limparNotificacoes = () => {
-    setNotificacoes([]);
-  };
-
-  const notificacoesNaoLidas = notificacoes.filter(n => !n.lida).length;
 
 
-
-  // GNOME Adwaita: Toast Notifications System
-  const [toast, setToast] = useState<{ message: string, visible: boolean }>({ message: '', visible: false });
-  const showToast = useCallback((message: string) => {
-    setToast({ message, visible: true });
-    setTimeout(() => setToast({ message: '', visible: false }), 3000);
-  }, []);
+  const { toast, showToast } = useToast();
 
   const guardarConfiguracao = async (chave: string, valor: string) => {
     if (!electron) return;
     await electron.ipcRenderer.invoke('update-configuracao', chave, valor);
   };
 
-  const notificarSistema = useCallback(async (title: string, body: string) => {
-    if (!electron || !desktopNotificationsEnabled) return;
-    await electron.ipcRenderer.invoke('notify-system', { title, body });
-  }, [desktopNotificationsEnabled]);
-
-  const abrirConfirmacao = (config: Omit<ConfirmDialogState, 'visible'>) => {
-    setConfirmDialog({ visible: true, ...config });
-  };
-
-  const fecharConfirmacao = () => {
-    setConfirmDialog((prev) => ({ ...prev, visible: false }));
-  };
+  const notificarSistema = useSystemNotification(electron, desktopNotificationsEnabled);
 
   const fecharCamadaAtiva = useCallback(() => {
     if (confirmDialog.visible) { fecharConfirmacao(); return true; }
@@ -1225,68 +1079,11 @@ function App() {
     mostrarFormNovoUtilizador, mostrarBoasVindas, alunoNotasRapidas,
     pagamentoAtivoInfo, mostrarCobrancaRapida, mostrarPerfilModal,
     mostrarRelatorioMensal, mostrarModalDuplicados, mostrarModalExport,
-    mostrarModalPagamento, mostrarImportar,
+    mostrarModalPagamento, mostrarImportar, fecharConfirmacao,
   ]);
 
   // Função para calcular progresso, status e cores inteligentes (Inteligência Termométrica)
-  const calcularStatusVencimento = (vencimentoStr: string) => {
-    try {
-      const hoje = new Date();
-      hoje.setHours(0, 0, 0, 0);
-      
-      const [dia, mes, ano] = vencimentoStr.split('/').map(Number);
-      const dataVencimento = new Date(ano, mes - 1, dia);
-      dataVencimento.setHours(0, 0, 0, 0);
-
-      const diffTime = dataVencimento.getTime() - hoje.getTime();
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-      
-      let status = 'pago';
-      let color = 'text-emerald-600';
-      let bgColor = 'bg-emerald-50';
-      let borderColor = 'border-emerald-100';
-      let barColor = 'bg-emerald-500';
-
-      if (diffDays < 0) {
-        status = 'atrasado';
-        color = 'text-red-600';
-        bgColor = 'bg-red-50';
-        borderColor = 'border-red-100';
-        barColor = 'bg-red-600';
-      } else if (diffDays === 0) {
-        status = 'hoje';
-        color = 'text-red-500';
-        bgColor = 'bg-red-50';
-        borderColor = 'border-red-200';
-        barColor = 'bg-red-500';
-      } else if (diffDays <= 3) {
-        status = 'critico';
-        color = 'text-orange-600';
-        bgColor = 'bg-orange-50';
-        borderColor = 'border-orange-100';
-        barColor = 'bg-orange-500';
-      } else if (diffDays <= 7) {
-        status = 'pendente';
-        color = 'text-amber-600';
-        bgColor = 'bg-amber-50';
-        borderColor = 'border-amber-100';
-        barColor = 'bg-amber-500';
-      } else if (diffDays <= 15) {
-        status = 'alerta';
-        color = 'text-yellow-600';
-        bgColor = 'bg-yellow-50';
-        borderColor = 'border-yellow-100';
-        barColor = 'bg-yellow-400';
-      }
-
-      // Ciclo termométrico: quanto menos tempo falta, mais "quente" fica
-      const progresso = Math.max(0, Math.min(100, (diffDays / 30) * 100));
-
-      return { progresso, status, diffDays, color, bgColor, borderColor, barColor };
-    } catch (e) {
-      return { progresso: 100, status: 'pago', diffDays: 30, color: 'text-emerald-600', bgColor: 'bg-emerald-50', borderColor: 'border-emerald-100', barColor: 'bg-emerald-500' };
-    }
-  };
+  const calcularStatusVencimento = calculateDueStatus;
 
   const parseDate = (dateStr?: string) => parseFlexibleDate(dateStr) || new Date();
   const abrirPerfilAluno = (aluno?: Aluno | null) => {
@@ -1314,22 +1111,8 @@ function App() {
     carregarNotas(aluno.id);
     setMostrarPerfilModal(true);
   };
-  const registrarPagamentoAtomico = async (
-    pagamento: Pagamento,
-    nextChargeDate?: string,
-    updateStudentDue = true
-  ) => {
-    const ipcRenderer = electron?.ipcRenderer || (window as any).electron?.ipcRenderer;
-    if (!ipcRenderer) throw new Error('Electron IPC indisponível.');
-
-    const res = await ipcRenderer.invoke('billing:register-payment', {
-      pagamento,
-      nextChargeDate,
-      updateStudentDue,
-    });
-    if (!res?.success) throw new Error(res?.message || 'Erro ao registar pagamento.');
-    return res;
-  };
+  const registrarPagamentoAtomico = (pagamento: Pagamento, nextChargeDate?: string, updateStudentDue = true) =>
+    registerPaymentAtomically(electron, pagamento, nextChargeDate, updateStudentDue);
 
   const calcularVencimentoInteligente = (
     dataMatriculaStr: string,
@@ -1431,58 +1214,9 @@ function App() {
     return irParaMesAtualOperacional(true);
   }, [periodoAtualSelecionado, mesFinanceiro, anoFinanceiro, irParaMesAtualOperacional]);
 
-  const resumosFinanceiros = useMemo(() => {
-    return alunos.map((aluno) => {
-      // Também usa isolamento por mês para que os contadores do dashboard
-      // reflictam o estado do mês selecionado, não do mês corrente.
-      const resumo = getStudentStatusForMonth(aluno, pagamentos, anoFinanceiro, mesFinanceiroIndex, hojeReferencia);
-      return { aluno, resumo };
-    });
-  }, [alunos, pagamentos, anoFinanceiro, mesFinanceiroIndex, hojeReferencia]);
+  const resumosFinanceiros = useFinancialSummaries(alunos, pagamentos, anoFinanceiro, mesFinanceiroIndex, hojeReferencia);
 
-  const timelineMonths = useMemo(() => {
-    return MONTH_OPTIONS.map((mes, index) => {
-      const future = isFutureMonth(index, anoFinanceiro, hojeReferencia);
-      const monthStart = new Date(anoFinanceiro, index, 1);
-      const monthEnd = future
-        ? new Date(anoFinanceiro, index, 1)
-        : new Date(anoFinanceiro, index + 1, 0);
-
-      const students = future
-        ? []
-        : alunos.filter((aluno) => {
-            const enrollment = parseFlexibleDate(aluno.data_matricula);
-            return enrollment ? enrollment.getTime() <= monthEnd.getTime() : true;
-          });
-
-      const fresh = future
-        ? []
-        : students.filter((aluno) => isSameMonthAndYear(parseFlexibleDate(aluno.data_matricula), index, anoFinanceiro));
-
-      const debtCount = future
-        ? 0
-        : students.filter((aluno) => {
-            // Usar isolamento por mês: cada mês é avaliado independentemente
-            const summary = getStudentStatusForMonth(aluno, pagamentos, anoFinanceiro, index, hojeReferencia);
-            return summary.status === 'atrasado' || summary.status === 'hoje';
-          }).length;
-
-      return {
-        id: mes,
-        monthIndex: index,
-        label: mes,
-        shortLabel: mes.slice(0, 3),
-        future,
-        active: mesFinanceiro === mes,
-        isCurrent: anoFinanceiro === hojeReferencia.getFullYear() && index === hojeReferencia.getMonth(),
-        count: students.length,
-        newCount: fresh.length,
-        debtCount,
-        monthStart,
-        monthEnd,
-      };
-    }).filter((month) => !month.future);
-  }, [anoFinanceiro, hojeReferencia, alunos, pagamentos, mesFinanceiro]);
+  const timelineMonths = useTimelineMonths(alunos, pagamentos, anoFinanceiro, mesFinanceiro, hojeReferencia);
 
   const alunosNoPeriodo = useMemo(() => {
     return periodoSelecionadoFuturo
@@ -1625,19 +1359,7 @@ function App() {
       )
     : null;
 
-  // Sistema Inteligente de Verificação de Inadimplência (Movido para após definições de estado)
-  useEffect(() => {
-    if (alunos.length > 0 && !localStorage.getItem(`nl_checked_unpaid_${mesFinanceiro}`)) {
-       if (alunosEmDivida.length > 0) {
-          adicionarNotificacao(
-            'Alerta de Pagamentos', 
-            `Existem ${alunosEmDivida.length} alunos com cobrança vencida neste momento.`, 
-            'alerta'
-          );
-          localStorage.setItem(`nl_checked_unpaid_${mesFinanceiro}`, 'true');
-       }
-    }
-  }, [alunos.length, alunosEmDivida.length, mesFinanceiro]);
+  useUnpaidAlert(alunos.length, alunosEmDivida.length, mesFinanceiro, adicionarNotificacao);
 
   const historicoMensalFiltrado = useMemo(() => resumosHistoricoMensal
     .filter(({ aluno, resumo }) => {
@@ -1720,12 +1442,10 @@ function App() {
     nomeAcademia,
     notificarSistema,
     showToast,
+    adicionarNotificacao,
   ]);
 
   const [alunosDeletados, setAlunosDeletados] = useState<Aluno[]>([]);
-
-  const validateEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-  const validatePhone = (phone: string) => /^\d+$/.test(phone.replace(/[\s\-()+]/g, ''));
 
   const carregarConfiguracoes = useCallback(async () => {
     if (electron) {
@@ -1805,41 +1525,14 @@ function App() {
         setTimeout(() => setLoadingConfig(false), 1200);
       }
     }
+  // setCategorias é estável; a função é definida abaixo para depender de guardarConfiguracao.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const atualizarAplicacao = useCallback(async () => {
-    setSincronizando(true);
+  const { online, sincronizando, setSincronizando } = useConnectivity(isLoggedIn, carregarConfiguracoes);
 
-    try {
-      if (electron) {
-        const resultado = await electron.ipcRenderer.invoke('refresh-app');
-        if (resultado?.success === false) {
-          throw new Error(resultado.message || 'Falha ao atualizar a aplicação.');
-        }
-        return;
-      }
+  const atualizarAplicacao = useAppRefresh({ electron, reloadData: carregarConfiguracoes, showToast, setSyncing: setSincronizando });
 
-      window.location.reload();
-    } catch (error: any) {
-      console.error('Erro ao atualizar a aplicação:', error);
-      await carregarConfiguracoes();
-      setSincronizando(false);
-      showToast(error?.message || 'Não foi possível atualizar a aplicação.');
-    }
-  }, [setSincronizando, carregarConfiguracoes, showToast]);
-
-
-  useEffect(() => {
-    const handleOnline = () => setOnline(true);
-    const handleOffline = () => setOnline(false);
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-
-    return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-    };
-  }, []);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -1916,87 +1609,25 @@ function App() {
     }
   }, [sessionUser?.role]);
 
-  // Recarregar dados apenas quando a ligação é restaurada (não no arranque)
-  const isFirstOnlineRef = useRef(true);
-  useEffect(() => {
-    if (isFirstOnlineRef.current) {
-      isFirstOnlineRef.current = false;
-      return;
-    }
-    if (online && isLoggedIn) {
-      carregarConfiguracoes();
-    }
-  }, [online, isLoggedIn, carregarConfiguracoes]);
+  useBackupReminder({
+    enabled: backupReminderEnabled,
+    lastBackupMonth: ultimoBackupMes,
+    academyName: nomeAcademia,
+    notify: adicionarNotificacao,
+    notifySystem: notificarSistema,
+  });
 
-  useEffect(() => {
-    const agora = new Date();
-    const monthKey = `${agora.getFullYear()}-${String(agora.getMonth() + 1).padStart(2, '0')}`;
-    const lembreteJaMostrado = localStorage.getItem(`nl_backup_alert_${monthKey}`);
-
-    if (!backupReminderEnabled || ultimoBackupMes === monthKey || lembreteJaMostrado) return;
-
-    adicionarNotificacao(
-      'Lembrete de Backup Mensal',
-      'Recomendado exportar o dossier operacional em Excel e gerar um backup ZIP antes de fechar o mês.',
-      'alerta'
-    );
-    notificarSistema(
-      nomeAcademia,
-      'Faça o backup mensal: exporte o dossier em Excel e gere o backup ZIP do sistema.'
-    );
-    localStorage.setItem(`nl_backup_alert_${monthKey}`, '1');
-  }, [backupReminderEnabled, ultimoBackupMes, nomeAcademia, notificarSistema]);
-
-  // ─── Verificação de relatório mensal disponível ──────────────────────────
-  useEffect(() => {
-    if (!notifRelatorios || !isLoggedIn) return;
-    const agora = new Date();
-    const diasNoMes = new Date(agora.getFullYear(), agora.getMonth() + 1, 0).getDate();
-    const diaAtual = agora.getDate();
-    const mesAnterior = agora.getMonth() === 0 ? 12 : agora.getMonth();
-    const anoAnterior = agora.getMonth() === 0 ? agora.getFullYear() - 1 : agora.getFullYear();
-    const mesesPt = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
-    const chaveRelatorio = `nl_relatorio_notif_${anoAnterior}-${String(mesAnterior).padStart(2,'0')}`;
-
-    if ((diaAtual >= diasNoMes - 1 || diaAtual <= 3) && !localStorage.getItem(chaveRelatorio)) {
-      const mesBadge = diaAtual >= diasNoMes - 1
-        ? mesesPt[agora.getMonth()]
-        : mesesPt[mesAnterior - 1];
-      const label = `${mesBadge} ${diaAtual >= diasNoMes - 1 ? agora.getFullYear() : anoAnterior}`;
-      setRelatorioMensalDisponivel(label);
-      adicionarNotificacao(
-        'Relatório Mensal Disponível',
-        `O relatório de ${label} está pronto para exportar. Aceda a Alunos e exporte em PDF ou Excel.`,
-        'info'
-      );
-      localStorage.setItem(chaveRelatorio, '1');
-    }
-  }, [isLoggedIn, notifRelatorios]);
+  useMonthlyReportReminder({
+    enabled: notifRelatorios,
+    loggedIn: isLoggedIn,
+    setAvailable: setRelatorioMensalDisponivel,
+    notify: adicionarNotificacao,
+  });
 
   const salvarConfig = async (chave: string, valor: string) => {
     await guardarConfiguracao(chave, valor);
   };
-
-  const adicionarCategoria = () => {
-    if (!novaCategoria.trim()) return;
-    const novas = [...categorias, novaCategoria.trim()];
-    setCategorias(novas);
-    salvarConfig('categorias', JSON.stringify(novas));
-    setNovaCategoria('');
-  };
-
-  const removerCategoria = (cat: string) => {
-    const novas = categorias.filter(c => c !== cat);
-    setCategorias(novas);
-    salvarConfig('categorias', JSON.stringify(novas));
-  };
-
-  const carregarHistorico = async (alunoId: string) => {
-    if (electron) {
-      const hist = await electron.ipcRenderer.invoke('get-historico-pagamentos', alunoId);
-      setHistoricoPagamentos(hist);
-    }
-  };
+  const { categorias, setCategorias, novaCategoria, setNovaCategoria, adicionarCategoria, removerCategoria } = useCategories(salvarConfig);
 
 
   // Auto-carregar utilizadores quando a tab de utilizadores fica visível
@@ -2044,12 +1675,6 @@ function App() {
     } finally {
       setResetSeguroLoading(false);
     }
-  };
-
-  const validarFormatoLicenca = (key: string) => {
-    // Formato: NLA-2026-ACADEMIA-001-ABCD1234
-    const regex = /^NLA-2026-[A-Z0-9]+-\d{3}-[A-Z0-9]{8}$/;
-    return regex.test(key);
   };
 
   const finalizarSetup = async () => {
@@ -2108,34 +1733,8 @@ function App() {
     }
 
     try {
-      const selectedMonthName = mesAtualNome;
-      const targetMonthIndex = MONTH_OPTIONS.indexOf(selectedMonthName);
-      const targetYear = anoAtual;
-
-      const dueDay = (() => {
-        const date = parseFlexibleDate(alunoParaPagamento.vencimento) || parseFlexibleDate(alunoParaPagamento.data_matricula) || new Date();
-        return date.getDate();
-      })();
-
-      const targetDueDate = new Date(targetYear, targetMonthIndex, dueDay);
-      const targetDueDateStr = formatPtDate(targetDueDate);
-
-      const dataPagamento = formatPtDate(parseDate(pagamentoForm.dataPagamento));
-      const janelaCobranca = buildCoverageWindow(dataPagamento, targetDueDateStr);
-      const valorPagamento = String(
-        normalizeAmount(pagamentoForm.valor) || normalizeAmount(alunoParaPagamento.plano) || 1000
-      );
-      
-      const novoPagamento: Pagamento = {
-        alunoId: alunoParaPagamento.id,
-        valor: valorPagamento,
-        status: 'pago',
-        data_pagamento: dataPagamento,
-        metodo_pagamento: pagamentoForm.metodo,
-        mes_referencia: `${selectedMonthName.charAt(0).toUpperCase() + selectedMonthName.slice(1)} ${targetYear}`,
-        referencia_inicio: janelaCobranca.coverageStart,
-        referencia_fim: janelaCobranca.coverageEnd,
-      };
+      const { payment: novoPagamento, coverage: janelaCobranca } = buildMonthlyPayment(alunoParaPagamento, pagamentoForm, mesAtualNome, anoAtual);
+      const valorPagamento = novoPagamento.valor;
 
       if (electron) {
         await registrarPagamentoAtomico(novoPagamento, janelaCobranca.nextChargeDate);
@@ -2155,7 +1754,8 @@ function App() {
     }
   };
 
-  const gerarRecibo = (p: Pagamento, alunoNome: string) => {
+  const gerarRecibo = async (p: Pagamento, alunoNome: string) => {
+    const jsPDF = await loadJsPDF();
     const doc = new jsPDF({
       orientation: 'portrait',
       unit: 'mm',
@@ -2314,11 +1914,8 @@ function App() {
   useEffect(() => { if (isLoggedIn) carregarConfiguracoes(); }, [isLoggedIn, carregarConfiguracoes]);
 
   // Slideshow na tela de login — avança automaticamente
-  useEffect(() => {
-    if (isLoggedIn || slideshowImages.length === 0) return;
-    const interval = setInterval(() => setCurrentSlide(p => (p + 1) % slideshowImages.length), slideshowTimer * 1000);
-    return () => clearInterval(interval);
-  }, [isLoggedIn, slideshowImages, slideshowTimer]);
+  const avancarSlide = useCallback(() => setCurrentSlide((slide) => (slide + 1) % slideshowImages.length), [slideshowImages.length]);
+  useAutoSlideshow(isLoggedIn, slideshowImages.length, slideshowTimer, avancarSlide);
 
   // Carregar lista de utilizadores para quick access na tela de login
   useEffect(() => {
@@ -2328,7 +1925,7 @@ function App() {
     electron.ipcRenderer.invoke('users:list').then((res: any) => {
       if (res?.success) setLoginSlideshowUsers((res.users || []).filter((u: any) => qaIds.includes(u.id) && u.is_active !== 0));
     }).catch(() => {});
-  }, [isLoggedIn]);
+  }, [isLoggedIn, setLoginSlideshowUsers]);
 
   // ─── Matricular aluno com lógica inteligente de pagamentos ──────────────
   const salvarAluno = async (e: React.FormEvent) => {
@@ -2339,11 +1936,11 @@ function App() {
       showToast('❌ Nome do aluno é obrigatório.');
       return;
     }
-    if (!validatePhone(novoAluno.telefone)) {
+    if (!isValidPhone(novoAluno.telefone)) {
       showToast('❌ Telefone inválido. Use apenas números.');
       return;
     }
-    if (novoAluno.email && !validateEmail(novoAluno.email)) {
+    if (novoAluno.email && !isValidEmail(novoAluno.email)) {
       showToast('❌ Email inválido.');
       return;
     }
@@ -2467,11 +2064,11 @@ function App() {
       showToast('❌ Nome do aluno é obrigatório.');
       return;
     }
-    if (!validatePhone(novoAluno.telefone)) {
+    if (!isValidPhone(novoAluno.telefone)) {
       showToast('❌ Telefone inválido. Use apenas números.');
       return;
     }
-    if (novoAluno.email && !validateEmail(novoAluno.email)) {
+    if (novoAluno.email && !isValidEmail(novoAluno.email)) {
       showToast('❌ Email inválido.');
       return;
     }
@@ -2783,100 +2380,11 @@ function App() {
     }
   };
 
-  const ordenarAlunosPorModo = useCallback((lista: Aluno[], modo: StudentSortMode) => {
-    const ordered = [...lista];
+  const ordenarAlunosPorModo = useCallback((lista: Aluno[], modo: StudentSortMode) => sortStudents(lista, modo, calcularStatusVencimento), [calcularStatusVencimento]);
 
-    if (modo === 'alfabetica') {
-      return ordered.sort((left, right) => left.nome.localeCompare(right.nome, 'pt-PT'));
-    }
+  const alunosFiltradosOrdenados = useStudentList(resumosFinanceiros, filtroStatus, pesquisa);
 
-    if (modo === 'inscricao_recente') {
-      return ordered.sort((left, right) => {
-        const leftDate = parseFlexibleDate(left.data_matricula)?.getTime() || 0;
-        const rightDate = parseFlexibleDate(right.data_matricula)?.getTime() || 0;
-        return rightDate - leftDate;
-      });
-    }
-
-    if (modo === 'inscricao_antiga') {
-      return ordered.sort((left, right) => {
-        const leftDate = parseFlexibleDate(left.data_matricula)?.getTime() || 0;
-        const rightDate = parseFlexibleDate(right.data_matricula)?.getTime() || 0;
-        return leftDate - rightDate;
-      });
-    }
-
-    return ordered.sort((a: any, b: any) => {
-      const statusA = calcularStatusVencimento((a.vencimento || ''));
-      const statusB = calcularStatusVencimento(b.vencimento);
-      const prioridade = { 'atrasado': 0, 'hoje': 1, 'critico': 2, 'pendente': 3, 'alerta': 4, 'pago': 5, 'pausado': 6, 'suspenso': 6, 'bloqueado': 7 };
-      const pA = (isBlockedStatus(a.status) || isPausedStatus(a.status)) ? prioridade[a.status as keyof typeof prioridade] : prioridade[statusA.status as keyof typeof prioridade];
-      const pB = (isBlockedStatus(b.status) || isPausedStatus(b.status)) ? prioridade[b.status as keyof typeof prioridade] : prioridade[statusB.status as keyof typeof prioridade];
-      if (pA !== pB) return (pA ?? 99) - (pB ?? 99);
-      return statusA.diffDays - statusB.diffDays;
-    });
-  }, []);
-
-  // Cores pastéis leves para separação visual nas listas
-  const coresPasteis = [
-    { bg: 'bg-[#EEF4FF]', border: 'border-[#C7DEFF]' }, // azul-índigo suave
-    { bg: 'bg-[#F0FDF5]', border: 'border-[#BBF7D0]' }, // menta fresca
-    { bg: 'bg-[#FEF9EE]', border: 'border-[#FDE68A]' }, // âmbar mel
-    { bg: 'bg-[#FDF4FF]', border: 'border-[#E9D5FF]' }, // lavanda leve
-    { bg: 'bg-[#FFF1F2]', border: 'border-[#FECDD3]' }, // rosa pêssego
-    { bg: 'bg-[#F0FDFA]', border: 'border-[#99F6E4]' }, // água turquesa
-  ];
-  const obterTomPastel = (index: number) => coresPasteis[index % coresPasteis.length];
-
-  const alunosFiltradosOrdenados = useMemo(() => resumosFinanceiros
-    .filter(({ aluno, resumo }) => {
-      const statusMatch = filtroStatus === 'todos'
-        || (filtroStatus === 'divida' && (resumo.status === 'atrasado' || resumo.status === 'hoje'))
-        || (filtroStatus === 'cobertos' && (resumo.status === 'pago' || resumo.status === 'em_dia' || resumo.status === 'vence_em_breve'))
-        || (filtroStatus === 'importados' && isImportedStatus(aluno.status));
-      const termo = pesquisa.trim().toLowerCase();
-      const pesquisaMatch =
-        !termo ||
-        aluno.nome.toLowerCase().includes(termo) ||
-        aluno.id.toLowerCase().includes(termo) ||
-        (aluno.telefone || '').toLowerCase().includes(termo) ||
-        (aluno.email || '').toLowerCase().includes(termo);
-
-      return statusMatch && pesquisaMatch;
-    })
-    .sort((left, right) => {
-      const prioridadeLeft = prioridadeResumoAlunos[left.resumo.status as keyof typeof prioridadeResumoAlunos] ?? 99;
-      const prioridadeRight = prioridadeResumoAlunos[right.resumo.status as keyof typeof prioridadeResumoAlunos] ?? 99;
-      if (prioridadeLeft !== prioridadeRight) return prioridadeLeft - prioridadeRight;
-      if (left.resumo.daysUntilCharge !== right.resumo.daysUntilCharge) {
-        return left.resumo.daysUntilCharge - right.resumo.daysUntilCharge;
-      }
-      return left.aluno.nome.localeCompare(right.aluno.nome, 'pt-PT');
-    }), [resumosFinanceiros, filtroStatus, pesquisa]);
-
-  // alunosDirectorio uses the same period-filtered base as the Alunos page
-  const alunosDirectorio = useMemo(() => ordenarAlunosPorModo(
-    alunosNoPeriodo.filter((aluno) => {
-      const statusMatch =
-        filtroDirectorioStatus === 'todos'
-          ? !isBlockedStatus(aluno.status)
-          : filtroDirectorioStatus === 'ativos'
-            ? isOperationallyActive(aluno.status)
-            : filtroDirectorioStatus === 'pausados'
-              ? isPausedStatus(aluno.status)
-              : isBlockedStatus(aluno.status);
-
-      const termo = pesquisaDirectorio.trim().toLowerCase();
-      const pesquisaMatch = !termo
-        || aluno.nome.toLowerCase().includes(termo)
-        || (aluno.telefone || '').toLowerCase().includes(termo)
-        || (aluno.email || '').toLowerCase().includes(termo)
-        || String(aluno.id).toLowerCase().includes(termo);
-
-      return statusMatch && pesquisaMatch;
-    }),
-    ordenacaoDirectorio
-  ), [alunosNoPeriodo, filtroDirectorioStatus, pesquisaDirectorio, ordenacaoDirectorio, ordenarAlunosPorModo]);
+  const alunosDirectorio = useDirectoryStudents(alunosNoPeriodo, filtroDirectorioStatus, pesquisaDirectorio, ordenacaoDirectorio, ordenarAlunosPorModo);
 
   // Cálculos das Métricas
   const totalAlunos = alunos.length;
@@ -2923,7 +2431,8 @@ function App() {
 
 
 
-  const exportarPDF = () => {
+  const exportarPDF = async () => {
+    const [jsPDF, autoTable] = await Promise.all([loadJsPDF(), loadAutoTable()]);
     const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
@@ -2987,10 +2496,10 @@ function App() {
 
     const reader = new FileReader();
     reader.onload = async (evt) => {
+      const XLSX = await loadXLSX();
       const bstr = evt.target?.result;
       const wb = XLSX.read(bstr, { type: 'binary' });
-      const wsname = wb.SheetNames[0];
-      const ws = wb.Sheets[wsname];
+      const ws = wb.Sheets[wb.SheetNames[0]];
       const data = XLSX.utils.sheet_to_json(ws) as any[];
 
       let importados = 0;
@@ -3027,7 +2536,8 @@ function App() {
     reader.readAsBinaryString(file);
   };
 
-  const handleExportarExcelContactos = () => {
+  const handleExportarExcelContactos = async () => {
+    const XLSX = await loadXLSX();
     const dataToExport = alunos.map(a => ({
       ID: a.id,
       Nome: a.nome,
@@ -3041,11 +2551,12 @@ function App() {
 
     const worksheet = XLSX.utils.json_to_sheet(dataToExport);
     const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Contactos_CRM");
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Contactos_CRM');
     XLSX.writeFile(workbook, `CRM-Export-${new Date().toLocaleDateString()}.xlsx`);
   };
 
-  const exportarFinancasExcel = () => {
+  const exportarFinancasExcel = async () => {
+    const XLSX = await loadXLSX();
     const dadosExcel = alunosAtivos.map(({ aluno, resumo }) => {
       const pagamentoPeriodo = pagamentosDoPeriodo
         .filter((pagamento) => (pagamento.aluno_id || pagamento.alunoId) === aluno.id)
@@ -3071,7 +2582,8 @@ function App() {
     XLSX.writeFile(workbook, `Financas-${mesFinanceiro}-${new Date().toLocaleDateString()}.xlsx`);
   };
 
-  const exportarExcel = () => {
+  const exportarExcel = async () => {
+    const XLSX = await loadXLSX();
     const dataToExport = alunos.map(a => {
       const row: any = {};
       if (exportConfig.colunas.includes('nome')) row['Nome'] = a.nome;
@@ -3086,23 +2598,22 @@ function App() {
 
     const worksheet = XLSX.utils.json_to_sheet(dataToExport);
     const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Lista_Alunos");
-    
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Lista_Alunos');
     if (exportConfig.incluirCabecalho) {
       const headerRows = [
         [nomeAcademia.toUpperCase()],
         [`Morada: ${moradaAcademia}`],
         [`Telefone: ${telefoneAcademia} | Email: ${emailAcademia}`],
-        [""] // Linha em branco
+        [''],
       ];
-      XLSX.utils.sheet_add_aoa(worksheet, headerRows, { origin: "A1" });
+      XLSX.utils.sheet_add_aoa(worksheet, headerRows, { origin: 'A1' });
     }
-
     XLSX.writeFile(workbook, `${nomeAcademia.replace(/\s+/g, '_')}_Export.xlsx`);
     setMostrarModalExport(false);
   };
 
-  const exportarRelatorioExcel = () => {
+  const exportarRelatorioExcel = async () => {
+    const XLSX = await loadXLSX();
     const mesIdx = MONTH_OPTIONS.indexOf(mesRelatorio);
     const refRel = new Date(anoRelatorio, mesIdx + 1, 0);
     const alunosRel = [...alunos]
@@ -3127,7 +2638,6 @@ function App() {
     const worksheet = XLSX.utils.json_to_sheet(rows);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, `${mesRelatorio}_${anoRelatorio}`);
-
     const receitaMesExp = pagamentos.filter(p => isPaymentInsideMonth(p, mesRelatorio, anoRelatorio)).reduce((s, p) => s + normalizeAmount(p.valor), 0);
     const resumoRows = [
       [],
@@ -3137,12 +2647,12 @@ function App() {
       ['Gerado em', new Date().toLocaleString('pt-PT')],
     ];
     XLSX.utils.sheet_add_aoa(worksheet, resumoRows, { origin: -1 });
-
     XLSX.writeFile(workbook, `Relatorio_${nomeAcademia.replace(/\s+/g,'_')}_${mesRelatorio}_${anoRelatorio}.xlsx`);
     showToast(`Relatório ${mesRelatorio} ${anoRelatorio} exportado.`);
   };
 
   const exportarRelatorioPdf = async () => {
+    const [jsPDF, autoTable] = await Promise.all([loadJsPDF(), loadAutoTable()]);
     const mesIdx = MONTH_OPTIONS.indexOf(mesRelatorio);
     const periodoLabel = `${mesRelatorio.toUpperCase()} ${anoRelatorio}`;
     const dataGeracao = new Date().toLocaleString('pt-PT');
@@ -3334,7 +2844,7 @@ function App() {
         8: { cellWidth: 19, halign: 'center' },
         9: { cellWidth: 16, halign: 'right', fontStyle: 'bold' },
       },
-      didParseCell: (data) => {
+      didParseCell: (data: any) => {
         if (data.section === 'body' && data.column.index === 5) {
           const rowData = resumosRelatorio[data.row.index];
           const tone = statusTone(rowData?.resumo?.status);
@@ -3381,7 +2891,8 @@ function App() {
     doc.save(fileName);
   };
 
-  const exportarPDFPersonalizado = () => {
+  const exportarPDFPersonalizado = async () => {
+    const [jsPDF, autoTable] = await Promise.all([loadJsPDF(), loadAutoTable()]);
     const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.getWidth();
     
@@ -3550,797 +3061,25 @@ function App() {
     cleanupFns.push(unsubAction);
 
     return () => cleanupFns.forEach(fn => fn());
-  }, [sessionUser?.role]);
+  }, [sessionUser?.role, onMatricular]);
 
-  // ── Setup Wizard Logic (Fase 3) ──────────────────────────────────
-  useEffect(() => {
-    if (configuracoes?.setup_completed === '0') {
-      electron?.ipcRenderer.invoke('window:resize', 600, 500, false);
-    }
-  }, [configuracoes?.setup_completed]);
+  // ── Setup Wizard Controller ─────────────────────────────────────
+  const { proximoPassoSetup, saltarSetupDesenvolvedor, finalizarSetupTotal } = useSetupController({
+    electron, appLogo,
+    setup: { setupStep, setSetupStep, setupData, setupLicenseInfo, setSetupLicenseInfo, setSetupError, configuracoes },
+    guardarConfiguracao, carregarConfiguracoes,
+  });
 
-  const validarPassoSetup = async () => {
-    setSetupError('');
-    if (setupStep === 3) {
-      if (!setupData.nomeAcademia || !setupData.email || !setupData.telefone) {
-        setSetupError('Preencha os campos obrigatórios (*).');
-        return false;
-      }
-      if (!setupData.email.includes('@')) {
-        setSetupError('O email deve conter "@".');
-        return false;
-      }
-    }
-    if (setupStep === 4) {
-      if (!setupData.adminEmail || !setupData.adminSenha) {
-        setSetupError('Preencha os dados do administrador.');
-        return false;
-      }
-      if (setupData.adminSenha.length < 6) {
-        setSetupError('A senha deve ter pelo menos 6 caracteres.');
-        return false;
-      }
-      if (setupData.adminSenha !== setupData.confirmarSenha) {
-        setSetupError('As senhas não coincidem.');
-        return false;
-      }
-    }
-    if (setupStep === 5) {
-      if (!setupData.licenca) {
-        setSetupError('Insira o código de licença.');
-        return false;
-      }
-      const res = await electron?.ipcRenderer.invoke('license:validate-external', setupData.licenca);
-      if (res.success) {
-        setSetupLicenseInfo(res.license);
-        return true;
-      } else {
-        setSetupError(res.message || 'Licença inválida.');
-        return false;
-      }
-    }
-    return true;
-  };
+  // ── Splash Screen ────────────────────────────────────────────────
+  if (loadingConfig) return <SplashScreen appLogo={appLogo} />;
 
-  const proximoPassoSetup = async () => {
-    const ok = await validarPassoSetup();
-    if (ok) setSetupStep(prev => prev + 1);
-  };
-
-  const saltarSetupDesenvolvedor = async () => {
-    if (confirm('Atenção Desenvolvedor: Deseja ignorar o setup e entrar no app? (Isto criará dados padrão)')) {
-       // Criar admin padrão rápido
-       await electron?.ipcRenderer.invoke('users:create', {
-         name: 'Desenvolvedor',
-         email: 'admin@nextlab.com',
-         password: 'adminadmin',
-         role: 'admin'
-       });
-       
-       const payload = {
-         nomeAcademia: 'Desenvolvimento NEXT Lab',
-         email: COMPANY_EMAIL,
-         telefone: '9597220',
-         morada: 'Modo Dev',
-         licenca: 'NEXTLEVEL-VITALICIO-2026',
-         dataExpiracao: 'Vitalícia',
-         tipoLicenca: 'vitalicio'
-       };
-
-       await electron?.ipcRenderer.invoke('setup:save-data', payload);
-       await carregarConfiguracoes();
-       electron?.ipcRenderer.invoke('window:resize', 1280, 850, true);
-    }
-  };
-
-  const finalizarSetupTotal = async () => {
-    try {
-      const userRes = await electron?.ipcRenderer.invoke('users:create', {
-        name: 'Administrador',
-        email: setupData.adminEmail,
-        password: setupData.adminSenha,
-        role: 'admin'
-      });
-
-      if (!userRes.success) {
-        setSetupError(userRes.message);
-        return;
-      }
-
-      const payload = {
-        nomeAcademia: setupData.nomeAcademia,
-        email: setupData.email,
-        telefone: setupData.telefone,
-        morada: setupData.morada,
-        licenca: setupData.licenca,
-        dataExpiracao: setupLicenseInfo?.dataExpiracao,
-        tipoLicenca: setupLicenseInfo?.tipo
-      };
-
-      const setupRes = await electron?.ipcRenderer.invoke('setup:save-data', payload);
-      if (setupRes.success) {
-        if (appLogo && appLogo !== APP_ICON_PATH) {
-          await guardarConfiguracao('app_logo', appLogo);
-        }
-        await carregarConfiguracoes();
-        electron?.ipcRenderer.invoke('window:resize', 1280, 850, true);
-      } else {
-        setSetupError(setupRes.message);
-      }
-    } catch (err) {
-      setSetupError('Erro ao finalizar o setup.');
-    }
-  };
-
-  // ── Splash Screen (Fase 3 - Entrada Premium) ────────────────────
-  if (loadingConfig) {
-    return (
-      <div className="fixed inset-0 bg-[#0a0a0a] flex flex-col items-center justify-center z-[2000] text-white">
-         <div className="relative w-32 h-32 mb-12 flex items-center justify-center">
-            {/* App Logo Glow */}
-            <div className="absolute inset-0 bg-blue-600/20 blur-3xl rounded-full animate-pulse" />
-            <img src={appLogo} alt="App Logo" className="w-full h-full object-contain relative z-10 animate-in zoom-in duration-700" />
-         </div>
-         
-         <div className="flex flex-col items-center gap-6">
-            <div className="text-center space-y-1">
-               <h1 className="text-3xl font-black tracking-tighter uppercase">NEXT<span className="font-light normal-case">Level</span></h1>
-               <p className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.4em]">Sistema de gerenciamento de Academias</p>
-            </div>
-
-            <div className="w-40 h-0.5 bg-slate-800 rounded-full overflow-hidden">
-               <div className="h-full bg-blue-500 animate-progress-loading" />
-            </div>
-
-            <div className="flex items-center gap-2 mt-8 opacity-40 hover:opacity-100 transition-opacity">
-               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Powered by</span>
-               <img src={NEXT_LAB_ICON} alt="NEXT Lab" className="h-4 object-contain" />
-            </div>
-         </div>
-         
-         <style>{`
-            @keyframes progress-loading {
-              0% { transform: translateX(-100%); }
-              100% { transform: translateX(100%); }
-            }
-            .animate-progress-loading {
-               width: 100%;
-               animation: progress-loading 1.5s ease-in-out infinite;
-            }
-         `}</style>
-      </div>
-    );
-  }
-
-  if (configuracoes?.setup_completed === '0') {
-    return (
-      <div className="fixed inset-0 bg-black/60 backdrop-blur-[2px] flex items-center justify-center z-[1000] p-4">
-        <div className="bg-[var(--bg-surface)] w-full max-w-[600px] h-[500px] shadow-[0_20px_70px_rgba(0,0,0,0.3)] rounded-[6px] border border-[var(--border)] overflow-hidden flex flex-col animate-scale-in">
-          
-          <div className="bg-[#F1F4F9] border-b border-[#DDE2EB] h-12 flex items-center shrink-0">
-            <div className="flex-1 flex items-center gap-2.5 px-4">
-              <div className="h-6 w-6 rounded-md bg-white/50 backdrop-blur-sm p-1 border border-white/40 shadow-sm flex items-center justify-center">
-                <img src={appLogo || APP_ICON_PATH} alt="Logo" className="w-full h-full object-contain" />
-              </div>
-              <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] leading-none">NextLevel</span>
-            </div>
-            <div className="flex-1 text-center whitespace-nowrap">
-              <h2 className="text-[12px] font-black text-slate-700 uppercase tracking-wider leading-none">Configuração Inicial</h2>
-            </div>
-            <div className="flex-1 flex justify-end px-3">
-            </div>
-          </div>
-
-          <div className="h-1 w-full bg-slate-200 flex shrink-0">
-             {[1,2,3,4,5,6].map(s => (
-               <div key={s} className={`h-full flex-1 transition-all duration-500 ${setupStep >= s ? 'bg-blue-600' : ''}`} />
-             ))}
-          </div>
-
-          <div className="flex-1 overflow-y-auto p-10 flex flex-col bg-white">
-            {setupStep === 1 && (
-              <div className="flex-1 flex flex-col items-center justify-center text-center space-y-6">
-                <div className="w-20 h-20 bg-blue-50 rounded-[6px] flex items-center justify-center p-4">
-                  <img src={appLogo} alt="Logo" className="w-full h-full object-contain" />
-                </div>
-                <div>
-                  <h1 className="text-2xl font-black text-slate-900 tracking-tight uppercase">NEXT<span className="font-light normal-case">Level</span></h1>
-                  <p className="text-slate-500 font-medium mt-1">Sistema de gerenciamento de Academias</p>
-                </div>
-                <p className="text-slate-600 max-w-sm text-[15px] leading-relaxed">
-                  Sistema de gestão profissional focado em alta performance operacional.
-                </p>
-                
-                {import.meta.env.DEV && (
-                  <button
-                    onClick={saltarSetupDesenvolvedor}
-                    className="text-[11px] font-bold text-slate-400 hover:text-slate-600 uppercase tracking-widest transition-colors mt-4"
-                  >
-                    [ Ignorar (Modo Desenvolvedor) ]
-                  </button>
-                )}
-              </div>
-            )}
-
-            {setupStep === 2 && (
-              <div className="flex-1 flex flex-col items-center justify-center text-center space-y-6">
-                 <div className="w-16 h-16 bg-blue-600 rounded-xl flex items-center justify-center text-white shadow-lg">
-                    <Sparkles size={32} />
-                 </div>
-                 <div>
-                   <h2 className="text-xl font-bold text-slate-900">Sobre NEXT Lab</h2>
-                   <p className="text-slate-500 mt-2 leading-relaxed max-w-md mx-auto text-[14px]">
-                     Desenvolvemos aplicações profissionais para gestão de negócios modernos.
-                   </p>
-                 </div>
-                 <div className="bg-slate-50 w-full p-6 rounded-xl border border-slate-100 text-left space-y-3">
-                   <div className="flex items-center gap-3 text-slate-700">
-                      <Mail size={16} className="text-blue-600" />
-                      <span className="text-[14px] font-medium">{COMPANY_EMAIL}</span>
-                   </div>
-                   <div className="flex items-center gap-3 text-slate-700">
-                      <Phone size={16} className="text-blue-600" />
-                      <span className="text-[14px] font-medium">{COMPANY_PHONE}</span>
-                   </div>
-                   <div className="flex items-center gap-3 text-slate-700">
-                      <ExternalLink size={16} className="text-blue-600" />
-                      <span className="text-[14px] font-medium cursor-pointer hover:underline" onClick={() => electron?.ipcRenderer.invoke('open-external', COMPANY_WEBSITE)}>
-                         linktr.ee/next.lab
-                      </span>
-                   </div>
-                 </div>
-              </div>
-            )}
-
-            {setupStep === 3 && (
-              <div className="space-y-5 animate-slide-up">
-                <h2 className="text-xl font-bold text-slate-900">Dados da Sua Empresa</h2>
-                {/* Logo upload */}
-                <div className="flex items-center gap-4 p-4 rounded-lg bg-slate-50 border border-slate-200">
-                  <div className="w-16 h-16 rounded-[var(--radius-control)] bg-white border border-slate-200 flex items-center justify-center overflow-hidden shrink-0">
-                    <img src={appLogo || APP_ICON_PATH} className="w-12 h-12 object-contain" alt="Logo" />
-                  </div>
-                  <div className="flex-1">
-                    <p className="text-[12px] font-semibold text-slate-700 mb-1">Logótipo da Academia (opcional)</p>
-                    <p className="text-[11px] text-slate-400 mb-2">PNG, JPEG ou SVG · fundo transparente recomendado</p>
-                    <input
-                      type="file"
-                      id="setup-logo-upload"
-                      className="hidden"
-                      accept="image/svg+xml,image/png,image/jpeg"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) {
-                          const reader = new FileReader();
-                          reader.onload = (ev) => {
-                            const result = ev.target?.result as string;
-                            setAppLogo(result);
-                            localStorage.setItem('nl_app_logo', result);
-                          };
-                          reader.readAsDataURL(file);
-                        }
-                      }}
-                    />
-                    <button onClick={() => document.getElementById('setup-logo-upload')?.click()} className="px-4 h-8 text-[12px] font-semibold bg-white border border-slate-200 rounded-lg hover:bg-slate-100 transition-colors text-slate-700">
-                      Carregar Logo
-                    </button>
-                  </div>
-                </div>
-                <div className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1.5">
-                      <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Nome da Academia *</label>
-                      <input type="text" value={setupData.nomeAcademia} onChange={e => setSetupData({...setupData, nomeAcademia: e.target.value})} className="w-full h-11 px-4 rounded-lg border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none text-[14px]" placeholder="Ex: Master Gym" />
-                    </div>
-                    <div className="space-y-1.5">
-                      <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Email Institucional *</label>
-                      <input type="email" value={setupData.email} onChange={e => setSetupData({...setupData, email: e.target.value})} className="w-full h-11 px-4 rounded-lg border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none text-[14px]" placeholder="contacto@academia.com" />
-                    </div>
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Telefone *</label>
-                    <input type="text" value={setupData.telefone} onChange={e => setSetupData({...setupData, telefone: e.target.value})} className="w-full h-11 px-4 rounded-lg border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none text-[14px]" placeholder="+238 000 000 000" />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Morada (Opcional)</label>
-                    <input type="text" value={setupData.morada} onChange={e => setSetupData({...setupData, morada: e.target.value})} className="w-full h-11 px-4 rounded-lg border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none text-[14px]" placeholder="Rua, Bairro, Cidade" />
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {setupStep === 4 && (
-              <div className="space-y-6 animate-slide-up">
-                <h2 className="text-xl font-bold text-slate-900">Criar Conta de Administrador</h2>
-                <div className="space-y-4">
-                  <div className="space-y-1.5">
-                    <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Email do Admin *</label>
-                    <input type="email" value={setupData.adminEmail} onChange={e => setSetupData({...setupData, adminEmail: e.target.value})} className="w-full h-11 px-4 rounded-lg border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none text-[14px]" placeholder="admin@academia.com" />
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1.5">
-                      <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Senha *</label>
-                      <input type="password" value={setupData.adminSenha} onChange={e => setSetupData({...setupData, adminSenha: e.target.value})} className="w-full h-11 px-4 rounded-lg border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none text-[14px]" placeholder="••••••••" />
-                    </div>
-                    <div className="space-y-1.5">
-                      <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Confirmar Senha *</label>
-                      <input type="password" value={setupData.confirmarSenha} onChange={e => setSetupData({...setupData, confirmarSenha: e.target.value})} className="w-full h-11 px-4 rounded-lg border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none text-[14px]" placeholder="••••••••" />
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {setupStep === 5 && (
-              <div className="space-y-6 animate-slide-up">
-                <h2 className="text-xl font-bold text-slate-900">Ativar Licença</h2>
-                <p className="text-[14px] text-slate-600 leading-relaxed">
-                  Insira o código de licença fornecido. Se não tem licença, solicite em: <span className="font-bold text-blue-600">{COMPANY_EMAIL}</span>
-                </p>
-                <div className="space-y-4">
-                  <div className="space-y-1.5">
-                    <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Código de Licença *</label>
-                    <div className="relative">
-                      <input 
-                        type="text" 
-                        value={setupData.licenca} 
-                        onChange={e => setSetupData({...setupData, licenca: e.target.value.toUpperCase()})} 
-                        className="w-full h-12 px-4 rounded-lg border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none text-[15px] font-mono tracking-widest"
-                        placeholder="XXXX-XXXX-XXXX-XXXX"
-                      />
-                      {setupLicenseInfo && (
-                        <div className="absolute right-4 top-1/2 -translate-y-1/2 text-emerald-600 flex items-center gap-2">
-                           <CheckCircle2 size={18} />
-                           <span className="text-[12px] font-bold uppercase tracking-wider">✓ Válida</span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {setupStep === 6 && (
-              <div className="flex-1 flex flex-col items-center justify-center text-center space-y-6 animate-slide-up">
-                <div className="w-20 h-20 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center shadow-inner">
-                  <CheckCircle2 size={40} />
-                </div>
-                <div>
-                  <h2 className="text-2xl font-black text-slate-900 tracking-tight">Instalação Concluída!</h2>
-                  <p className="text-slate-600 mt-2">Bem-vindo, <span className="font-bold">{setupData.nomeAcademia}</span>!</p>
-                </div>
-                <div className="bg-slate-50 w-full p-6 rounded-xl border border-slate-100 text-left">
-                  <p className="text-[13px] text-slate-500 uppercase font-bold tracking-widest mb-3">Resumo da Licença</p>
-                  <div className="grid grid-cols-2 gap-y-2 text-[14px]">
-                     <span className="text-slate-600">Tipo:</span>
-                     <span className="font-bold text-slate-900 capitalize">{setupLicenseInfo?.tipo}</span>
-                     <span className="text-slate-600">Válida até:</span>
-                     <span className="font-bold text-slate-900">{setupLicenseInfo?.dataExpiracao || 'Vitalício'}</span>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {setupError && (
-              <div className="mt-4 p-3 bg-red-50 border border-red-100 rounded-lg flex items-center gap-3 text-red-700 text-[13px] animate-in fade-in slide-in-from-top-2">
-                <AlertTriangle size={16} />
-                {setupError}
-              </div>
-            )}
-          </div>
-
-          <div className="px-10 py-6 bg-slate-50 border-t border-slate-200 flex justify-between items-center shrink-0">
-             <button 
-               onClick={() => setupStep > 1 && setSetupStep(prev => prev - 1)}
-               className={`text-[14px] font-bold text-slate-500 hover:text-slate-700 flex items-center gap-1 transition-colors ${setupStep === 1 || setupStep === 6 ? 'invisible' : ''}`}
-             >
-                <ChevronLeft size={16} /> Anterior
-             </button>
-             
-             {setupStep < 6 ? (
-               <button 
-                 onClick={proximoPassoSetup}
-                 className="bg-blue-600 hover:bg-blue-700 text-white px-8 h-11 rounded-lg font-bold text-[14px] shadow-lg shadow-blue-600/20 transition-all flex items-center gap-2"
-               >
-                 Próximo <ChevronRight size={16} />
-               </button>
-             ) : (
-               <button 
-                 onClick={finalizarSetupTotal}
-                 className="bg-emerald-600 hover:bg-emerald-700 text-white px-10 h-11 rounded-lg font-bold text-[14px] shadow-lg shadow-emerald-600/20 transition-all"
-               >
-                 Iniciar Aplicação
-               </button>
-             )}
-          </div>
-        </div>
-      </div>
-    );
-  }
+  if (configuracoes?.setup_completed === '0') return <InitialSetupPage model={{ appLogo, setupStep, setupData, setupLicenseInfo, setupError, electron, setAppLogo, setSetupData, setSetupStep, saltarSetupDesenvolvedor, proximoPassoSetup, finalizarSetupTotal }} />;
 
   // ── License Block Screen ──────────────────────────────────────────
-  if (!licencaAtiva) {
-    return (
-      <div className="flex h-screen w-screen items-center justify-center bg-[#172B4D] nl-font-ui p-6">
-        <GlobalStyles theme="dark" />
-        <div className="nl-card w-full max-w-[480px] text-center space-y-8 animate-slide-up bg-white p-12">
-          <div className="w-24 h-24 bg-red-50 rounded-full flex items-center justify-center mx-auto border border-red-100">
-            <ShieldOff size={48} className="text-red-500" />
-          </div>
-          <div className="space-y-3">
-            <h1 className="text-3xl font-black text-[#172B4D] tracking-tight">Licença Expirada</h1>
-            <p className="text-[#626F86] text-base leading-relaxed">
-              O seu período de licença para o <strong>NEXTLevel</strong> terminou ou a chave é inválida. 
-            </p>
-          </div>
-          
-          <div className="bg-[#F4F5F7] p-6 rounded-xl space-y-4 border border-[#DFE1E6]">
-             <p className="text-[11px] text-[#172B4D] font-bold uppercase tracking-widest">Renovar Licença</p>
-             <div className="space-y-3">
-               <input 
-                 type="text" 
-                 placeholder="Cole aqui a nova chave de licença..." 
-                 value={chaveReativacao}
-                 onChange={(e) => { setChaveReativacao(e.target.value); setErroReativacao(''); }}
-                 className="w-full h-11 px-4 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-600 outline-none text-[14px] text-center font-mono"
-               />
-               {erroReativacao && <p className="text-[12px] text-red-600 font-bold">{erroReativacao}</p>}
-               <button 
-                 onClick={async () => {
-                   if (!chaveReativacao) return;
-                   const res = await electron?.ipcRenderer.invoke('license:validate-external', chaveReativacao);
-                   if (res.success && res.license) {
-                     await electron?.ipcRenderer.invoke('update-configuracao', 'license_key', chaveReativacao);
-                     await electron?.ipcRenderer.invoke('update-configuracao', 'license_expiry', res.license.dataExpiracao || 'Vitalícia');
-                     await carregarConfiguracoes();
-                     setLicencaAtiva(true);
-                     showToast('Sistema reativado com sucesso!');
-                   } else {
-                     setErroReativacao('Chave inválida ou expirada.');
-                   }
-                 }}
-                 className="w-full h-11 bg-[#0052CC] text-white font-bold rounded-lg hover:bg-[#0747A6] transition-colors shadow-lg"
-               >
-                 Ativar Agora
-               </button>
-             </div>
-          </div>
-
-          <div className="pt-2">
-             <p className="text-[13px] text-[#172B4D] font-bold uppercase tracking-widest mb-3">Suporte NEXT LAB</p>
-             <div className="flex justify-center gap-6">
-                <p className="text-[14px] text-[#626F86] flex items-center gap-2">
-                  <Mail size={16} className="text-[#0052CC]" /> {COMPANY_EMAIL}
-                </p>
-                <p className="text-[14px] text-[#626F86] flex items-center gap-2">
-                  <Phone size={16} className="text-[#0052CC]" /> {COMPANY_PHONE}
-                </p>
-             </div>
-          </div>
-
-          <div className="pt-4 flex gap-3">
-            <button onClick={() => window.location.reload()} className="nl-btn nl-btn-secondary h-12 flex-1 font-bold">Verificar Novamente</button>
-            <button onClick={gerarBackup} className="nl-btn nl-btn-primary h-12 flex-1 font-bold">Exportar Meus Dados</button>
-          </div>
-          
-          <p className="text-[11px] text-[#8993A4] font-medium tracking-tight">
-            NEXTLevel v1.0.0 • Desenvolvido com ❤️ por NEXT LAB
-          </p>
-        </div>
-      </div>
-    );
-  }
+  if (!licencaAtiva) return <LicenseBlockedPage model={{ chaveReativacao, erroReativacao, electron, GlobalStyles, setChaveReativacao, setErroReativacao, setLicencaAtiva, carregarConfiguracoes, showToast, gerarBackup }} />;
 
   // ── Split-Screen Premium Login ────────────────────────────────────
-  if (!isLoggedIn) {
-    // Mini Calendar state (scoped to login)
-    const loginNow = agora;
-    const loginYear = loginNow.getFullYear();
-    const loginMonth = loginNow.getMonth();
-    const loginDay = loginNow.getDate();
-    const loginHora = loginNow.toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-    const loginData = loginNow.toLocaleDateString('pt-PT', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-
-    return (
-      <div className="flex h-screen w-screen overflow-hidden nl-font-ui bg-white" style={{ animation: 'fadeIn 0.4s ease both' }}>
-        <GlobalStyles theme="light" />
-
-        {/* ── LADO ESQUERDO: Identidade + Formulário ── */}
-        <div className="w-[480px] shrink-0 h-full flex flex-col relative bg-white border-r border-slate-100">
-          {/* Barra de acento lateral */}
-          <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-[var(--color-primary)]" />
-
-          {/* Topo: Branding da Academia */}
-          <div className="px-12 pt-12 pb-8 border-b border-slate-100">
-            <div className="flex items-center gap-3 mb-6">
-              <div className="w-10 h-10 rounded-[6px] flex items-center justify-center bg-[var(--color-primary-light)] border border-[var(--color-primary)]/20 shadow-sm shrink-0">
-                <img src={appLogo} alt="Logo" className="w-6 h-6 object-contain" />
-              </div>
-              <div>
-                <h1 className="text-[18px] font-black nl-text tracking-tight uppercase leading-none">{nomeAcademia}</h1>
-                <p className="text-[10px] font-bold nl-text-muted uppercase tracking-[0.2em] mt-0.5">Sistema de Gestão</p>
-              </div>
-            </div>
-            <div className="grid grid-cols-3 gap-2">
-              {[
-                { label: 'Local', value: moradaAcademia.split(',')[0] || 'Academia', icon: <MapPin size={11} /> },
-                { label: 'Contacto', value: telefoneAcademia || '—', icon: <Phone size={11} /> },
-                { label: 'Sistema', value: 'Ativo', icon: <Wifi size={11} /> },
-              ].map(item => (
-                <div key={item.label} className="rounded-[4px] border border-slate-100 bg-slate-50 px-2.5 py-2">
-                  <div className="flex items-center gap-1 nl-text-muted mb-1">{item.icon}<span className="text-[9px] font-bold uppercase tracking-wider">{item.label}</span></div>
-                  <p className="text-[11px] font-semibold nl-text truncate">{item.value}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Centro: Formulário de login */}
-          <div className="flex-1 flex flex-col justify-center px-12 py-8">
-            <div className="mb-7">
-              <h2 className="text-[26px] font-black nl-text tracking-tight leading-tight mb-1.5">Bem-vindo de volta.</h2>
-              <p className="text-[13px] text-slate-500">Introduza as suas credenciais para aceder ao painel.</p>
-            </div>
-
-            <form onSubmit={handleLogin} className="space-y-4">
-              <div className="space-y-1.5">
-                <label className="block text-[10px] font-bold nl-text-muted uppercase tracking-wider">Nome de Utilizador</label>
-                <div className="relative">
-                  <User className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={15} />
-                  <input
-                    type="text"
-                    value={loginForm.username}
-                    onChange={(e) => setLoginForm({...loginForm, username: e.target.value})}
-                    onFocus={() => setMostrarDropdownRecentes(true)}
-                    onBlur={() => setTimeout(() => setMostrarDropdownRecentes(false), 200)}
-                    placeholder="O teu nome..."
-                    className="w-full h-11 pl-10 pr-4 bg-slate-50 border border-slate-200 rounded-[6px] focus:bg-white focus:ring-2 focus:ring-[var(--color-primary)]/15 focus:border-[var(--color-primary)] outline-none transition-all text-[13px]"
-                    required
-                  />
-                  {mostrarDropdownRecentes && lembrarUtilizadores && utilizadoresRecentes.filter(u => u.name !== 'root' && u.name !== 'Root Técnico').length > 0 && (
-                    <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-[6px] shadow-lg z-50 max-h-48 overflow-y-auto">
-                      <div className="p-1.5 space-y-0.5">
-                        {utilizadoresRecentes.filter(u => u.name !== 'root' && u.name !== 'Root Técnico').map((u) => (
-                          <button
-                            key={u.name}
-                            type="button"
-                            onMouseDown={() => {
-                              setLoginForm(prev => ({ ...prev, username: u.name }));
-                              setMostrarDropdownRecentes(false);
-                            }}
-                            className="w-full flex items-center justify-between px-3 py-2 text-left text-[12px] hover:bg-slate-50 rounded-[4px] transition-colors"
-                          >
-                            <div className="min-w-0">
-                              <p className="font-bold text-slate-700 leading-none">{u.name}</p>
-                            </div>
-                            <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded-[3px] border ${
-                              u.role === 'admin' 
-                                ? 'bg-red-50 border-red-100 text-red-600'
-                                : 'bg-blue-50 border-blue-100 text-blue-600'
-                            }`}>
-                              {u.role === 'admin' ? 'Admin' : 'Operador'}
-                            </span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="block text-[10px] font-bold nl-text-muted uppercase tracking-wider">Palavra-passe</label>
-                <div className="relative">
-                  <Shield className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={15} />
-                  <input
-                    type={mostrarSenha ? 'text' : 'password'}
-                    value={loginForm.password}
-                    onChange={(e) => setLoginForm({...loginForm, password: e.target.value})}
-                    placeholder="••••••••••"
-                    className="w-full h-11 pl-10 pr-11 bg-slate-50 border border-slate-200 rounded-[6px] focus:bg-white focus:ring-2 focus:ring-[var(--color-primary)]/15 focus:border-[var(--color-primary)] outline-none transition-all text-[13px]"
-                  />
-                  <button type="button" onClick={() => setMostrarSenha(!mostrarSenha)} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors">
-                    {mostrarSenha ? <EyeOff size={15} /> : <Eye size={15} />}
-                  </button>
-                </div>
-              </div>
-
-              {permitirGuardarSessao && (
-                <div className="space-y-1 py-1">
-                  <label className="flex items-center gap-2 cursor-pointer select-none">
-                    <input
-                      type="checkbox"
-                      checked={guardarSessao}
-                      onChange={(e) => setGuardarSessao(e.target.checked)}
-                      className="w-4 h-4 rounded border-slate-300 text-[var(--color-primary)] focus:ring-[var(--color-primary)]/20"
-                    />
-                    <span className="text-[12px] font-medium text-slate-600">Manter sessão iniciada</span>
-                  </label>
-                  {guardarSessao && (() => {
-                    const isTypedAdmin = loginForm.username.toLowerCase().includes('admin') || 
-                                         loginForm.username.toLowerCase() === 'root' ||
-                                         utilizadoresRecentes.some(u => u.name.toLowerCase() === loginForm.username.toLowerCase() && (u.role === 'admin' || u.role === 'root'));
-                    if (isTypedAdmin) {
-                      return (
-                        <p className="text-[10px] text-amber-600 font-semibold flex items-center gap-1 leading-normal pl-6">
-                          ⚠️ Atenção Administrador: Não recomendado em computadores partilhados.
-                        </p>
-                      );
-                    }
-                    return null;
-                  })()}
-                </div>
-              )}
-
-              {loginError && (
-                <div className="p-3 bg-red-50 border border-red-100 rounded-[5px] flex items-center gap-2.5 text-red-600 text-[12px] font-medium">
-                  <AlertCircle size={15} className="shrink-0" /> {loginError}
-                </div>
-              )}
-
-              <button
-                type="submit"
-                disabled={carregandoLogin}
-                className="w-full h-11 bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-white rounded-[6px] font-bold text-[13px] shadow-sm transition-all flex items-center justify-center gap-2 active:scale-[0.98] disabled:opacity-60"
-              >
-                {carregandoLogin ? 'A autenticar...' : 'Entrar no Sistema'}
-                {!carregandoLogin && <ChevronRight size={16} />}
-              </button>
-            </form>
-          </div>
-
-          {/* Quick Access — Utilizadores sem senha */}
-          {loginSlideshowUsers.length > 0 && (
-            <div className="px-12 pb-3">
-              <button
-                type="button"
-                onClick={() => setQuickAccessExpanded(!quickAccessExpanded)}
-                className="w-full flex items-center justify-between py-2 text-[11px] font-bold text-slate-400 hover:text-slate-600 transition-colors"
-              >
-                <span className="flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-                  Acesso Rápido — clique para entrar
-                </span>
-                {quickAccessExpanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
-              </button>
-              {quickAccessExpanded && (
-                <div className="flex flex-wrap gap-2 pb-2">
-                  {loginSlideshowUsers.map((u: any) => {
-                    const hue = (u.name?.charCodeAt(0) || 0) * 37 % 360;
-                    return (
-                      <button
-                        key={u.id}
-                        onClick={async () => {
-                          setCarregandoLogin(true);
-                          try {
-                            const res = await electron?.ipcRenderer.invoke('login:quick-access', u.id);
-                            if (res?.success) {
-                              const user = { id: Number(res.user.id), name: String(res.user.name), email: String(res.user.email), role: (res.user.role === 'admin' ? 'admin' : 'operational') as any };
-                              localStorage.setItem('nl_session_user', JSON.stringify({ ...user, loginTimestamp: Date.now() }));
-                              setSessionUser(user);
-                              electron?.ipcRenderer.invoke('users:set-current', { name: user.name });
-                              setIsLoggedIn(true);
-                            }
-                          } catch (e) {
-                            console.warn('Falha no acesso rápido:', e);
-                          }
-                          setCarregandoLogin(false);
-                        }}
-                        className="flex items-center gap-2 px-3 py-2 rounded-[6px] border border-slate-200 bg-slate-50 hover:bg-slate-100 hover:border-slate-300 transition-all"
-                      >
-                        <div className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-black"
-                             style={{ background: `hsl(${hue},60%,88%)`, color: `hsl(${hue},60%,35%)` }}>
-                          {u.name.slice(0, 2).toUpperCase()}
-                        </div>
-                        <div className="text-left">
-                          <p className="text-[12px] font-bold text-slate-700 leading-none">{u.name}</p>
-                          <p className="text-[9px] text-slate-400 mt-0.5 uppercase tracking-wider">{u.role === 'admin' ? 'Admin' : 'Operador'}</p>
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Rodapé */}
-          <div className="px-12 pb-6">
-            <p className="text-[10px] text-slate-400 text-center leading-relaxed">
-              Desenvolvido por <span className="font-bold">{COMPANY_NAME}</span> · v1.0 Beta · {new Date().getFullYear()}
-            </p>
-            <p className="text-[9px] text-slate-300 text-center mt-1 tracking-wide">
-              NEXT-Lab Creative · desde 1995 · Ivaldino da Luz Fortes, CEO
-            </p>
-          </div>
-        </div>
-
-        {/* ── LADO DIREITO: Slideshow / Banner ── */}
-        <div className="flex-1 h-full relative overflow-hidden bg-slate-900">
-          {/* Fundo — slideshow ou banner estático */}
-          {slideshowImages.length > 0 ? (
-            slideshowImages.map((img, i) => (
-              <img key={i} src={img}
-                className="absolute inset-0 w-full h-full object-cover scale-105 transition-opacity duration-1000"
-                style={{ opacity: i === currentSlide ? 0.55 : 0 }}
-                alt="" />
-            ))
-          ) : (
-            <img src={DEFAULT_ACADEMY_BANNER}
-              className="absolute inset-0 w-full h-full object-cover opacity-50 scale-105"
-              alt="Banner" />
-          )}
-          <div className="absolute inset-0" style={{ background: 'linear-gradient(160deg, rgba(0,0,0,0.80) 0%, rgba(0,0,0,0.35) 55%, rgba(0,0,0,0.75) 100%)' }} />
-
-          <div className="relative h-full flex flex-col justify-between p-12 z-10">
-            {/* Topo: Relógio + Status */}
-            <div className="flex items-start justify-between">
-              <div className="bg-white/10 backdrop-blur-md border border-white/15 rounded-[6px] px-4 py-2.5 flex items-center gap-2">
-                <Wifi size={13} className="text-emerald-400 shrink-0" />
-                <div>
-                  <p className="text-[9px] font-bold text-white/50 uppercase tracking-widest leading-none mb-0.5">Servidor Local</p>
-                  <p className="text-[12px] font-bold text-white">Operacional</p>
-                </div>
-              </div>
-              <div className="text-right">
-                <p className="text-[44px] font-black text-white leading-none tracking-tighter" style={{ fontVariantNumeric: 'tabular-nums' }}>{loginHora.slice(0, 5)}</p>
-                <p className="text-white/50 text-[11px] font-medium mt-1 capitalize">{loginData}</p>
-              </div>
-            </div>
-
-            {/* Meio: Tagline (só se texto habilitado) */}
-            {slideshowTextEnabled && (
-              <div className="max-w-[460px]">
-                <p className="text-[10px] font-black text-white/40 uppercase tracking-[0.3em] mb-3">Next Level · Gym Management</p>
-                <h3 className="text-white text-[36px] font-black leading-[1.08] tracking-tight mb-4">
-                  Gestão que eleva o nível da sua academia.
-                </h3>
-                <p className="text-white/60 text-[14px] leading-relaxed">
-                  Matrículas, mensalidades e acompanhamento de alunos num só painel.
-                </p>
-              </div>
-            )}
-
-            {/* Indicadores do slideshow */}
-            {slideshowImages.length > 1 && (
-              <div className="flex items-center justify-center gap-1.5 absolute bottom-24 left-1/2 -translate-x-1/2">
-                {slideshowImages.map((_, i) => (
-                  <button key={i} onClick={() => setCurrentSlide(i)}
-                    className="transition-all rounded-full"
-                    style={{ width: i === currentSlide ? 20 : 6, height: 6, background: i === currentSlide ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.3)' }} />
-                ))}
-              </div>
-            )}
-
-            {/* Rodapé: Info NEXT Lab */}
-            <div className="border-t border-white/10 pt-6">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-[5px] overflow-hidden bg-white/10 border border-white/15 flex items-center justify-center">
-                    <img src={NEXT_LAB_ICON} alt="NEXT Lab" className="w-5 h-5 object-contain" />
-                  </div>
-                  <div>
-                    <p className="text-[12px] font-black text-white leading-tight">{COMPANY_NAME}</p>
-                    <p className="text-[10px] text-white/40 font-medium">Creative Studio · desde 1995 · Cabo Verde</p>
-                  </div>
-                </div>
-                <div className="text-right space-y-1">
-                  <p className="text-[11px] text-white/50 flex items-center gap-1.5 justify-end"><Phone size={10} /> {COMPANY_PHONE}</p>
-                  <p className="text-[11px] text-white/50 flex items-center gap-1.5 justify-end cursor-pointer hover:text-white/70 transition-colors" onClick={() => electron?.ipcRenderer.invoke('open-external', COMPANY_WEBSITE)}>
-                    <Globe size={10} /> linktr.ee/next.lab
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <style>{`
-          @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-        `}</style>
-      </div>
-    );
-  }
+  if (!isLoggedIn) return <LoginPage model={{ agora, appLogo, nomeAcademia, moradaAcademia, telefoneAcademia, loginForm, mostrarDropdownRecentes, lembrarUtilizadores, utilizadoresRecentes, mostrarSenha, permitirGuardarSessao, guardarSessao, loginError, carregandoLogin, loginSlideshowUsers, quickAccessExpanded, slideshowImages, currentSlide, slideshowTextEnabled, electron, GlobalStyles, handleLogin, setLoginForm, setMostrarDropdownRecentes, setMostrarSenha, setGuardarSessao, setQuickAccessExpanded, setCarregandoLogin, setSessionUser, setIsLoggedIn, setCurrentSlide }} />;
 
   // Painel Root Técnico (acesso exclusivo root@nextlab.com)
   if (sessionUser?.role === 'root') {
@@ -4648,2103 +3387,86 @@ function App() {
         />
       </Suspense>
     )}
-    {mostrarForm && (
-      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100] p-4 animate-fade-in" onClick={() => setMostrarForm(false)}>
-        <div className="bg-[var(--bg-surface)] w-full max-w-[500px] shadow-[0_20px_70px_rgba(0,0,0,0.3)] rounded-[6px] border border-[var(--border)] overflow-hidden flex flex-col animate-scale-in" style={{ maxHeight: 'calc(100vh - 40px)' }} onClick={e => e.stopPropagation()}>
-
-          {/* Cabeçalho */}
-          <div className="bg-[#F1F4F9] border-b border-[#DDE2EB] h-12 flex items-center shrink-0">
-            <div className="flex-1 flex items-center gap-2.5 px-4">
-              <div className="h-6 w-6 rounded-md bg-white/50 backdrop-blur-sm p-1 border border-white/40 shadow-sm flex items-center justify-center">
-                <img src={appLogo || APP_ICON_PATH} alt="Logo" className="w-full h-full object-contain" />
-              </div>
-              <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] leading-none">NextLevel</span>
-            </div>
-            <div className="flex-1 text-center whitespace-nowrap">
-              <h2 className="text-[12px] font-black text-slate-700 uppercase tracking-wider leading-none">Nova Matrícula</h2>
-            </div>
-            <div className="flex-1 flex justify-end px-3">
-              <button onClick={() => setMostrarForm(false)} className="h-8 w-8 flex items-center justify-center rounded-md text-slate-400 hover:bg-red-50 hover:text-red-500 transition-all" title="Fechar">
-                <X size={16} />
-              </button>
-            </div>
-          </div>
-
-          <form onSubmit={salvarAluno} className="overflow-y-auto custom-scrollbar">
-
-            {/* Secção 1 — Identificação */}
-            <div className="px-5 pt-4 pb-3 space-y-3">
-              <p className="text-[9px] font-black uppercase tracking-[0.2em] text-[var(--text-secondary)]">Identificação</p>
-
-              {/* Nome */}
-              <div>
-                <label className="block text-[10px] font-bold nl-text-muted uppercase tracking-[0.12em] mb-1">
-                  Nome completo <span className="text-red-500">*</span>
-                </label>
-                <div className="relative">
-                  <input
-                    type="text"
-                    placeholder="Nome do aluno..."
-                    value={novoAluno.nome}
-                    onChange={e => handleNomeChange(e.target.value)}
-                    className="nl-input w-full h-10 px-3 text-[13px]"
-                    required
-                    autoFocus
-                    onBlur={() => setTimeout(() => setSugestoesNome([]), 200)}
-                  />
-                  {sugestoesNome.length > 0 && (
-                    <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-[var(--border)] rounded-md shadow-lg z-[110] overflow-hidden animate-scale-in">
-                      <p className="px-3 py-1.5 bg-slate-50 text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Contactos Existentes</p>
-                      {sugestoesNome.map(s => (
-                        <button
-                          key={s.id}
-                          type="button"
-                          onClick={() => {
-                            setMostrarForm(false);
-                            setSugestoesNome([]);
-                            abrirPerfilAluno(s);
-                          }}
-                          className="w-full px-3 py-2 text-left hover:bg-blue-50 flex items-center justify-between group transition-colors"
-                        >
-                          <div>
-                            <p className="text-[12px] font-bold text-slate-700">{s.nome}</p>
-                            <p className="text-[10px] text-slate-400">{s.telefone || 'Sem telefone'}</p>
-                          </div>
-                          <ExternalLink size={12} className="text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity" />
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Tel + Categoria */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[10px] font-bold nl-text-muted uppercase tracking-[0.12em] mb-1">
-                    Telemóvel <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="tel"
-                    placeholder="+238 000 00 00"
-                    value={novoAluno.telefone}
-                    onChange={e => setNovoAluno({ ...novoAluno, telefone: e.target.value })}
-                    className="nl-input w-full h-10 px-3 text-[13px]"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-bold nl-text-muted uppercase tracking-[0.12em] mb-1">Modalidade</label>
-                  <select
-                    value={novoAluno.categoria}
-                    onChange={e => setNovoAluno({ ...novoAluno, categoria: e.target.value })}
-                    className="nl-input w-full h-10 px-3 text-[13px] cursor-pointer"
-                  >
-                    <option value="">Sem categoria</option>
-                    {categorias.map(cat => <option key={cat} value={cat}>{cat}</option>)}
-                  </select>
-                </div>
-              </div>
-
-              {/* Sexo (opcional) */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[10px] font-bold nl-text-muted uppercase tracking-[0.12em] mb-1">Sexo</label>
-                  <select
-                    value={novoAluno.sexo}
-                    onChange={e => setNovoAluno({ ...novoAluno, sexo: e.target.value })}
-                    className="nl-input w-full h-10 px-3 text-[13px] cursor-pointer"
-                  >
-                    <option value="">—</option>
-                    <option value="M">Masculino</option>
-                    <option value="F">Feminino</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-
-            {/* Separador tracejado */}
-            <div style={{ borderTop: '1px dashed var(--border-light)', margin: '0 20px' }} />
-
-            {/* Secção 2 — Plano & Pagamento */}
-            <div className="px-5 pt-4 pb-5 space-y-3">
-              <p className="text-[9px] font-black uppercase tracking-[0.2em] text-[var(--text-secondary)]">Plano & Pagamento</p>
-
-              {/* Mensalidade + Data inscrição */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[10px] font-bold nl-text-muted uppercase tracking-[0.12em] mb-1">
-                    Mensalidade (CVE) <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="3 500"
-                    value={novoAluno.plano}
-                    onChange={e => setNovoAluno({ ...novoAluno, plano: e.target.value })}
-                    className="nl-input w-full h-10 px-3 text-[14px] font-bold"
-                    style={{ fontVariantNumeric: 'tabular-nums' }}
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-bold nl-text-muted uppercase tracking-[0.12em] mb-1">Data de inscrição</label>
-                  <input
-                    type="date"
-                    value={novoAluno.data_matricula}
-                    onChange={e => setNovoAluno({ ...novoAluno, data_matricula: e.target.value })}
-                    className="nl-input w-full h-10 px-3 text-[13px]"
-                  />
-                </div>
-              </div>
-
-              {/* Modo de inscrição — pills compactos */}
-              <div>
-                <label className="block text-[10px] font-bold nl-text-muted uppercase tracking-[0.12em] mb-1.5">Modo de inscrição</label>
-                <div className="flex gap-2">
-                  {([
-                    { id: 'matricula',       label: 'Só matrícula',  desc: 'Cobra mais tarde',  icon: <FileText size={13} /> },
-                    { id: 'matricula_pago',  label: 'Pagar agora',   desc: 'Regista pagamento', icon: <CheckCircle2 size={13} /> },
-                  ] as const).map(opt => {
-                    const active = novoAluno.modo_inscricao === opt.id;
-                    return (
-                      <button
-                        key={opt.id}
-                        type="button"
-                        onClick={() => setNovoAluno({ ...novoAluno, modo_inscricao: opt.id })}
-                        className={`flex-1 flex items-center gap-2.5 px-3 py-2.5 rounded-[var(--radius-surface)] border-2 text-left transition-all ${
-                          active
-                            ? 'border-[var(--color-primary)] bg-[var(--color-primary-light)]'
-                            : 'border-[var(--border-light)] bg-[var(--color-secondary-lighter)]/40 hover:border-[var(--border)]'
-                        }`}
-                      >
-                        <div className={`w-7 h-7 rounded-[6px] flex items-center justify-center shrink-0 ${active ? 'bg-[var(--color-primary)] text-white' : 'bg-[var(--border-light)] text-[var(--text-secondary)]'}`}>
-                          {opt.icon}
-                        </div>
-                        <div>
-                          <p className={`text-[11px] font-bold leading-tight ${active ? 'text-[var(--color-primary)]' : 'nl-text'}`}>{opt.label}</p>
-                          <p className="text-[9px] text-[var(--text-secondary)] leading-tight">{opt.desc}</p>
-                        </div>
-                        {active && <CheckCircle2 size={13} className="ml-auto text-[var(--color-primary)] shrink-0" />}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Preview da próxima cobrança */}
-              <div className="flex items-center justify-between px-3 py-2.5 rounded-[var(--radius-control)] bg-[#EEF4FF] border border-[#C7DEFF]">
-                <div className="flex items-center gap-2">
-                  <Calendar size={13} className="text-[#1D4ED8]" />
-                  <span className="text-[11px] font-bold text-[#1D4ED8] uppercase tracking-[0.1em]">
-                    {novoAluno.modo_inscricao === 'matricula_pago' ? 'Próxima cobrança' : 'Primeira cobrança'}
-                  </span>
-                </div>
-                <span className="text-[13px] font-extrabold text-[#1D4ED8]" style={{ fontVariantNumeric: 'tabular-nums' }}>
-                  {previewVencimento || '— / — / ——'}
-                </span>
-              </div>
-            </div>
-
-          </form>
-
-          {/* Rodapé */}
-          <div className="bg-[#F8F9FC] border-t border-[#DDE2EB] px-6 py-4 flex items-center justify-end gap-3 shrink-0">
-            <button type="button" onClick={() => setMostrarForm(false)} className="nl-btn nl-btn-secondary !h-9 !px-5 !text-[11px] font-bold">Cancelar</button>
-            <button type="button" onClick={salvarAluno} className="nl-btn nl-btn-primary !h-9 !px-6 !text-[11px] font-bold">
-              <UserPlus size={14} /> Confirmar Registo
-            </button>
-          </div>
-        </div>
-      </div>
-    )}
+    {mostrarForm && <StudentFormModal mode="create" model={{
+      appLogo, novoAluno, categorias, sugestoesNome, previewVencimento, alunoEdicao,
+      novoAlunoDefault, setMostrarForm, salvarAluno, handleNomeChange, setSugestoesNome,
+      abrirPerfilAluno, setNovoAluno, setMostrarFormEdicao, setAlunoEdicao, salvarEdicao,
+      ativarImportado,
+    }} />}
 
 
     {/* Modal: Resolver Tudo (Pendências) */}
-    {mostrarResolverPendencias && alunoParaResolver && (
-      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[150] p-4 animate-fade-in" onClick={() => setMostrarResolverPendencias(false)}>
-        <div className="bg-[var(--bg-surface)] w-full max-w-[450px] shadow-[0_20px_70px_rgba(0,0,0,0.3)] rounded-[6px] border border-[var(--border)] overflow-hidden flex flex-col animate-scale-in" style={{ maxHeight: 'calc(100vh - 40px)' }} onClick={e => e.stopPropagation()}>
-          <div className="bg-[#F1F4F9] border-b border-[#DDE2EB] h-12 flex items-center shrink-0">
-            <div className="flex-1 flex items-center gap-2.5 px-4">
-              <div className="h-6 w-6 rounded-md bg-white/50 backdrop-blur-sm p-1 border border-white/40 shadow-sm flex items-center justify-center">
-                <img src={appLogo || APP_ICON_PATH} alt="Logo" className="w-full h-full object-contain" />
-              </div>
-              <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] leading-none">NextLevel</span>
-            </div>
-            <div className="flex-1 text-center whitespace-nowrap">
-              <h2 className="text-[12px] font-black text-slate-700 uppercase tracking-wider leading-none">Resolver Pendências</h2>
-            </div>
-            <div className="flex-1 flex justify-end px-3">
-              <button onClick={() => setMostrarResolverPendencias(false)} className="h-8 w-8 flex items-center justify-center rounded-md text-slate-400 hover:bg-red-50 hover:text-red-500 transition-all" title="Fechar">
-                <X size={16} />
-              </button>
-            </div>
-          </div>
-
-          <div className="p-6 space-y-6">
-            <div className="flex items-center gap-3 p-4 rounded-[6px] bg-amber-50 border border-amber-100">
-              <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center shrink-0">
-                <AlertCircle size={18} className="text-amber-600" />
-              </div>
-              <div>
-                <p className="text-[12px] nl-text-muted">Estás a regularizar a conta de</p>
-                <p className="text-[16px] font-black nl-text">{alunoParaResolver.nome}</p>
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[var(--text-secondary)]">Meses Selecionados</p>
-              <div className="grid grid-cols-2 gap-2">
-                {mesesParaResolver.map(mes => (
-                  <div key={mes} className="flex items-center gap-2 px-3 py-2 rounded-[6px] bg-emerald-50 border border-emerald-100 text-emerald-700 text-[11px] font-bold">
-                    <CheckCircle2 size={12} /> {mes}
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between px-4 py-3 rounded-[10px] bg-gradient-to-r from-amber-500 to-amber-600 shadow-lg shadow-amber-200/50">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
-                  <Wallet size={15} className="text-white" />
-                </div>
-                <span className="text-[12px] font-black text-white uppercase tracking-[0.12em]">Total a Liquidar</span>
-              </div>
-              <span className="text-[20px] font-black text-white drop-shadow-sm" style={{ fontVariantNumeric: 'tabular-nums' }}>
-                {formatCve(normalizeAmount(alunoParaResolver.plano) * mesesParaResolver.length)}
-              </span>
-            </div>
-          </div>
-
-          <div className="bg-[#F8F9FC] border-t border-[#DDE2EB] px-6 py-4 flex items-center justify-end gap-3 shrink-0">
-            <button onClick={() => setMostrarResolverPendencias(false)} className="nl-btn nl-btn-secondary !h-9 !px-5 !text-[11px] font-bold">Cancelar</button>
-            <button onClick={resolverPendencias} className="nl-btn !h-10 !px-7 !text-[12px] font-black !bg-gradient-to-r !from-amber-600 !to-amber-500 !text-white !border-none !shadow-lg !shadow-amber-200/50 hover:!shadow-amber-300/60 hover:!scale-[1.02] active:!scale-[0.98] transition-all">
-              <CheckCircle2 size={16} /> Resolver {mesesParaResolver.length} Mensalidades
-            </button>
-          </div>
-        </div>
-      </div>
-    )}
+    {mostrarResolverPendencias && alunoParaResolver && <ResolvePendingModal model={{ alunoParaResolver, mesesParaResolver, appLogo, setMostrarResolverPendencias, resolverPendencias }} />}
 
     {/* Modal: Editar Registo */}
-    {mostrarFormEdicao && alunoEdicao && (
-      <div className="fixed inset-0 nl-modal-overlay flex items-center justify-center z-[100] p-4 animate-in fade-in duration-200">
-        <div className="bg-[var(--bg-surface)] w-full max-w-[650px] shadow-[0_20px_70px_rgba(0,0,0,0.3)] rounded-[6px] border border-[var(--border)] overflow-hidden flex flex-col animate-scale-in" style={{ maxHeight: 'calc(100vh - 40px)' }} onClick={e => e.stopPropagation()}>
-          <div className="bg-[#F1F4F9] border-b border-[#DDE2EB] h-12 flex items-center shrink-0">
-            <div className="flex-1 flex items-center gap-2.5 px-4">
-              <div className="h-6 w-6 rounded-md bg-white/50 backdrop-blur-sm p-1 border border-white/40 shadow-sm flex items-center justify-center">
-                <img src={appLogo || APP_ICON_PATH} alt="Logo" className="w-full h-full object-contain" />
-              </div>
-              <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] leading-none">NextLevel</span>
-            </div>
-            <div className="flex-1 text-center whitespace-nowrap">
-              <h2 className="text-[12px] font-black text-slate-700 uppercase tracking-wider leading-none">Editar Registo: {alunoEdicao.id.slice(-8)}</h2>
-            </div>
-            <div className="flex-1 flex justify-end px-3">
-              <button onClick={() => { setMostrarFormEdicao(false); setAlunoEdicao(null); setNovoAluno(novoAlunoDefault); }} className="h-8 w-8 flex items-center justify-center rounded-md text-slate-400 hover:bg-red-50 hover:text-red-500 transition-all" title="Fechar">
-                <X size={16} />
-              </button>
-            </div>
-          </div>
-
-          <form id="editar-aluno-form" onSubmit={salvarEdicao} className="flex-1 overflow-y-auto p-8 custom-scrollbar space-y-8">
-            <div className="grid grid-cols-2 gap-6">
-              <div className="col-span-2 space-y-2">
-                <label className="block text-[12px] font-bold nl-text-muted uppercase tracking-wider px-1">Nome Completo</label>
-                <input type="text" value={novoAluno.nome} onChange={(e) => setNovoAluno({ ...novoAluno, nome: e.target.value })} className="nl-input w-full h-12 px-4" required />
-              </div>
-              <div className="space-y-2">
-                <label className="block text-[12px] font-bold nl-text-muted uppercase tracking-wider px-1">Telefone</label>
-                <input type="tel" value={novoAluno.telefone} onChange={(e) => setNovoAluno({ ...novoAluno, telefone: e.target.value })} className="nl-input w-full h-12 px-4" required />
-              </div>
-              <div className="space-y-2">
-                <label className="block text-[12px] font-bold nl-text-muted uppercase tracking-wider px-1">Modalidade</label>
-                <select value={novoAluno.categoria} onChange={(e) => setNovoAluno({ ...novoAluno, categoria: e.target.value })} className="nl-input w-full h-12 px-4 cursor-pointer" required>
-                  {Array.from(new Set([...categorias, novoAluno.categoria || 'Geral'])).map(cat => <option key={cat} value={cat}>{cat}</option>)}
-                </select>
-              </div>
-              <div className="space-y-2">
-                <label className="block text-[12px] font-bold nl-text-muted uppercase tracking-wider px-1">Mensalidade (CVE)</label>
-                <input type="text" value={novoAluno.plano} onChange={(e) => setNovoAluno({ ...novoAluno, plano: e.target.value })} className="nl-input w-full h-12 px-4 font-bold" required />
-              </div>
-              <div className="space-y-2">
-                <label className="block text-[12px] font-bold nl-text-muted uppercase tracking-wider px-1">Próximo Vencimento</label>
-                <input type="text" value={(novoAluno as any).vencimento} onChange={(e) => setNovoAluno({ ...novoAluno, vencimento: e.target.value } as any)} className="nl-input w-full h-12 px-4" required />
-              </div>
-              <div className="space-y-2">
-                <label className="block text-[12px] font-bold nl-text-muted uppercase tracking-wider px-1">Data de Inscrição</label>
-                <input type="date" value={novoAluno.data_matricula} onChange={(e) => setNovoAluno({ ...novoAluno, data_matricula: e.target.value })} className="nl-input w-full h-12 px-4" />
-              </div>
-              <div className="space-y-2">
-                <label className="block text-[12px] font-bold nl-text-muted uppercase tracking-wider px-1">Sexo</label>
-                <select value={novoAluno.sexo} onChange={(e) => setNovoAluno({ ...novoAluno, sexo: e.target.value })} className="nl-input w-full h-12 px-4 cursor-pointer">
-                  <option value="">Selecionar...</option>
-                  <option value="M">Masculino</option>
-                  <option value="F">Feminino</option>
-                  <option value="Outro">Outro</option>
-                </select>
-              </div>
-              <div className="col-span-2 space-y-2">
-                <label className="block text-[12px] font-bold nl-text-muted uppercase tracking-wider px-1">Modo de Cobrança</label>
-                <select value={novoAluno.modo_cobranca} onChange={(e) => setNovoAluno({ ...novoAluno, modo_cobranca: e.target.value as 'mensalidade_movel' | 'mensalidade_fixa' })} className="nl-input w-full h-12 px-4 cursor-pointer" required>
-                  <option value="mensalidade_movel">Móvel (30 dias após pagamento)</option>
-                  <option value="mensalidade_fixa">Fixa (dia 1 ao 5 do mês)</option>
-                </select>
-              </div>
-              <div className="col-span-2 space-y-2">
-                <label className="block text-[12px] font-bold nl-text-muted uppercase tracking-wider px-1">Endereço de Email</label>
-                <input type="email" value={novoAluno.email} onChange={(e) => setNovoAluno({ ...novoAluno, email: e.target.value })} className="nl-input w-full h-12 px-4" />
-              </div>
-              <div className="col-span-2 space-y-2">
-                <label className="block text-[12px] font-bold nl-text-muted uppercase tracking-wider px-1">Morada de Residência</label>
-                <input type="text" value={novoAluno.morada} onChange={(e) => setNovoAluno({ ...novoAluno, morada: e.target.value })} className="nl-input w-full h-12 px-4" />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-6">
-              <div className="space-y-2">
-                <label className="block text-[12px] font-bold nl-text-muted uppercase tracking-wider px-1">Alergias</label>
-                <textarea value={novoAluno.alergias} onChange={(e) => setNovoAluno({ ...novoAluno, alergias: e.target.value })} className="nl-input min-h-[112px] px-4 py-3 resize-none" placeholder="Informações relevantes para a equipa..." />
-              </div>
-              <div className="space-y-2">
-                <label className="block text-[12px] font-bold nl-text-muted uppercase tracking-wider px-1">Objetivos</label>
-                <textarea value={novoAluno.objetivos} onChange={(e) => setNovoAluno({ ...novoAluno, objetivos: e.target.value })} className="nl-input min-h-[112px] px-4 py-3 resize-none" placeholder="Ex: perda de peso, ganho de massa..." />
-              </div>
-              <div className="col-span-2 space-y-2">
-                <label className="block text-[12px] font-bold nl-text-muted uppercase tracking-wider px-1">Horário Preferido</label>
-                <input type="text" value={novoAluno.horario_preferido} onChange={(e) => setNovoAluno({ ...novoAluno, horario_preferido: e.target.value })} className="nl-input w-full h-12 px-4" placeholder="Ex: 18:00 - 20:00" />
-              </div>
-            </div>
-          </form>
-
-          <div className="bg-[#F8F9FC] border-t border-[#DDE2EB] px-6 py-4 flex items-center justify-end gap-3 shrink-0">
-            <button type="button" onClick={() => { setMostrarFormEdicao(false); setAlunoEdicao(null); setNovoAluno(novoAlunoDefault); }} className="nl-btn nl-btn-secondary !h-9 !px-5 !text-[11px] font-bold">Cancelar</button>
-            {isImportedStatus(alunoEdicao?.status) && (
-              <button type="button" onClick={ativarImportado} className="nl-btn !h-9 !px-5 !text-[11px] font-bold !bg-emerald-600 !text-white hover:!bg-emerald-700 border border-emerald-700 shadow-sm">
-                <CheckCircle2 size={14} /> Confirmar e Ativar
-              </button>
-            )}
-            <button type="submit" form="editar-aluno-form" className="nl-btn nl-btn-primary !h-9 !px-6 !text-[11px] font-bold">
-              <Save size={14} /> Guardar Alterações
-            </button>
-          </div>
-        </div>
-      </div>
-    )}
+    {mostrarFormEdicao && alunoEdicao && <StudentFormModal mode="edit" model={{
+      appLogo, novoAluno, categorias, sugestoesNome, previewVencimento, alunoEdicao,
+      novoAlunoDefault, setMostrarForm, salvarAluno, handleNomeChange, setSugestoesNome,
+      abrirPerfilAluno, setNovoAluno, setMostrarFormEdicao, setAlunoEdicao, salvarEdicao,
+      ativarImportado,
+    }} />}
 
     {/* Modal: Resolver Duplicados */}
-    {mostrarModalDuplicados && (
-      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[160] p-4 animate-fade-in" onClick={() => setMostrarModalDuplicados(false)}>
-        <div className="bg-[var(--bg-surface)] w-full max-w-[600px] shadow-[0_20px_70px_rgba(0,0,0,0.3)] rounded-[6px] border border-[var(--border)] overflow-hidden flex flex-col animate-scale-in" style={{ maxHeight: '85vh' }} onClick={e => e.stopPropagation()}>
-          <div className="bg-[#F1F4F9] border-b border-[#DDE2EB] h-12 flex items-center shrink-0">
-            <div className="flex-1 flex items-center gap-2.5 px-4">
-              <div className="h-6 w-6 rounded-md bg-white/50 backdrop-blur-sm p-1 border border-white/40 shadow-sm flex items-center justify-center">
-                <img src={appLogo || APP_ICON_PATH} alt="Logo" className="w-full h-full object-contain" />
-              </div>
-              <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] leading-none">NextLevel</span>
-            </div>
-            <div className="flex-1 text-center whitespace-nowrap">
-              <h2 className="text-[12px] font-black text-slate-700 uppercase tracking-wider leading-none">Duplicados ({duplicadosEncontrados.length})</h2>
-            </div>
-            <div className="flex-1 flex justify-end px-3">
-              <button onClick={() => setMostrarModalDuplicados(false)} className="h-8 w-8 flex items-center justify-center rounded-md text-slate-400 hover:bg-red-50 hover:text-red-500 transition-all" title="Fechar">
-                <X size={16} />
-              </button>
-            </div>
-          </div>
+    {mostrarModalDuplicados && <DuplicateStudentsModal model={{ duplicadosEncontrados, appLogo, electron, setMostrarModalDuplicados, setDuplicadosEncontrados, abrirPerfilAluno, abrirConfirmacao, carregarConfiguracoes, showToast }} />}
 
-          <div className="flex-1 overflow-y-auto p-5 custom-scrollbar space-y-5">
-            {duplicadosEncontrados.length === 0 ? (
-              <div className="py-12 text-center space-y-3">
-                <div className="w-16 h-16 rounded-full bg-emerald-50 flex items-center justify-center mx-auto">
-                  <CheckCircle2 size={32} className="text-emerald-500" />
-                </div>
-                <p className="text-[16px] font-black nl-text">Tudo limpo!</p>
-                <p className="text-[12px] nl-text-muted">Não foram encontrados contactos com nomes ou telefones repetidos.</p>
-              </div>
-            ) : (
-              <div className="space-y-5">
-                <p className="text-[11px] nl-text-muted">Os grupos abaixo partilham o mesmo <b>nome</b> ou <b>número de telemóvel</b>.</p>
-                
-                {duplicadosEncontrados.map((grupo, idx) => (
-                  <div key={idx} className="rounded-[var(--radius-control)] border border-[var(--border)] bg-[var(--bg-surface)] overflow-hidden shadow-sm">
-                    <div className="px-4 py-2 bg-[var(--color-secondary-lighter)]/50 border-b border-[var(--border-light)] flex items-center justify-between">
-                      <span className="text-[10px] font-black text-[var(--text-secondary)] uppercase tracking-widest">Grupo #{idx + 1}</span>
-                      <span className="px-2 py-0.5 bg-blue-50 text-blue-600 text-[9px] font-black rounded-full uppercase">{grupo.length} ocorrências</span>
-                    </div>
-                    <div className="divide-y divide-[var(--border-light)]">
-                      {grupo.map(aluno => (
-                        <div key={aluno.id} className="p-3 hover:bg-[var(--color-secondary-lighter)]/30 transition-colors flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-full bg-[var(--color-secondary-lighter)] flex items-center justify-center text-[var(--text-secondary)] font-bold text-[12px] shrink-0 overflow-hidden border border-[var(--border)]">
-                            {aluno.foto_path ? <img src={`local-resource://${aluno.foto_path}`} className="w-full h-full object-cover" /> : getAlunoIniciais(aluno)}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-[13px] font-bold nl-text truncate">{aluno.nome}</p>
-                            <p className="text-[11px] nl-text-muted">{aluno.telefone || 'Sem telefone'}</p>
-                            <p className="text-[10px] text-[var(--text-tertiary)] mt-0.5">Inscrito em: {aluno.data_matricula || '—'}</p>
-                          </div>
-                          <div className="flex items-center gap-1.5">
-                            <button 
-                              onClick={() => {
-                                setMostrarModalDuplicados(false);
-                                abrirPerfilAluno(aluno);
-                              }}
-                              className="nl-btn !h-8 !px-3 !text-[10px] font-bold uppercase"
-                            >
-                              Ver
-                            </button>
-                            <button 
-                              onClick={() => {
-                                abrirConfirmacao({
-                                  title: 'Eliminar Duplicado',
-                                  message: `Tens a certeza que queres mover o registo de ${aluno.nome} para a lixeira?`,
-                                  confirmLabel: 'Eliminar',
-                                  tone: 'danger',
-                                  onConfirm: async () => {
-                                    if (electron) {
-                                      const res = await electron.ipcRenderer.invoke('db:delete-duplicate', { alunoId: aluno.id });
-                                      if (!res?.success) throw new Error(res?.message || 'Falha ao remover duplicado.');
-                                      const novosGrupos = (res.groups || []).map((group: any) => group.alunos || []);
-                                      setDuplicadosEncontrados(novosGrupos);
-                                      await carregarConfiguracoes();
-                                      showToast('✅ Duplicado movido para a lixeira.');
-                                      if (novosGrupos.length === 0) setMostrarModalDuplicados(false);
-                                    }
-                                  }
-                                });
-                              }}
-                              className="nl-btn !h-8 !w-8 !p-0 !bg-red-50 !text-red-500 hover:!bg-red-500 hover:!text-white !border-red-100 transition-all"
-                            >
-                              <Trash2 size={13} />
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+      {/* Perfil resumido do aluno */}
+      {alunoSelecionado && <LegacyStudentProfileModal model={{ alunoSelecionado, resumoAlunoSelecionado, setAlunoSelecionado, abrirEdicao }} />}
 
-          <div className="bg-[#F8F9FC] border-t border-[#DDE2EB] px-6 py-4 flex items-center justify-center shrink-0">
-            <button onClick={() => setMostrarModalDuplicados(false)} className="nl-btn nl-btn-secondary !h-9 !px-5 !text-[11px] font-bold">Fechar</button>
-          </div>
-        </div>
-      </div>
-    )}
-
-
-{/* Modal: Perfil do Aluno */}
-      {alunoSelecionado && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100] p-4 animate-in fade-in duration-200">
-          <div className="bg-[var(--bg-surface)] w-full max-w-[560px] shadow-xl rounded-[3px] border border-[var(--border)] overflow-hidden max-h-[90vh] flex flex-col animate-slide-up">
-            <div className="border-b border-[var(--border)] bg-[var(--color-secondary-lighter)] px-6 py-4 flex items-center justify-between gap-4">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--text-secondary)]">Informações do aluno</p>
-              <button
-                onClick={() => setAlunoSelecionado(null)}
-                className="w-8 h-8 flex items-center justify-center rounded-[3px] hover:bg-black/5 dark:hover:bg-white/10 nl-text-muted transition-colors"
-                title="Fechar"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <div className="flex-1 overflow-y-auto px-6 py-6 custom-scrollbar">
-              <div className="flex items-center gap-4">
-                {alunoSelecionado.foto_path ? (
-                  <div className="w-14 h-14 rounded-[5px] overflow-hidden border border-[var(--border)]">
-                    <img src={`local-resource://${alunoSelecionado.foto_path}`} alt="" className="w-full h-full object-cover" />
-                  </div>
-                ) : (
-                  <div className="w-14 h-14 rounded-[5px] bg-[var(--color-secondary-lighter)] flex items-center justify-center text-[18px] font-bold nl-text-muted border border-[var(--border)]">
-                    {alunoSelecionado.nome.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
-                  </div>
-                )}
-                <div className="min-w-0">
-                  <h2 className="text-[22px] font-extrabold nl-text tracking-tight truncate">{alunoSelecionado.nome}</h2>
-                  <p className="text-[12px] font-medium text-[var(--text-secondary)] mt-1">
-                    ID {alunoSelecionado.id.slice(-8)} • {getStudentStatusLabel(alunoSelecionado.status)}
-                  </p>
-                </div>
-              </div>
-
-              <div className="mt-6 space-y-1">
-                {[
-                  { label: 'Telefone', value: alunoSelecionado.telefone || 'Sem telefone' },
-                  { label: 'Email', value: alunoSelecionado.email || 'Sem email' },
-                  { label: 'Plano', value: formatCve(alunoSelecionado.plano) },
-                  { label: 'Próxima cobrança', value: resumoAlunoSelecionado?.nextChargeDate || '-' },
-                  {
-                    label: 'Cobertura',
-                    value: resumoAlunoSelecionado?.coverageStart && resumoAlunoSelecionado?.coverageEnd
-                      ? `${resumoAlunoSelecionado.coverageStart} até ${resumoAlunoSelecionado.coverageEnd}`
-                      : 'Sem cobertura ativa'
-                  },
-                  { label: 'Último pagamento', value: resumoAlunoSelecionado?.lastPaymentDate || 'Ainda sem registo' },
-                  {
-                    label: 'Saldo de dias',
-                    value: (() => {
-                      const balance = resumoAlunoSelecionado?.dayBalance || 0;
-                      if (balance > 0) return <span className="text-emerald-600 font-bold">+{balance} dias (Antecipado)</span>;
-                      if (balance < 0) return <span className="text-red-600 font-bold">{balance} dias (Atraso)</span>;
-                      return <span className="text-slate-500 font-bold">0 dias (Em dia)</span>;
-                    })()
-                  },
-                ].map((item) => (
-                  <div key={item.label} className="flex items-start justify-between gap-6 border-b border-[var(--border-light)] py-3 last:border-b-0">
-                    <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--text-secondary)] shrink-0">{item.label}</span>
-                    <span className="text-[14px] font-semibold nl-text text-right">{item.value}</span>
-                  </div>
-                ))}
-
-                <div className="border-t border-[var(--border)] pt-4 mt-2">
-                  <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--text-secondary)]">Notas</p>
-                  <p className="mt-2 text-[13px] nl-text leading-relaxed">
-                    {alunoSelecionado.notas || 'Nenhuma nota registada para este aluno.'}
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="border-t border-[var(--border)] bg-[var(--color-secondary-lighter)] px-6 py-4">
-              <div className="flex items-center justify-end gap-3">
-                <button onClick={() => abrirEdicao(alunoSelecionado)} className="nl-btn nl-btn-ghost h-10 px-4 text-[11px] font-bold uppercase tracking-[0.12em]">
-                  Editar
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {confirmDialog.visible && (
-        <div className="fixed inset-0 nl-modal-overlay flex items-center justify-center z-[9999] p-4 animate-in fade-in duration-200">
-          <div className="nl-modal w-full max-w-md overflow-hidden flex flex-col animate-slide-up">
-            <div className={`px-8 py-6 border-b border-[var(--border)] flex items-center gap-4 ${
-              confirmDialog.tone === 'danger'
-                ? 'bg-[#FFECEB]'
-                : confirmDialog.tone === 'warning'
-                  ? 'bg-[#FFF4E5]'
-                  : 'bg-[var(--color-secondary-lighter)]'
-            }`}>
-              <div className={`w-11 h-11 rounded-[3px] flex items-center justify-center text-white shadow-sm ${
-                confirmDialog.tone === 'danger'
-                  ? 'bg-red-600'
-                  : confirmDialog.tone === 'warning'
-                    ? 'bg-orange-500'
-                    : 'bg-[var(--color-primary)]'
-              }`}>
-                <AlertTriangle size={20} />
-              </div>
-              <div>
-                <h3 className="text-[18px] font-extrabold nl-text tracking-tight">{confirmDialog.title}</h3>
-                <p className="text-[12px] nl-text-muted font-bold uppercase tracking-widest">Confirmação necessária</p>
-              </div>
-            </div>
-            <div className="p-8 space-y-6">
-              <p className="text-[14px] nl-text leading-relaxed">{confirmDialog.message}</p>
-              <div className="flex justify-end gap-3">
-                <button onClick={fecharConfirmacao} className="nl-btn nl-btn-ghost h-11 px-6 font-bold uppercase tracking-widest text-[12px]">
-                  Cancelar
-                </button>
-                <button
-                  onClick={async () => {
-                    const action = confirmDialog.onConfirm;
-                    fecharConfirmacao();
-                    if (action) await action();
-                  }}
-                  className={`nl-btn h-11 px-8 font-bold uppercase tracking-widest text-[12px] text-white ${
-                    confirmDialog.tone === 'danger'
-                      ? 'bg-red-600 hover:bg-red-700'
-                      : confirmDialog.tone === 'warning'
-                        ? 'bg-orange-500 hover:bg-orange-600'
-                        : 'bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)]'
-                  }`}
-                >
-                  {confirmDialog.confirmLabel}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      <ConfirmDialogModal dialog={confirmDialog} onClose={fecharConfirmacao} />
 
 
 
       {/* Menu de Contexto */}
-      {contextMenu && (
-        <div 
-          ref={contextMenuRef}
-          className="fixed bg-[var(--bg-surface)] shadow-2xl border border-[var(--border)] rounded-[3px] py-2 z-[200] min-w-[240px] animate-in fade-in zoom-in-95 duration-100"
-          style={{ top: contextMenu.y, left: contextMenu.x }}
-        >
-          <div className="px-4 py-2 text-[11px] font-bold nl-text-muted uppercase tracking-widest border-b border-[var(--border-light)] mb-1 flex items-center justify-between">
-            Ações Rápidas
-            <Shield size={10} className="text-[var(--color-primary)]" />
-          </div>
-          
-          <div className="h-px bg-[var(--border-light)] my-1.5 mx-2"></div>
-
-          <button onClick={() => {
-            const a = alunos.find(al => al.id === contextMenu.alunoId);
-            if (a) abrirEdicao(a);
-            setContextMenu(null);
-          }} className="w-full text-left px-4 py-2.5 hover:bg-black/5 dark:hover:bg-white/10 flex items-center gap-3 text-[14px] font-medium transition-all group nl-text">
-            <Edit size={14} className="nl-text-muted group-hover:text-[var(--color-primary)]" /> Editar Perfil
-          </button>
-          
-          <button onClick={() => {
-            alterarStatus(contextMenu.alunoId, 'pausado');
-            setContextMenu(null);
-          }} className="w-full text-left px-4 py-2.5 hover:bg-black/5 dark:hover:bg-white/10 flex items-center gap-3 text-[14px] font-medium transition-all group nl-text">
-            <Pause size={14} className="nl-text-muted group-hover:text-[var(--color-warning)]" /> Colocar em Pausa
-          </button>
-          
-          <div className="h-px bg-[var(--border-light)] my-1.5 mx-2"></div>
-          
-          <button onClick={() => {
-            eliminarAluno(contextMenu.alunoId);
-            setContextMenu(null);
-          }} className="w-full text-left px-4 py-2.5 hover:bg-red-50 flex items-center gap-3 text-[14px] font-bold text-red-600 transition-all">
-            <Trash2 size={14} /> Eliminar Registo
-          </button>
-        </div>
-      )}
+      {contextMenu && <StudentContextMenu model={{ contextMenu, contextMenuRef, alunos, setContextMenu, abrirEdicao, alterarStatus, eliminarAluno }} />}
 
       {/* Barra de Estado */}
-      <footer className="bg-[var(--color-primary)] text-white px-8 h-9 flex justify-between items-center text-[12px] font-semibold shadow-[0_-2px_10px_rgba(0,0,0,0.1)]">
-         <div className="flex items-center gap-8">
-            <div className="flex items-center gap-2">
-               <div className={"w-2 h-2 rounded-full " + (online ? "bg-[#B3F5C0]" : "bg-[#FFD8A8]")} />
-               <span className="opacity-80 uppercase tracking-widest text-[10px]">{online ? "Sistema conectado" : "Modo local"}</span>
-            </div>
-            <div className="w-px h-3 bg-white/20"></div>
-            <div className="flex items-center gap-2">
-               <span className="opacity-60 uppercase tracking-widest text-[10px]">Alunos:</span>
-               <span>{totalAlunos}</span>
-            </div>
-            <div className="w-px h-3 bg-white/20"></div>
-            <div className="flex items-center gap-2">
-               <span className="opacity-60 uppercase tracking-widest text-[10px]">Atrasados:</span>
-               <span className={mensalidadesPendentes > 0 ? 'text-red-200 animate-pulse' : ''}>{mensalidadesPendentes}</span>
-            </div>
-         </div>
-
-         <div className="flex items-center gap-10">
-            <div className="flex items-center gap-4">
-               <span className="opacity-60 text-[10px] uppercase tracking-widest">Vista</span>
-               <input 
-                  type="range" 
-                  min="60" 
-                  max="100" 
-                  value={zoomLista}
-                  onChange={(e) => setZoomLista(parseInt(e.target.value))}
-                  className="w-32 h-1 bg-white/30 rounded-full appearance-none cursor-pointer accent-white"
-               />
-               <span className="w-8 text-right opacity-80">{zoomLista}%</span>
-            </div>
-            {relatorioMensalDisponivel && (
-               <button onClick={() => setAba('relatorios_detalhado')} className="flex items-center gap-2 bg-white/10 px-3 py-1 rounded-full hover:bg-white/20 transition-all border border-white/10">
-                  <Star size={10} className="text-amber-300 fill-amber-300" />
-                  <span className="text-[9px] font-black uppercase tracking-[0.15em]">Relatório de {relatorioMensalDisponivel}</span>
-               </button>
-            )}
-            <span className="opacity-80 uppercase tracking-widest text-[10px]">{new Date().toLocaleDateString('pt-PT')}</span>
-            <div className="opacity-40 font-bold uppercase tracking-[0.2em] text-[9px]">NEXT LEVEL PRO</div>
-         </div>
-      </footer>
+      <AppStatusBar model={{ online, totalAlunos, mensalidadesPendentes, zoomLista, relatorioMensalDisponivel, setZoomLista, setAba }} />
 
       {/* Modal: Relatório Mensal */}
-      {mostrarRelatorioMensal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[120] p-4 animate-fade-in" onClick={() => setMostrarRelatorioMensal(false)}>
-           <div className="bg-[var(--bg-surface)] w-full max-w-[850px] shadow-[0_20px_70px_rgba(0,0,0,0.3)] rounded-[6px] border border-[var(--border)] overflow-hidden flex flex-col animate-scale-in" style={{ maxHeight: 'calc(100vh - 40px)' }} onClick={e => e.stopPropagation()}>
-              <div className="bg-[#F1F4F9] border-b border-[#DDE2EB] h-12 flex items-center shrink-0">
-                <div className="flex-1 flex items-center gap-2.5 px-4">
-                  <div className="h-6 w-6 rounded-md bg-white/50 backdrop-blur-sm p-1 border border-white/40 shadow-sm flex items-center justify-center">
-                    <img src={appLogo || APP_ICON_PATH} alt="Logo" className="w-full h-full object-contain" />
-                  </div>
-                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] leading-none">NextLevel</span>
-                </div>
-                <div className="flex-1 text-center whitespace-nowrap">
-                  <h2 className="text-[12px] font-black text-slate-700 uppercase tracking-wider leading-none">{mesFinanceiro} {anoFinanceiro}</h2>
-                </div>
-                <div className="flex-1 flex justify-end px-3">
-                  <button onClick={() => setMostrarRelatorioMensal(false)} className="h-8 w-8 flex items-center justify-center rounded-md text-slate-400 hover:bg-red-50 hover:text-red-500 transition-all" title="Fechar">
-                    <X size={16} />
-                  </button>
-                </div>
-              </div>
-
-              <div className="flex-1 p-6 overflow-y-auto custom-scrollbar flex flex-col gap-6">
-                 {/* Cards Resumo */}
-                 <div className="grid grid-cols-4 gap-4">
-                    {[
-                      { label: 'Total Recebido', value: normalizeAmount(totalRecebidoPeriodo).toLocaleString(), suffix: 'CVE', color: '#33d17a', icon: <CreditCard size={100} /> },
-                      { label: 'Cobertura Ativa', value: alunosComPagamentoEmDia.length, suffix: '', color: 'var(--color-primary)', icon: <CheckCircle2 size={100} /> },
-                      { label: 'Em Cobrança', value: alunosEmDivida.length, suffix: '', color: '#e01b24', icon: <AlertCircle size={100} /> },
-                      { label: 'Inscritos no mês', value: alunos.filter(a => { const d = parseFlexibleDate(a.data_matricula); return d ? d.getMonth() === ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'].indexOf(mesFinanceiro) && d.getFullYear() === anoFinanceiro : false; }).length, suffix: '', color: '#3584e4', icon: <UserPlus size={100} /> },
-                    ].map(card => (
-                      <div key={card.label} className="p-4 border nl-border rounded-[6px] nl-bg-input flex flex-col justify-center relative overflow-hidden group">
-                        <div className="absolute -right-4 -bottom-4 opacity-5 group-hover:scale-110 transition-transform">{card.icon}</div>
-                        <span className="text-[10px] font-extrabold nl-text-muted uppercase tracking-wider mb-1.5 relative z-10">{card.label}</span>
-                        <span className="text-[24px] font-black leading-none relative z-10" style={{ color: card.color }}>
-                          {card.value}{card.suffix && <> <span className="text-[12px]" style={{ opacity: 0.7 }}>{card.suffix}</span></>}
-                        </span>
-                      </div>
-                    ))}
-                 </div>
-
-                 <div className="grid grid-cols-2 gap-6 flex-1 overflow-hidden">
-                    <div className="flex flex-col gap-4 overflow-hidden">
-                       <h3 className="text-[12px] font-extrabold nl-text uppercase tracking-widest flex items-center gap-2">
-                          <AlertCircle size={15} className="text-red-600" /> Em Cobrança Agora
-                       </h3>
-                       <div className="border border-[var(--border)] rounded-[3px] overflow-hidden flex flex-col h-full bg-[var(--bg-surface)]">
-                          <div className="flex-1 overflow-y-auto custom-scrollbar divide-y border-[var(--border-light)]">
-                             {alunosEmDivida.length === 0 ? (
-                                <div className="p-12 text-center nl-text-muted text-[13px] font-medium">Nenhum aluno em dívida. Tudo controlado.</div>
-                             ) : (
-                                alunosEmDivida.map(({ aluno, resumo }, index) => {
-                                   const tom = obterTomPastel(index);
-                                   return (
-                                      <div key={aluno.id} className={`p-3 flex items-center justify-between border-b last:border-b-0 transition-all group ${tom.bg} ${tom.border} hover:-translate-y-[1px]`}>
-                                         <div className="flex flex-col gap-0.5">
-                                            <span className="text-[13px] font-bold nl-text">{aluno.nome}</span>
-                                            <span className="text-[11px] nl-text-muted font-mono">{aluno.telefone}</span>
-                                         </div>
-                                         <div className="flex flex-col items-end gap-0.5">
-                                            <span className="text-[13px] font-extrabold text-red-600">{formatCve(aluno.plano)}</span>
-                                            <span className="text-[10px] text-red-600/70 font-bold uppercase tracking-wider">{resumo.statusLabel}</span>
-                                         </div>
-                                      </div>
-                                   )
-                                })
-                             )}
-                          </div>
-                       </div>
-                    </div>
-
-                    <div className="flex flex-col gap-4 overflow-hidden">
-                       <h3 className="text-[12px] font-extrabold nl-text uppercase tracking-widest flex items-center gap-2">
-                          <CheckCircle2 size={15} className="text-green-600" /> Recebidos no Período
-                       </h3>
-                       <div className="border border-[var(--border)] rounded-[3px] overflow-hidden flex flex-col h-full bg-[var(--bg-surface)]">
-                          <div className="flex-1 overflow-y-auto custom-scrollbar divide-y border-[var(--border-light)]">
-                             {pagamentosDoPeriodo.length === 0 ? (
-                                <div className="p-12 text-center nl-text-muted text-[13px] font-medium">Nenhum pagamento registado.</div>
-                             ) : (
-                                pagamentosDoPeriodo
-                                  .sort((left, right) => (right.id || 0) - (left.id || 0))
-                                  .map((p, index) => {
-                                   const tom = obterTomPastel(index);
-                                   return (
-                                   <div key={`${p.id}-${index}`} className={`p-3 flex items-center justify-between border-b last:border-b-0 transition-all group ${tom.bg} ${tom.border} hover:-translate-y-[1px]`}>
-                                      <div className="flex flex-col gap-0.5">
-                                         <span className="text-[13px] font-bold nl-text">{p.nome}</span>
-                                         <div className="flex items-center gap-2">
-                                            <span className="text-[9px] px-1.5 py-0.5 rounded-[3px] bg-green-500/10 text-green-600 font-bold uppercase tracking-wider">{p?.metodo_pagamento}</span>
-                                            <span className="text-[10px] nl-text-muted font-mono">{p?.data_pagamento}</span>
-                                         </div>
-                                         {p?.referencia_inicio && p?.referencia_fim && (
-                                           <span className="text-[10px] nl-text-muted">cobre {p.referencia_inicio} ate {p.referencia_fim}</span>
-                                         )}
-                                      </div>
-                                      <span className="text-[13px] font-extrabold text-green-600">{formatCve(p?.valor)}</span>
-                                   </div>
-                                )})
-                             )}
-                          </div>
-                       </div>
-                    </div>
-                 </div>
-              </div>
-              <div className="bg-[#F8F9FC] border-t border-[#DDE2EB] px-6 py-4 flex items-center justify-between shrink-0">
-                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Estatísticas & Fecho de Mensalidades</p>
-                 <div className="flex gap-3">
-                    <button onClick={() => setMostrarRelatorioMensal(false)} className="nl-btn nl-btn-secondary !h-9 !px-5 !text-[11px] font-bold">Fechar</button>
-                    <button onClick={() => { exportarFinancasExcel(); showToast('Exportado para Excel'); }} className="nl-btn !h-9 !px-6 !text-[11px] font-bold !bg-emerald-600 !text-white hover:!bg-emerald-700 !border-emerald-700">
-                       <FileSpreadsheet size={14} /> Exportar Excel
-                    </button>
-                 </div>
-              </div>
-           </div>
-        </div>
-      )}
+      {mostrarRelatorioMensal && <MonthlyReportModal model={{ appLogo, mesFinanceiro, anoFinanceiro, totalRecebidoPeriodo, alunosComPagamentoEmDia, alunosEmDivida, alunos, pagamentosDoPeriodo, setMostrarRelatorioMensal, exportarFinancasExcel, showToast, obterTomPastel }} />}
 
       {/* Modal: Notificações */}
-      {mostrarNotificacoes && (() => {
-        const prioritarias = notificacoes.filter(n => n.categoria === 'prioritaria');
-        const relatorios = notificacoes.filter(n => n.categoria === 'relatorio');
-        const appNotifs = notificacoes.filter(n => !n.categoria || n.categoria === 'app');
-        const naoLidas = notificacoes.filter(n => !n.lida).length;
-
-        const NotifItem = ({ n, onClick }: { n: Notificacao; onClick: () => void }) => {
-          const iconColor = n.tipo === 'sucesso' ? 'bg-green-500' : n.tipo === 'alerta' ? 'bg-orange-500' : n.tipo === 'erro' ? 'bg-red-500' : 'bg-[var(--color-primary)]';
-          return (
-            <div
-              className={`px-5 py-3.5 flex items-start gap-3 hover:bg-[var(--color-secondary-lighter)]/60 transition-all cursor-pointer ${!n.lida ? 'bg-blue-50/40' : ''}`}
-              onClick={onClick}
-            >
-              <div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${iconColor}`} />
-              <div className="flex-1 min-w-0">
-                <p className={`text-[12px] font-bold nl-text leading-tight ${!n.lida ? 'text-[var(--color-primary)]' : ''}`}>{n.titulo}</p>
-                <p className="text-[11px] nl-text-muted leading-relaxed mt-0.5 line-clamp-2">{n.mensagem}</p>
-              </div>
-              <span className="text-[9px] font-bold nl-text-muted uppercase opacity-60 shrink-0 mt-0.5">{n.data.split(',')[0]}</span>
-            </div>
-          );
-        };
-
-        const SectionHeader = ({ label, count, color }: { label: string; count: number; color: string }) => (
-          <div className={`px-5 py-2 flex items-center justify-between border-b border-[var(--border-light)]`}>
-            <span className={`text-[9px] font-black uppercase tracking-[0.2em] ${color}`}>{label}</span>
-            <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-full ${color} opacity-80 border border-current`}>{count}</span>
-          </div>
-        );
-
-        return (
-          <div ref={notificacoesRef} className="fixed top-16 right-6 w-[400px] bg-[var(--bg-surface)] shadow-2xl rounded-[3px] border border-[var(--border)] z-[500] overflow-hidden flex flex-col animate-slide-up" style={{ maxHeight: 'calc(100vh - 80px)' }}>
-            {/* Header */}
-            <div className="px-5 py-4 border-b border-[var(--border)] flex items-center justify-between bg-[var(--color-secondary-lighter)]/40">
-              <div className="flex items-center gap-2.5">
-                <Bell size={16} className="text-[var(--color-primary)]" />
-                <h3 className="text-[12px] font-black nl-text uppercase tracking-widest">Notificações</h3>
-                {naoLidas > 0 && (
-                  <span className="bg-[var(--color-primary)] text-white text-[9px] font-black px-1.5 py-0.5 rounded-full">{naoLidas}</span>
-                )}
-              </div>
-              <div className="flex items-center gap-3">
-                {notificacoes.length > 0 && (
-                  <button onClick={limparNotificacoes} className="text-[10px] font-bold text-red-500 hover:underline uppercase tracking-tight">Limpar</button>
-                )}
-                <button onClick={() => setMostrarNotificacoes(false)} className="nl-text-muted hover:text-[var(--color-primary)] transition-colors"><X size={16} /></button>
-              </div>
-            </div>
-
-            <div className="overflow-y-auto custom-scrollbar flex-1 divide-y divide-[var(--border-light)]">
-              {notificacoes.length === 0 ? (
-                <div className="py-16 text-center">
-                  <div className="w-14 h-14 rounded-full bg-[var(--color-secondary-lighter)] flex items-center justify-center mx-auto mb-3 opacity-40"><Bell size={28} /></div>
-                  <p className="text-[13px] font-bold nl-text-muted">Sem notificações.</p>
-                </div>
-              ) : (
-                <>
-                  {/* 🔴 PRIORITÁRIAS */}
-                  {prioritarias.length > 0 && (
-                    <div>
-                      <SectionHeader label="🔴 Prioritárias" count={prioritarias.length} color="text-red-600" />
-                      {prioritarias.map(n => (
-                        <NotifItem key={n.id} n={n} onClick={() => marcarComoLida(n.id)} />
-                      ))}
-                    </div>
-                  )}
-
-                  {/* 📊 RELATÓRIOS */}
-                  {relatorios.length > 0 && (
-                    <div>
-                      <SectionHeader label="📊 Relatórios" count={relatorios.length} color="text-blue-600" />
-                      {relatorios.map(n => (
-                        <NotifItem key={n.id} n={n} onClick={() => marcarComoLida(n.id)} />
-                      ))}
-                    </div>
-                  )}
-
-                  {/* ℹ️ APP */}
-                  {appNotifs.length > 0 && (
-                    <div>
-                      <SectionHeader label="ℹ️ Sistema" count={appNotifs.length} color="text-slate-500" />
-                      {appNotifs.map(n => (
-                        <NotifItem key={n.id} n={n} onClick={() => marcarComoLida(n.id)} />
-                      ))}
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-
-            <div className="p-3 bg-[var(--color-secondary-lighter)]/40 border-t border-[var(--border)] text-center">
-              <button onClick={() => { setAba('configuracoes'); setConfigAba('notificacoes'); setMostrarNotificacoes(false); }} className="text-[10px] font-extrabold text-[var(--color-primary)] uppercase tracking-widest hover:underline">Configurações de Notificações</button>
-            </div>
-          </div>
-        );
-      })()}
-
+      {mostrarNotificacoes && <NotificationsPanel model={{ notificacoes, notificacoesRef, limparNotificacoes, setMostrarNotificacoes, marcarComoLida, setAba, setConfigAba }} />}
 
 
       {/* Modais de configuração foram removidos para se tornarem abas principais */}
 
       {/* Modal: Boas-Vindas Nova Matrícula */}
-      {mostrarBoasVindas && alunoBoasVindas && (() => {
-        const telefone = (alunoBoasVindas.telefone || '').replace(/\D/g, '');
-        const whatsappUrl = telefone
-          ? `https://wa.me/${telefone}?text=${encodeURIComponent(msgBoasVindas)}`
-          : null;
-        const fechar = () => { setMostrarBoasVindas(false); setAlunoBoasVindas(null); setMsgBoasVindas(''); };
-        return (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-[2px] flex items-center justify-center z-[200] p-4 animate-fade-in" onClick={fechar}>
-            <div className="bg-[var(--bg-surface)] w-full max-w-[480px] shadow-2xl rounded-[6px] border border-[var(--border)] overflow-hidden animate-scale-in flex flex-col" onClick={e => e.stopPropagation()}>
-              {/* Header */}
-              <div className="bg-[#F1F4F9] border-b border-[#DDE2EB] h-12 flex items-center shrink-0 px-4 gap-3">
-                <div className="h-6 w-6 rounded-md bg-white/50 p-1 border border-white/40 shadow-sm flex items-center justify-center">
-                  <img src={appLogo || APP_ICON_PATH} alt="Logo" className="w-full h-full object-contain" />
-                </div>
-                <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">{nomeAcademia}</span>
-                <div className="flex-1" />
-                <h2 className="text-[12px] font-black text-slate-700 uppercase tracking-wider">Nova Matrícula</h2>
-                <div className="flex-1" />
-                <button onClick={fechar} className="h-8 w-8 flex items-center justify-center rounded-md text-slate-400 hover:bg-red-50 hover:text-red-500 transition-all"><X size={16} /></button>
-              </div>
-
-              {/* Conteúdo */}
-              <div className="px-6 py-5 space-y-4">
-                {/* Confirmação */}
-                <div className="flex items-center gap-4 p-4 rounded-[6px] bg-green-50 border border-green-100">
-                  <div className="w-12 h-12 rounded-full bg-white shadow-sm border-2 border-green-200 flex items-center justify-center shrink-0">
-                    <CheckCircle2 size={24} className="text-green-500" />
-                  </div>
-                  <div>
-                    <p className="text-[13px] font-black text-green-800">{alunoBoasVindas.nome} matriculado com sucesso!</p>
-                    <p className="text-[11px] text-green-600 font-medium mt-0.5">
-                      Plano: {alunoBoasVindas.plano} · {new Date().toLocaleDateString('pt-PT')}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Mensagem editável */}
-                <div className="space-y-1.5">
-                  <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500">Mensagem de Boas-Vindas</label>
-                  <textarea
-                    value={msgBoasVindas}
-                    onChange={e => setMsgBoasVindas(e.target.value)}
-                    rows={6}
-                    className="nl-input resize-none text-[12px] leading-relaxed"
-                  />
-                </div>
-              </div>
-
-              {/* Rodapé */}
-              <div className="bg-[#F8F9FC] border-t border-[#DDE2EB] px-6 py-4 flex items-center justify-between gap-3 shrink-0">
-                <button onClick={fechar} className="nl-btn nl-btn-ghost !h-9 !px-4 !text-[11px] font-bold">Pular</button>
-                <div className="flex items-center gap-2">
-                  {whatsappUrl && (
-                    <a
-                      href={whatsappUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      onClick={fechar}
-                      className="nl-btn !h-9 !px-5 !text-[11px] font-bold text-white flex items-center gap-2 rounded-[5px] transition-all hover:brightness-105 shadow-sm"
-                      style={{ background: '#25D366' }}
-                    >
-                      <MessageSquare size={14} /> Enviar via WhatsApp
-                    </a>
-                  )}
-                  <button onClick={fechar} className="nl-btn nl-btn-secondary !h-9 !px-5 !text-[11px] font-bold">Fechar</button>
-                </div>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
+      {mostrarBoasVindas && alunoBoasVindas && <WelcomeStudentModal model={{ alunoBoasVindas, msgBoasVindas, appLogo, nomeAcademia, electron, setMostrarBoasVindas, setAlunoBoasVindas, setMsgBoasVindas }} />}
 
       {/* Modal: Sobre o App (Página Estilo Word) */}
-
-      {mostrarSobreDoc && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[2000] p-4 animate-fade-in" onClick={() => setMostrarSobreDoc(false)}>
-          <div className="bg-[var(--bg-surface)] w-full max-w-[520px] shadow-[0_20px_70px_rgba(0,0,0,0.3)] rounded-[6px] border border-[var(--border)] overflow-hidden flex flex-col animate-scale-in" onClick={e => e.stopPropagation()}>
-
-            <div className="bg-[#F1F4F9] border-b border-[#DDE2EB] h-12 flex items-center shrink-0">
-              <div className="flex-1 flex items-center gap-2.5 px-4">
-                <div className="h-6 w-6 rounded-md bg-white/50 backdrop-blur-sm p-1 border border-white/40 shadow-sm flex items-center justify-center">
-                  <img src={appLogo || APP_ICON_PATH} alt="Logo" className="w-full h-full object-contain" />
-                </div>
-                <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] leading-none">NextLevel</span>
-              </div>
-              <div className="flex-1 text-center whitespace-nowrap">
-                <h2 className="text-[12px] font-black text-slate-700 uppercase tracking-wider leading-none">Sobre a Aplicação</h2>
-              </div>
-              <div className="flex-1 flex justify-end px-3">
-                <button onClick={() => setMostrarSobreDoc(false)} className="h-8 w-8 flex items-center justify-center rounded-md text-slate-400 hover:bg-red-50 hover:text-red-500 transition-all" title="Fechar">
-                  <X size={16} />
-                </button>
-              </div>
-            </div>
-
-            <div className="px-6 py-6 space-y-6">
-              <div className="flex items-center gap-4 pb-4 border-b border-[var(--border-light)]">
-                <div className="w-12 h-12 rounded-[var(--radius-control)] bg-[var(--color-secondary-lighter)] border border-[var(--border)] flex items-center justify-center shrink-0">
-                  <img src={appLogo || APP_ICON_PATH} className="w-8 h-8 object-contain" alt="NEXTLevel" />
-                </div>
-                <div>
-                  <p className="text-[16px] font-black nl-text tracking-tight leading-none">NEXTLevel</p>
-                  <p className="text-[11px] nl-text-muted mt-1">Sistema de Gestão de Academias · v1.0 Beta</p>
-                </div>
-              </div>
-
-              <div className="space-y-3">
-                {[
-                  { label: 'Versão', value: '1.0.0 Beta' },
-                  { label: 'Plataforma', value: 'macOS · Windows · Desktop' },
-                  { label: 'Base de Dados', value: 'SQLite · Offline · Local' },
-                  { label: 'Licença', value: licencaDados.tipo ? `${licencaDados.tipo} · ${licencaDados.expiracao || 'Vitalícia'}` : 'Não activada' },
-                  { label: 'Ano', value: String(new Date().getFullYear()) },
-                ].map(item => (
-                  <div key={item.label} className="flex items-center justify-between gap-4 px-3 py-2.5 rounded-[6px] bg-[var(--color-secondary-lighter)]/30 border border-[var(--border-light)]">
-                    <span className="text-[11px] font-bold nl-text-muted uppercase tracking-wider">{item.label}</span>
-                    <span className="text-[12px] font-bold nl-text text-right">{item.value}</span>
-                  </div>
-                ))}
-              </div>
-
-              <div className="flex items-center justify-between px-3 py-3 rounded-[6px] bg-gradient-to-r from-slate-50 to-white border border-[var(--border-light)]">
-                <div className="flex items-center gap-3">
-                  <img src={NEXT_LAB_ICON} className="w-6 h-6 object-contain opacity-50" alt="NEXT Lab" />
-                  <div>
-                    <p className="text-[12px] font-bold nl-text leading-none">NEXT Lab</p>
-                    <p className="text-[10px] nl-text-muted mt-0.5">Creative Studio · desde 1995</p>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <p className="text-[11px] font-semibold nl-text">{COMPANY_AUTHOR}</p>
-                  <p className="text-[10px] nl-text-muted">{COMPANY_EMAIL}</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-[#F8F9FC] border-t border-[#DDE2EB] px-6 py-4 flex items-center justify-between shrink-0">
-              <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">© {new Date().getFullYear()} NEXT Lab</p>
-              <div className="flex gap-3">
-                <button onClick={() => setMostrarSobreDoc(false)} className="nl-btn nl-btn-secondary !h-9 !px-5 !text-[11px] font-bold">Fechar</button>
-                <button onClick={() => electron?.ipcRenderer.invoke('open-external', COMPANY_WEBSITE)} className="nl-btn !h-9 !px-5 !text-[11px] font-bold !bg-slate-800 !text-white hover:!bg-slate-900">
-                  <Globe size={14} /> linktr.ee/next.lab
-                </button>
-              </div>
-            </div>
-
-          </div>
-        </div>
-      )}
+      {mostrarSobreDoc && <AboutAppModal model={{ appLogo, licencaDados, electron, setMostrarSobreDoc }} />}
       {/* Modal: Novo Utilizador */}
-      {mostrarFormNovoUtilizador && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[1000] p-4 animate-fade-in" onClick={() => setMostrarFormNovoUtilizador(false)}>
-           <div className="bg-[var(--bg-surface)] w-full max-w-[460px] shadow-[0_20px_70px_rgba(0,0,0,0.3)] rounded-[6px] border border-[var(--border)] overflow-hidden flex flex-col animate-scale-in" style={{ maxHeight: 'calc(100vh - 40px)' }} onClick={e => e.stopPropagation()}>
-              <div className="bg-[#F1F4F9] border-b border-[#DDE2EB] h-12 flex items-center shrink-0">
-                <div className="flex-1 flex items-center gap-2.5 px-4">
-                  <div className="h-6 w-6 rounded-md bg-white/50 backdrop-blur-sm p-1 border border-white/40 shadow-sm flex items-center justify-center">
-                    <img src={appLogo || APP_ICON_PATH} alt="Logo" className="w-full h-full object-contain" />
-                  </div>
-                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] leading-none">NextLevel</span>
-                </div>
-                <div className="flex-1 text-center whitespace-nowrap">
-                  <h2 className="text-[12px] font-black text-slate-700 uppercase tracking-wider leading-none">Novo Utilizador</h2>
-                </div>
-                <div className="flex-1 flex justify-end px-3">
-                  <button onClick={() => setMostrarFormNovoUtilizador(false)} className="h-8 w-8 flex items-center justify-center rounded-md text-slate-400 hover:bg-red-50 hover:text-red-500 transition-all" title="Fechar">
-                    <X size={16} />
-                  </button>
-                </div>
-              </div>
-              <div className="p-5 space-y-4">
-                 <div className="space-y-1.5">
-                    <label className="block text-[10px] font-bold nl-text-muted uppercase tracking-[0.12em] mb-1">Nome Completo</label>
-                    <input type="text" value={novoUtilizadorForm.name} onChange={e => setNovoUtilizadorForm({...novoUtilizadorForm, name: e.target.value})} className="nl-input w-full h-10 px-3 text-[13px]" placeholder="Ex: João Silva" required />
-                 </div>
-                 <div className="space-y-1.5">
-                    <label className="block text-[10px] font-bold nl-text-muted uppercase tracking-[0.12em] mb-1">Email</label>
-                    <input type="email" value={novoUtilizadorForm.email} onChange={e => setNovoUtilizadorForm({...novoUtilizadorForm, email: e.target.value})} className="nl-input w-full h-10 px-3 text-[13px]" placeholder="contacto@exemplo.com" required />
-                 </div>
-                 <div className="space-y-1.5">
-                    <label className="block text-[10px] font-bold nl-text-muted uppercase tracking-[0.12em] mb-1">Função</label>
-                    <select value={novoUtilizadorForm.role} onChange={e => setNovoUtilizadorForm({...novoUtilizadorForm, role: e.target.value})} className="nl-input w-full h-10 px-3 text-[13px] cursor-pointer">
-                       <option value="operational">Operacional (Sem Ajustes)</option>
-                       <option value="admin">Administrador (Total)</option>
-                    </select>
-                 </div>
-                 <div className="space-y-1.5">
-                    <label className="block text-[10px] font-bold nl-text-muted uppercase tracking-[0.12em] mb-1">Palavra-passe</label>
-                    <input type="password" value={novoUtilizadorForm.password} onChange={e => setNovoUtilizadorForm({...novoUtilizadorForm, password: e.target.value})} className="nl-input w-full h-10 px-3 text-[13px]" placeholder="Mínimo 6 caracteres" required />
-                 </div>
-              </div>
-              <div className="bg-[#F8F9FC] border-t border-[#DDE2EB] px-6 py-4 flex items-center justify-end gap-3 shrink-0">
-                 <button onClick={() => setMostrarFormNovoUtilizador(false)} className="nl-btn nl-btn-secondary !h-9 !px-5 !text-[11px] font-bold">Cancelar</button>
-                 <button onClick={async () => {
-                    if (!electron || !novoUtilizadorForm.name || !novoUtilizadorForm.email || novoUtilizadorForm.password.length < 6) return alert('Preencha todos os campos e palavra-passe com mínimo de 6 caracteres.');
-                    const res = await electron.ipcRenderer.invoke('users:create', novoUtilizadorForm);
-                    if (!res?.success) return alert(res?.message || 'Erro ao criar utilizador.');
-                    showToast('Utilizador criado com sucesso!');
-                    setMostrarFormNovoUtilizador(false);
-                    setNovoUtilizadorForm({ name: '', email: '', role: 'operational', password: '' });
-                    const listRes = await electron.ipcRenderer.invoke('users:list');
-                    if (listRes?.success) setListaUtilizadores(listRes.users || []);
-                 }} className="nl-btn !h-9 !px-6 !text-[11px] font-bold nl-btn-primary">
-                    <UserPlus size={14} /> Criar Conta
-                 </button>
-              </div>
-           </div>
-        </div>
-      )}
+      {mostrarFormNovoUtilizador && <CreateUserModal model={{ appLogo, novoUtilizadorForm, electron, setMostrarFormNovoUtilizador, setNovoUtilizadorForm, showToast, setListaUtilizadores }} />}
 
       {/* Modal: Editar Utilizador + Actividade */}
-      {utilizadorEmEdicao && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[1000] p-4 animate-fade-in" onClick={() => setUtilizadorEmEdicao(null)}>
-          <div className="bg-[var(--bg-surface)] w-full max-w-[720px] shadow-[0_20px_70px_rgba(0,0,0,0.3)] rounded-[6px] border border-[var(--border)] overflow-hidden flex flex-col animate-scale-in" style={{ maxHeight: 'calc(100vh - 40px)' }} onClick={e => e.stopPropagation()}>
-            <div className="bg-[#F1F4F9] border-b border-[#DDE2EB] h-12 flex items-center shrink-0">
-              <div className="flex-1 flex items-center gap-2.5 px-4">
-                {(() => {
-                  const avatar = utilizadorAvatares[String(utilizadorEmEdicao.id)];
-                  return (
-                    <div className="h-6 w-6 rounded-md overflow-hidden flex items-center justify-center font-bold text-[9px] border border-white/40 shadow-sm"
-                         style={{ background: avatar ? 'transparent' : `hsl(${(utilizadorEmEdicao.name.charCodeAt(0) * 37) % 360}, 60%, 88%)`, color: `hsl(${(utilizadorEmEdicao.name.charCodeAt(0) * 37) % 360}, 60%, 35%)` }}>
-                      {avatar ? <img src={avatar} className="w-full h-full object-cover" /> : utilizadorEmEdicao.name.slice(0,2).toUpperCase()}
-                    </div>
-                  );
-                })()}
-                <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] leading-none">{utilizadorEmEdicao.name}</span>
-              </div>
-              <div className="flex-1 text-center whitespace-nowrap">
-                <h2 className="text-[12px] font-black text-slate-700 uppercase tracking-wider leading-none">Editar Utilizador</h2>
-              </div>
-              <div className="flex-1 flex justify-end px-3">
-                <button onClick={() => setUtilizadorEmEdicao(null)} className="h-8 w-8 flex items-center justify-center rounded-md text-slate-400 hover:bg-red-50 hover:text-red-500 transition-all" title="Fechar">
-                  <X size={16} />
-                </button>
-              </div>
-            </div>
-
-            <div className="flex flex-1 overflow-hidden min-h-0">
-              <div className="w-[300px] shrink-0 border-r border-[var(--border)] p-5 space-y-4 overflow-y-auto custom-scrollbar">
-                <p className="text-[9px] font-black uppercase tracking-[0.2em] text-[var(--text-secondary)]">Perfil</p>
-
-                <div className="flex items-center gap-3">
-                  <div className="relative group">
-                    <div className="w-14 h-14 rounded-[var(--radius-control)] overflow-hidden flex items-center justify-center font-bold text-[16px] border border-[var(--border)]"
-                         style={{ background: utilizadorAvatares[String(utilizadorEmEdicao.id)] ? 'transparent' : `hsl(${(utilizadorEmEdicao.name.charCodeAt(0) * 37) % 360}, 60%, 88%)`, color: `hsl(${(utilizadorEmEdicao.name.charCodeAt(0) * 37) % 360}, 60%, 35%)` }}>
-                      {utilizadorAvatares[String(utilizadorEmEdicao.id)]
-                        ? <img src={utilizadorAvatares[String(utilizadorEmEdicao.id)]} className="w-full h-full object-cover" />
-                        : utilizadorEmEdicao.name.slice(0,2).toUpperCase()}
-                    </div>
-                    <label className="absolute inset-0 bg-black/50 rounded-[var(--radius-control)] flex items-center justify-center opacity-0 group-hover:opacity-100 cursor-pointer transition-all">
-                      <Camera size={14} className="text-white" />
-                      <input type="file" className="hidden" accept="image/*" onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (!file) return;
-                        const reader = new FileReader();
-                        reader.onload = (ev) => {
-                          const result = ev.target?.result as string;
-                          const updated = { ...utilizadorAvatares, [String(utilizadorEmEdicao.id)]: result };
-                          setUtilizadorAvatares(updated);
-                          localStorage.setItem('nl_user_avatares', JSON.stringify(updated));
-                        };
-                        reader.readAsDataURL(file);
-                      }} />
-                    </label>
-                  </div>
-                  <div className="text-[10px] nl-text-muted leading-relaxed">
-                    <p className="font-bold nl-text mb-0.5">Foto de perfil</p>
-                    <p>Passe o rato para alterar</p>
-                    {utilizadorAvatares[String(utilizadorEmEdicao.id)] && (
-                      <button type="button" onClick={() => {
-                        const updated = { ...utilizadorAvatares };
-                        delete updated[String(utilizadorEmEdicao.id)];
-                        setUtilizadorAvatares(updated);
-                        localStorage.setItem('nl_user_avatares', JSON.stringify(updated));
-                      }} className="text-red-500 hover:underline mt-1 block text-[10px]">Remover foto</button>
-                    )}
-                  </div>
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="block text-[10px] font-bold nl-text-muted uppercase tracking-[0.12em] mb-1">Nome</label>
-                  <input type="text" value={utilizadorEdicaoForm.name} onChange={e => setUtilizadorEdicaoForm(f => ({...f, name: e.target.value}))} className="nl-input w-full h-10 px-3 text-[13px]" />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="block text-[10px] font-bold nl-text-muted uppercase tracking-[0.12em] mb-1">Função</label>
-                  <select value={utilizadorEdicaoForm.role} onChange={e => setUtilizadorEdicaoForm(f => ({...f, role: e.target.value}))} className="nl-input w-full h-10 px-3 text-[13px] cursor-pointer">
-                    <option value="operational">Operacional</option>
-                    <option value="admin">Administrador</option>
-                  </select>
-                </div>
-                <div className="flex items-center justify-between p-3 rounded-[6px] bg-[var(--color-secondary-lighter)]/40 border border-[var(--border-light)]">
-                  <div>
-                    <p className="text-[11px] font-bold nl-text">Conta activa</p>
-                    <p className="text-[9px] nl-text-muted">Acesso ao sistema</p>
-                  </div>
-                  <button type="button" onClick={() => setUtilizadorEdicaoForm(f => ({...f, isActive: !f.isActive}))}
-                    className={`relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors ${utilizadorEdicaoForm.isActive ? 'bg-[var(--color-primary)]' : 'bg-slate-300'}`}>
-                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${utilizadorEdicaoForm.isActive ? 'translate-x-4' : 'translate-x-0'}`} />
-                  </button>
-                </div>
-                <button type="button" onClick={async () => {
-                  if (!electron || !utilizadorEdicaoForm.name.trim()) return;
-                  const res = await electron.ipcRenderer.invoke('users:update', {
-                    id: utilizadorEmEdicao.id,
-                    name: utilizadorEdicaoForm.name,
-                    role: utilizadorEdicaoForm.role,
-                    isActive: utilizadorEdicaoForm.isActive,
-                  });
-                  if (!res?.success) return showToast('Erro: ' + (res?.message || ''));
-                  showToast('Dados guardados.');
-                  const listRes = await electron.ipcRenderer.invoke('users:list');
-                  if (listRes?.success) setListaUtilizadores(listRes.users || []);
-                  setUtilizadorEmEdicao({ ...utilizadorEmEdicao, name: utilizadorEdicaoForm.name, role: utilizadorEdicaoForm.role, is_active: utilizadorEdicaoForm.isActive ? 1 : 0 });
-                }} className="nl-btn nl-btn-primary w-full h-10 text-[12px] font-bold"><Save size={14} /> Guardar alterações</button>
-
-                <div className="border-t border-[var(--border-light)] pt-4 space-y-2">
-                  <p className="text-[9px] font-black uppercase tracking-[0.2em] text-[var(--text-secondary)]">Palavra-passe</p>
-                  <input type="password" value={utilizadorEdicaoForm.novaSenha} onChange={e => setUtilizadorEdicaoForm(f => ({...f, novaSenha: e.target.value}))} placeholder="Nova palavra-passe..." className="nl-input w-full h-10 px-3 text-[13px]" />
-                  <button type="button" onClick={async () => {
-                    if (!electron || utilizadorEdicaoForm.novaSenha.length < 6) return showToast('Mínimo 6 caracteres.');
-                    const res = await electron.ipcRenderer.invoke('users:set-password', { id: utilizadorEmEdicao.id, password: utilizadorEdicaoForm.novaSenha });
-                    if (!res?.success) return showToast('Erro: ' + (res?.message || ''));
-                    showToast('Palavra-passe alterada.');
-                    setUtilizadorEdicaoForm(f => ({...f, novaSenha: ''}));
-                  }} className="nl-btn nl-btn-secondary w-full h-9 text-[11px] font-bold">Alterar palavra-passe</button>
-                </div>
-              </div>
-
-              {/* Right: Activity log */}
-              <div className="flex-1 flex flex-col overflow-hidden">
-                <div className="px-5 py-3 border-b border-[var(--border)] bg-[var(--color-secondary-lighter)]/30 flex items-center justify-between shrink-0">
-                  <p className="text-[10px] font-bold nl-text-muted uppercase tracking-wider">Histórico de Actividade</p>
-                  <span className="text-[9px] nl-text-muted">{logs.filter(l => l.user_name === utilizadorEmEdicao.name).length} acções</span>
-                </div>
-                <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-1.5">
-                  {(() => {
-                    const userLogs = logs.filter(l => l.user_name === utilizadorEmEdicao.name);
-                    if (userLogs.length === 0) {
-                      return (
-                        <div className="flex flex-col items-center justify-center h-full gap-2 opacity-40">
-                          <Activity size={24} />
-                          <p className="text-[12px] font-semibold nl-text">Sem actividade registada</p>
-                          <p className="text-[11px] nl-text-muted text-center">As acções futuras deste utilizador aparecerão aqui</p>
-                        </div>
-                      );
-                    }
-                    const iconePorAcao = (acao: string) => {
-                      if (acao.includes('Matrícula') || acao.includes('Novo')) return { icon: <UserPlus size={11} />, color: 'text-emerald-600 bg-emerald-50 border-emerald-200' };
-                      if (acao.includes('Pagamento')) return { icon: <CreditCard size={11} />, color: 'text-blue-600 bg-blue-50 border-blue-200' };
-                      if (acao.includes('Eliminação') || acao.includes('Remov')) return { icon: <Trash2 size={11} />, color: 'text-red-600 bg-red-50 border-red-200' };
-                      if (acao.includes('Status') || acao.includes('Bloqueio') || acao.includes('Pausa')) return { icon: <ShieldOff size={11} />, color: 'text-amber-600 bg-amber-50 border-amber-200' };
-                      if (acao.includes('Edição') || acao.includes('Atualiz')) return { icon: <Edit size={11} />, color: 'text-violet-600 bg-violet-50 border-violet-200' };
-                      if (acao.includes('Login') || acao.includes('Acesso')) return { icon: <LogOut size={11} />, color: 'text-slate-600 bg-slate-50 border-slate-200' };
-                      if (acao.includes('Backup') || acao.includes('Export')) return { icon: <Archive size={11} />, color: 'text-indigo-600 bg-indigo-50 border-indigo-200' };
-                      return { icon: <Activity size={11} />, color: 'text-slate-500 bg-slate-50 border-slate-200' };
-                    };
-                    return userLogs.map(log => {
-                      const { icon, color } = iconePorAcao(log.acao);
-                      return (
-                        <div key={log.id} className="flex items-start gap-2.5 p-2.5 rounded-[5px] hover:bg-[var(--color-secondary-lighter)]/30 transition-colors">
-                          <div className={`w-6 h-6 rounded-[4px] border flex items-center justify-center shrink-0 mt-0.5 ${color}`}>
-                            {icon}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-[12px] font-bold nl-text">{log.acao}</p>
-                            {log.detalhes && <p className="text-[10px] nl-text-muted mt-0.5 line-clamp-2">{log.detalhes}</p>}
-                          </div>
-                          <span className="text-[9px] nl-text-muted shrink-0 tabular-nums whitespace-nowrap">{log.data_hora}</span>
-                        </div>
-                      );
-                    });
-                  })()}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      {utilizadorEmEdicao && <EditUserModal model={{ utilizadorEmEdicao, utilizadorAvatares, utilizadorEdicaoForm, electron, logs, setUtilizadorEmEdicao, setUtilizadorAvatares, setUtilizadorEdicaoForm, showToast, setListaUtilizadores }} />}
 
       {/* ═══════════════════════════════════════════════════════════════════════
           MODAL DE PERFIL DO ALUNO — Painel Unificado com Abas
           Abas: [ Perfil ] [ Histórico ] [ Cobrar ]
       ═══════════════════════════════════════════════════════════════════════ */}
-      {mostrarPerfilModal && alunoPerfil && (() => {
-        const nomePerfil = getAlunoNomeSeguro(alunoPerfil);
-        const primeiroNomePerfil = nomePerfil.split(' ')[0] || 'Aluno';
-        const resumoPerfil = getStudentStatusForMonth(alunoPerfil, pagamentos, anoFinanceiro, mesFinanceiroIndex, hojeReferencia);
-        const pagamentosAlunoPerfil = pagamentos
-          .filter(p => (p.alunoId || p.aluno_id) === alunoPerfil.id)
-          .sort((a, b) => (b.id || 0) - (a.id || 0));
-        const avatarBg = getAvatarColorByName(nomePerfil);
-        const valorMensalidade = normalizeAmount(alunoPerfil.plano) || 0;
-        const totalNotasPerfil = notasResumo?.[alunoPerfil.id]?.total || 0;
-        const temNotasPerfil = totalNotasPerfil > 0;
-
-        // Dados para a aba Cobrar (preview de cobertura)
-        const perfilPreview = alunoPerfil
-          ? buildCoverageWindow(
-              formatPtDate(parseDate(pagamentoForm.dataPagamento)),
-              alunoPerfil.vencimento
-            )
-          : null;
-        const perfilResumoCobranca = getStudentStatusForMonth(alunoPerfil, pagamentos, anoFinanceiro, mesFinanceiroIndex, hojeReferencia);
-
-        // WhatsApp para recibo inline
-        const whatsappNumPerfil = (alunoPerfil.telefone || '').replace(/\D/g, '');
-        const valorWhatsappPerfil = perfilUltimoPagamentoInfo?.valor
-          ? formatCve(normalizeAmount(perfilUltimoPagamentoInfo.valor))
-          : formatCve(normalizeAmount(alunoPerfil.plano));
-        const mesWhatsappPerfil = perfilUltimoPagamentoInfo?.mes || '';
-        const whatsappMsgPerfil = encodeURIComponent(
-          `Olá ${primeiroNomePerfil}! 👋\nO seu pagamento de *${valorWhatsappPerfil}*${mesWhatsappPerfil ? ` referente a *${mesWhatsappPerfil}*` : ''} foi registado com sucesso.\n\nObrigado por continuar connosco! 💪`
-        );
-        const whatsappUrlPerfil = `https://wa.me/${whatsappNumPerfil}?text=${whatsappMsgPerfil}`;
-
-        const fecharPerfilModal = () => {
-          setMostrarPerfilModal(false);
-          setMostrarHistoricoPerfil(false);
-          setEditandoPerfil(false);
-          setPerfilEditForm({});
-          setCol1Minimizada(false);
-          setCol2Minimizada(false);
-          setPerfilAba('perfil');
-          setPerfilPagamentoSucesso(false);
-          setPerfilUltimoPagamentoInfo(null);
-          setPagamentoForm({ valor: '', dataPagamento: formatInputDate(), metodo: DEFAULT_PAYMENT_METHOD });
-        };
-
-        const iniciarEdicao = () => {
-          setEditandoPerfil(true);
-          setPerfilEditForm({
-            nome: nomePerfil,
-            telefone: alunoPerfil.telefone,
-            email: alunoPerfil.email || '',
-            sexo: alunoPerfil.sexo || '',
-            data_nascimento: alunoPerfil.data_nascimento || '',
-            morada: alunoPerfil.morada || '',
-            categoria: alunoPerfil.categoria || '',
-            plano: alunoPerfil.plano,
-          });
-        };
-
-        const salvarEdicao = async () => {
-          if (!(window as any).electron) return;
-          const alunoAtualizado = { ...alunoPerfil, ...perfilEditForm };
-          await (window as any).electron.ipcRenderer.invoke('update-aluno-dados', alunoAtualizado);
-          sincronizarAlunoAtualizado(alunoAtualizado as Aluno);
-          await carregarConfiguracoes();
-          setEditandoPerfil(false);
-          adicionarNotificacao('Dados Atualizados', `Perfil de ${getAlunoNomeSeguro(alunoAtualizado)} salvo com sucesso.`, 'sucesso');
-        };
-
-        // Registrar pagamento direto do perfil (aba Cobrar)
-        const registrarPagamentoPerfil = async () => {
-          if (!alunoPerfil) return;
-          const valForm = pagamentoForm.valor || String(valorMensalidade);
-          if (!valForm || normalizeAmount(valForm) <= 0) {
-            showToast('❌ Valor inválido. Insira um valor maior que zero.');
-            return;
-          }
-          if (!pagamentoForm.dataPagamento) {
-            showToast('❌ Data de pagamento é obrigatória.');
-            return;
-          }
-          try {
-            const selectedMonthName = mesAtualNome;
-            const targetMonthIndex = MONTH_OPTIONS.indexOf(selectedMonthName);
-            const targetYear = anoAtual;
-            const dueDay = (() => {
-              const date = parseFlexibleDate(alunoPerfil.vencimento) || parseFlexibleDate(alunoPerfil.data_matricula) || new Date();
-              return date.getDate();
-            })();
-            const targetDueDate = new Date(targetYear, targetMonthIndex, dueDay);
-            const targetDueDateStr = formatPtDate(targetDueDate);
-            const dataPagamento = formatPtDate(parseDate(pagamentoForm.dataPagamento));
-            const janelaCobranca = buildCoverageWindow(dataPagamento, targetDueDateStr);
-            const valorPagamento = String(normalizeAmount(valForm) || normalizeAmount(alunoPerfil.plano) || 1000);
-
-            const novoPagamento: Pagamento = {
-              alunoId: alunoPerfil.id,
-              valor: valorPagamento,
-              status: 'pago',
-              data_pagamento: dataPagamento,
-              metodo_pagamento: pagamentoForm.metodo,
-              mes_referencia: `${selectedMonthName.charAt(0).toUpperCase() + selectedMonthName.slice(1)} ${targetYear}`,
-              referencia_inicio: janelaCobranca.coverageStart,
-              referencia_fim: janelaCobranca.coverageEnd,
-            };
-
-            if (electron) {
-              await registrarPagamentoAtomico(novoPagamento, janelaCobranca.nextChargeDate);
-              adicionarNotificacao('Pagamento Registado', `Pagamento de ${nomePerfil} (${novoPagamento.mes_referencia}) foi registado com sucesso.`, 'sucesso');
-              await notificarSistema(nomeAcademia, `Pagamento de ${nomePerfil} registado com sucesso.`);
-
-              setPerfilUltimoPagamentoInfo({ valor: valorPagamento, mes: novoPagamento.mes_referencia });
-              setPerfilPagamentoSucesso(true);
-              if (alunoSelecionado?.id === alunoPerfil.id) {
-                carregarHistorico(alunoPerfil.id);
-              }
-              await carregarConfiguracoes();
-              setTimeout(() => { fecharPerfilModal(); }, 2000); // Fecha automaticamente após o sucesso
-            }
-          } catch (error) {
-            console.error('Erro ao registar pagamento:', error);
-            showToast('❌ Erro ao registar pagamento no sistema.');
-          }
-        };
-
-        const statusColorsPerfil = (() => {
-          const s = alunoPerfil.status || 'ativo';
-          if (s === 'ativo') return 'bg-green-50 text-green-700 border-green-200';
-          if (s === 'pausado') return 'bg-amber-50 text-amber-700 border-amber-200';
-          return 'bg-red-50 text-red-700 border-red-200';
-        })();
-
-        return (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[210] p-4 animate-fade-in" onClick={fecharPerfilModal}>
-            <div className="bg-[var(--bg-surface)] w-full max-w-[480px] shadow-[0_20px_70px_rgba(0,0,0,0.3)] rounded-[6px] border border-[var(--border)] overflow-hidden flex flex-col animate-scale-in" style={{ maxHeight: 'calc(100vh - 40px)' }} onClick={e => e.stopPropagation()}>
-              <div className="bg-[#F1F4F9] border-b border-[#DDE2EB] h-12 flex items-center shrink-0">
-                <div className="flex-1 flex items-center gap-2.5 px-4">
-                  <div className={`h-6 w-6 rounded-md flex items-center justify-center text-[9px] font-black text-white overflow-hidden shrink-0 ${avatarBg}`}>
-                    {alunoPerfil.foto_path
-                      ? <img src={`local-resource://${alunoPerfil.foto_path}`} className="w-full h-full object-cover" />
-                      : getAlunoIniciais(alunoPerfil)}
-                  </div>
-                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] leading-none truncate max-w-[100px]">{nomePerfil}</span>
-                </div>
-                <div className="flex-1 text-center whitespace-nowrap">
-                  <h2 className="text-[12px] font-black text-slate-700 uppercase tracking-wider leading-none">Perfil do Aluno</h2>
-                </div>
-                <div className="flex-1 flex justify-end px-3">
-                  <button onClick={fecharPerfilModal} className="h-8 w-8 flex items-center justify-center rounded-md text-slate-400 hover:bg-red-50 hover:text-red-500 transition-all" title="Fechar">
-                    <X size={16} />
-                  </button>
-                </div>
-              </div>
-
-              {perfilPagamentoSucesso ? (
-                <div className="px-5 py-10 text-center space-y-5 bg-gradient-to-b from-emerald-50/50 to-white">
-                  <div className="w-20 h-20 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-600 shadow-lg shadow-emerald-200 flex items-center justify-center mx-auto animate-scale-in">
-                    <CheckCircle2 size={40} className="text-white" />
-                  </div>
-                  <div>
-                    <h3 className="text-[22px] font-black text-emerald-700">Pagamento Registado!</h3>
-                    <p className="text-[14px] text-emerald-600/80 font-semibold mt-1">
-                      {formatCve(normalizeAmount(perfilUltimoPagamentoInfo?.valor || alunoPerfil.plano))} · {nomePerfil}
-                    </p>
-                  </div>
-                  {whatsappNumPerfil && (
-                    <button
-                      type="button"
-                      onClick={() => electron?.ipcRenderer.invoke('open-external', whatsappUrlPerfil)}
-                      className="inline-flex items-center gap-2 h-10 px-6 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.97] text-white rounded-[var(--radius-control)] text-[12px] font-black shadow-lg shadow-emerald-200 transition-all"
-                    >
-                      <Send size={15} /> Enviar Recibo via WhatsApp
-                    </button>
-                  )}
-                </div>
-              ) : (
-                <>
-                  <div className="px-5 pt-3 space-y-3 overflow-y-auto custom-scrollbar">
-                    {/* Info do Aluno */}
-                    <div className="flex items-center gap-3 rounded-[10px] border-2 border-[var(--border-light)] bg-gradient-to-br from-[var(--color-secondary-lighter)]/40 to-white p-3.5 shadow-sm">
-                      <div className={`w-12 h-12 rounded-full flex items-center justify-center text-[15px] font-black text-white overflow-hidden shadow-md ring-2 ring-white/60 shrink-0 ${avatarBg}`}>
-                        {alunoPerfil.foto_path
-                          ? <img src={`local-resource://${alunoPerfil.foto_path}`} className="w-full h-full object-cover" />
-                          : getAlunoIniciais(alunoPerfil)}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-[15px] font-black nl-text truncate leading-tight">{nomePerfil}</p>
-                        <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                          <span className={`text-[9px] font-extrabold uppercase tracking-wider px-1.5 py-0.5 rounded-full border ${statusColorsPerfil}`}>
-                            {alunoPerfil.status || 'ativo'}
-                          </span>
-                          <span className="text-[10px] nl-text-muted">· {alunoPerfil.categoria || 'Geral'}</span>
-                        </div>
-                      </div>
-                      <div className="text-right shrink-0 bg-white/60 px-3 py-1.5 rounded-[var(--radius-control)] border border-[var(--border-light)]">
-                        <p className="text-[8px] font-black uppercase tracking-[0.15em] text-[var(--text-secondary)]">Plano</p>
-                        <p className="text-[15px] font-black text-[var(--color-primary)] tabular-nums leading-tight">{formatCve(valorMensalidade)}</p>
-                      </div>
-                    </div>
-
-                    {/* Histórico Accordion */}
-                    <div className="rounded-[var(--radius-control)] border border-[var(--border-light)] overflow-hidden">
-                      <button
-                        onClick={() => setMostrarHistoricoPerfil(!mostrarHistoricoPerfil)}
-                        className="w-full px-4 py-2.5 flex items-center justify-between bg-[var(--color-secondary-lighter)]/30 hover:bg-[var(--color-secondary-lighter)]/50 transition-colors"
-                      >
-                        <div className="flex items-center gap-2">
-                          <History size={13} className="nl-text-muted" />
-                          <span className="text-[10px] font-bold nl-text-muted uppercase tracking-[0.1em]">
-                            {mostrarHistoricoPerfil ? "Ocultar Histórico" : `Ver Histórico (${pagamentosAlunoPerfil.length})`}
-                          </span>
-                        </div>
-                        {mostrarHistoricoPerfil ? <ChevronUp size={13} className="nl-text-muted" /> : <ChevronDown size={13} className="nl-text-muted" />}
-                      </button>
-
-                      {mostrarHistoricoPerfil && (
-                        <div className="max-h-[200px] overflow-y-auto custom-scrollbar border-t border-[var(--border-light)] bg-[var(--color-secondary-lighter)]/20">
-                          {pagamentosAlunoPerfil.length === 0 ? (
-                            <p className="text-[11px] nl-text-muted text-center py-6">Sem pagamentos registados.</p>
-                          ) : (
-                            <div className="p-3 space-y-2">
-                              {pagamentosAlunoPerfil.map((pag) => (
-                                <div key={pag.id} className="flex items-center justify-between bg-white border border-[var(--border-light)] rounded-[6px] p-2.5">
-                                  <div>
-                                    <p className="text-[11px] font-bold nl-text capitalize">{pag.mes_referencia}</p>
-                                    <p className="text-[9px] nl-text-muted">{pag.data_pagamento} • {pag.metodo_pagamento}</p>
-                                  </div>
-                                  <div className="text-right">
-                                    <p className="text-[12px] font-black nl-text tabular-nums">{formatCve(pag.valor)}</p>
-                                    <span className="text-[8px] font-bold text-emerald-600 bg-emerald-50 px-1 py-0.5 rounded uppercase">{pag.status}</span>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Separador */}
-                    <div style={{ borderTop: '1px dashed var(--border-light)', margin: '0 4px' }} />
-
-                    {/* Valor a Registar */}
-                    <div className="space-y-3 pb-3">
-                      <div className="flex items-center justify-between gap-3">
-                        <p className="text-[9px] font-black uppercase tracking-[0.2em] text-[var(--text-secondary)]">Registar Pagamento</p>
-                        <button
-                          type="button"
-                          onClick={() => abrirNotasRapidas(alunoPerfil)}
-                          className={`relative flex h-9 items-center gap-2 rounded-[var(--radius-compact)] border px-3 text-[10px] font-black uppercase tracking-[0.12em] transition-all ${
-                            temNotasPerfil
-                              ? 'border-amber-400 bg-amber-300 text-amber-950 shadow-sm hover:bg-amber-200'
-                              : 'border-slate-200 bg-slate-100 text-slate-400 hover:border-amber-300 hover:bg-amber-50 hover:text-amber-700'
-                          }`}
-                          title={temNotasPerfil ? `${totalNotasPerfil} nota(s) deste aluno` : 'Adicionar nota antes de cobrar'}
-                        >
-                          <StickyNote size={14} />
-                          Notas
-                          {temNotasPerfil && (
-                            <span className="ml-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-white/80 px-1 text-[9px] font-black text-amber-900">
-                              {totalNotasPerfil}
-                            </span>
-                          )}
-                        </button>
-                      </div>
-
-                      <div className="relative">
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[13px] font-bold text-[var(--text-secondary)] z-10">$</span>
-                        <input
-                          type="text"
-                          value={pagamentoForm.valor}
-                          onChange={e => setPagamentoForm(prev => ({ ...prev, valor: e.target.value }))}
-                          className="nl-input w-full h-12 pl-7 pr-3 text-[18px] font-black tracking-tight"
-                          placeholder={String(valorMensalidade)}
-                          style={{ fontVariantNumeric: 'tabular-nums' }}
-                        />
-                      </div>
-                      {pagamentoForm.valor && normalizeAmount(pagamentoForm.valor) !== valorMensalidade && (
-                        <button onClick={() => setPagamentoForm(prev => ({ ...prev, valor: '' }))} className="text-[10px] font-bold text-blue-500 hover:text-blue-600 transition-colors">
-                          Repor valor original ({formatCve(valorMensalidade)})
-                        </button>
-                      )}
-
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <label className="block text-[10px] font-bold nl-text-muted uppercase tracking-[0.12em] mb-1">Mês atual</label>
-                          <select
-                            value={mesAtualNome}
-                            disabled
-                            className="nl-input w-full h-10 px-3 text-[13px] cursor-not-allowed capitalize !bg-emerald-50 !border-emerald-200 !text-emerald-700 !font-bold"
-                          >
-                            <option value={mesAtualNome}>{mesAtualNome.charAt(0).toUpperCase() + mesAtualNome.slice(1)} {anoAtual}</option>
-                          </select>
-                        </div>
-                        <div>
-                          <label className="block text-[10px] font-bold nl-text-muted uppercase tracking-[0.12em] mb-1">Data</label>
-                          <input
-                            type="date"
-                            value={pagamentoForm.dataPagamento}
-                            onChange={e => setPagamentoForm(prev => ({ ...prev, dataPagamento: e.target.value }))}
-                            className="nl-input w-full h-10 px-3 text-[13px]"
-                          />
-                        </div>
-                      </div>
-
-                      <div className="flex items-center justify-between px-4 py-3 rounded-[10px] bg-gradient-to-r from-emerald-500 to-emerald-600 shadow-lg shadow-emerald-200/50">
-                        <div className="flex items-center gap-2.5">
-                          <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
-                            <Wallet size={15} className="text-white" />
-                          </div>
-                          <span className="text-[12px] font-black text-white uppercase tracking-[0.12em]">Total a registar</span>
-                        </div>
-                        <span className="text-[20px] font-black text-white drop-shadow-sm" style={{ fontVariantNumeric: 'tabular-nums' }}>
-                          {formatCve(normalizeAmount(pagamentoForm.valor || String(valorMensalidade)))}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="bg-[#F8F9FC] border-t border-[#DDE2EB] px-6 py-4 flex items-center justify-between gap-3 shrink-0">
-                    <button onClick={fecharPerfilModal} className="nl-btn nl-btn-ghost !h-9 !px-4 !text-[11px] font-bold">Cancelar</button>
-                    <div className="flex items-center gap-2">
-                      {editandoPerfil && (
-                        <button onClick={salvarEdicao} className="nl-btn !h-9 !px-5 !text-[11px] font-bold nl-btn-primary"><Save size={14} /> Guardar</button>
-                      )}
-                      <button onClick={iniciarEdicao} className="nl-btn nl-btn-secondary !h-9 !px-4 !text-[11px] font-bold"><Edit size={14} /> Editar</button>
-                      <button onClick={registrarPagamentoPerfil} className="nl-btn !h-10 !px-7 !text-[12px] font-black !bg-gradient-to-r !from-emerald-600 !to-emerald-500 !text-white !border-none !shadow-lg !shadow-emerald-200/50 hover:!shadow-emerald-300/60 hover:!scale-[1.02] active:!scale-[0.98] transition-all">
-                        <CheckCircle2 size={16} /> Cobrar
-                      </button>
-                    </div>
-                  </div>
-                </>
-              )}
-              </div>
-          </div>
-        );
-      })()}
+      {mostrarPerfilModal && alunoPerfil && <StudentProfileModal model={{
+        alunoPerfil, pagamentos, anoFinanceiro, mesFinanceiroIndex, hojeReferencia, notasResumo,
+        pagamentoForm, perfilUltimoPagamentoInfo, perfilPagamentoSucesso, perfilEditForm,
+        editandoPerfil, mostrarHistoricoPerfil, mesAtualNome, anoAtual, electron, nomeAcademia,
+        alunoSelecionado, setMostrarPerfilModal, setMostrarHistoricoPerfil, setEditandoPerfil,
+        setPerfilEditForm, setCol1Minimizada, setCol2Minimizada, setPerfilAba,
+        setPerfilPagamentoSucesso, setPerfilUltimoPagamentoInfo, setPagamentoForm,
+        sincronizarAlunoAtualizado, carregarConfiguracoes, adicionarNotificacao, showToast,
+        registrarPagamentoAtomico, notificarSistema, carregarHistorico, abrirNotasRapidas, parseDate,
+      }} />}
 
       {/* Modal: notas rápidas */}
-      {alunoNotasRapidas && (
-        <div className="fixed inset-0 bg-black/45 backdrop-blur-[2px] flex items-center justify-center z-[220] p-4 animate-fade-in" onClick={() => setAlunoNotasRapidas(null)}>
-          <div
-            className="w-full max-w-[440px] overflow-hidden rounded-[4px] border border-amber-300 bg-[#FFF7C7] shadow-[0_24px_70px_rgba(0,0,0,0.28)] animate-scale-in"
-            onClick={e => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between border-b border-amber-300/70 px-5 py-4">
-              <div className="flex min-w-0 items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-[4px] bg-amber-300 text-amber-950 shadow-sm">
-                  <StickyNote size={20} />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-amber-700">Notas do aluno</p>
-                  <h3 className="truncate text-[18px] font-black leading-tight text-amber-950">{getAlunoNomeSeguro(alunoNotasRapidas)}</h3>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setAlunoNotasRapidas(null)}
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[4px] text-amber-800/60 transition-colors hover:bg-amber-200 hover:text-amber-950"
-                title="Fechar"
-              >
-                <X size={16} />
-              </button>
-            </div>
-
-            <div className="px-5 py-4">
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={novaNotaRapida}
-                  onChange={(event) => setNovaNotaRapida(event.target.value)}
-                  onKeyDown={(event) => event.key === 'Enter' && adicionarNotaRapida()}
-                  placeholder="Escrever nota rápida..."
-                  className="h-10 flex-1 rounded-[4px] border border-amber-300 bg-white/70 px-3 text-[13px] text-amber-950 outline-none placeholder:text-amber-700/45 focus:border-amber-500"
-                />
-                <button
-                  type="button"
-                  onClick={adicionarNotaRapida}
-                  className="h-10 rounded-[4px] bg-amber-500 px-4 text-[11px] font-black uppercase tracking-[0.12em] text-white transition-colors hover:bg-amber-600"
-                >
-                  Adicionar
-                </button>
-              </div>
-
-              <div className="mt-4 max-h-[300px] overflow-y-auto custom-scrollbar space-y-2 pr-1">
-                {notasRapidas.length === 0 ? (
-                  <div className="rounded-[4px] border border-dashed border-amber-300 bg-white/30 px-4 py-8 text-center">
-                    <p className="text-[13px] font-bold text-amber-800/65">Este aluno ainda não tem notas.</p>
-                  </div>
-                ) : notasRapidas.map((nota) => (
-                  <div key={nota.id} className="group relative rounded-[4px] border border-amber-300/70 bg-white/45 p-3">
-                    <p className="pr-7 text-[13px] leading-relaxed text-amber-950">{nota.texto}</p>
-                    <p className="mt-2 text-[10px] font-semibold text-amber-700/65">{nota.data_criacao}</p>
-                    <button
-                      type="button"
-                      onClick={() => eliminarNotaRapida(nota.id)}
-                      className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded text-amber-700/35 opacity-0 transition-all hover:bg-red-50 hover:text-red-600 group-hover:opacity-100"
-                      title="Apagar nota"
-                    >
-                      <Trash2 size={11} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between border-t border-amber-300/70 bg-amber-100/55 px-5 py-4">
-              <span className="text-[11px] font-bold text-amber-800">{notasRapidas.length} nota(s) neste post-it</span>
-              <button
-                type="button"
-                onClick={abrirContactoAPartirNotas}
-                className="inline-flex h-9 items-center gap-2 rounded-[4px] bg-amber-900 px-4 text-[11px] font-black uppercase tracking-[0.12em] text-white transition-colors hover:bg-amber-950"
-              >
-                <BookUser size={14} /> Ver Contacto
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {alunoNotasRapidas && <StudentNotesModal aluno={alunoNotasRapidas} notas={notasRapidas} novaNota={novaNotaRapida} onNovaNotaChange={setNovaNotaRapida} onAdd={adicionarNotaRapida} onDelete={eliminarNotaRapida} onOpenContact={abrirContactoAPartirNotas} onClose={() => setAlunoNotasRapidas(null)} />}
 
       {/* Modal: Pagamento ativo */}
-      {pagamentoAtivoInfo && (() => {
-        const alunoPago = pagamentoAtivoInfo.aluno;
-        const resumoPago = pagamentoAtivoInfo.resumo || {};
-        const nomePago = getAlunoNomeSeguro(alunoPago);
-        const ultimoPagamento = resumoPago.lastPaymentDate || 'Registado';
-        const proximaCobranca = resumoPago.nextChargeDate || alunoPago.vencimento || 'Sem data definida';
-        const cobertura = resumoPago.coverageStart && resumoPago.coverageEnd
-          ? `${resumoPago.coverageStart} até ${resumoPago.coverageEnd}`
-          : 'Cobertura ativa';
-
-        const reverPagamentoAtivo = () => {
-          setPagamentoAtivoInfo(null);
-          marcarComoPago(alunoPago.id);
-        };
-
-        return (
-          <div className="fixed inset-0 bg-black/55 backdrop-blur-[2px] flex items-center justify-center z-[210] p-4 animate-fade-in" onClick={() => setPagamentoAtivoInfo(null)}>
-            <div className="w-full max-w-[460px] overflow-hidden rounded-[var(--radius-control)] border border-emerald-200 bg-white shadow-[0_25px_80px_rgba(0,0,0,0.28)] animate-scale-in" onClick={e => e.stopPropagation()}>
-              <div className="bg-gradient-to-r from-emerald-600 to-emerald-500 px-5 py-4 text-white">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-11 w-11 items-center justify-center rounded-full bg-white/18 ring-1 ring-white/30">
-                      <CheckCircle2 size={24} />
-                    </div>
-                    <div>
-                      <p className="text-[10px] font-black uppercase tracking-[0.18em] text-white/75">Pagamento ativo</p>
-                      <h3 className="mt-0.5 text-[18px] font-black leading-tight">{nomePago}</h3>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setPagamentoAtivoInfo(null)}
-                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[6px] text-white/75 transition-colors hover:bg-white/15 hover:text-white"
-                    title="Fechar"
-                  >
-                    <X size={16} />
-                  </button>
-                </div>
-              </div>
-
-              <div className="space-y-4 px-5 py-5">
-                <div className="rounded-[var(--radius-control)] border border-emerald-100 bg-emerald-50 px-4 py-3">
-                  <p className="text-[13px] font-bold leading-relaxed text-emerald-800">
-                    Este aluno está em dia. A cobrança normal só deve voltar a acontecer em <span className="font-black">{proximaCobranca}</span>.
-                  </p>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="rounded-[var(--radius-compact)] border border-slate-100 bg-slate-50 px-3 py-2.5">
-                    <p className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-400">Cobertura</p>
-                    <p className="mt-1 truncate text-[12px] font-bold text-slate-700">{cobertura}</p>
-                  </div>
-                  <div className="rounded-[var(--radius-compact)] border border-slate-100 bg-slate-50 px-3 py-2.5">
-                    <p className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-400">Último pagamento</p>
-                    <p className="mt-1 truncate text-[12px] font-bold text-slate-700">{ultimoPagamento}</p>
-                  </div>
-                </div>
-
-                <div className="rounded-[var(--radius-control)] border border-blue-100 bg-blue-50 px-4 py-3">
-                  <p className="text-[11px] font-semibold leading-relaxed text-blue-800">
-                    Se houver algum erro no valor, mês ou registo, use Rever para abrir a cobrança normal e lançar uma correção.
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-end gap-3 border-t border-slate-100 bg-slate-50 px-5 py-4">
-                <button type="button" onClick={() => setPagamentoAtivoInfo(null)} className="nl-btn nl-btn-secondary !h-9 !px-5 !text-[11px] font-bold">
-                  Fechar
-                </button>
-                <button
-                  type="button"
-                  onClick={reverPagamentoAtivo}
-                  className="nl-btn !h-10 !px-6 !text-[12px] font-black !bg-gradient-to-r !from-blue-600 !to-blue-500 !text-white !border-none !shadow-lg !shadow-blue-500/10 hover:!scale-[1.02] active:!scale-[0.98] transition-all"
-                >
-                  <Pencil size={15} /> Rever e Corrigir
-                </button>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
+      {pagamentoAtivoInfo && <ActivePaymentModal aluno={pagamentoAtivoInfo.aluno} resumo={pagamentoAtivoInfo.resumo || {}} onClose={() => setPagamentoAtivoInfo(null)} onReview={(alunoId) => { setPagamentoAtivoInfo(null); marcarComoPago(alunoId); }} />}
 
       {/* Modal Minimalista de Cobrança Rápida */}
-      {mostrarCobrancaRapida && alunoParaCobrancaRapida && (() => {
-        const nomeCobranca = getAlunoNomeSeguro(alunoParaCobrancaRapida);
-        const primeiroNomeCobranca = nomeCobranca.split(' ')[0] || 'Aluno';
-        const valorOriginal = normalizeAmount(alunoParaCobrancaRapida.plano) || 0;
-        const valorCobranca = pagamentoForm.valor || String(valorOriginal);
-        const mesCobranca = pagamentoForm.mesReferencia || mesAtualNome;
-        
-        const whatsappNum = (alunoParaCobrancaRapida.telefone || '').replace(/\D/g, '');
-        const valorWhatsapp = cobrancaUltimoPagamentoInfo?.valor
-          ? formatCve(normalizeAmount(cobrancaUltimoPagamentoInfo.valor))
-          : formatCve(normalizeAmount(valorCobranca));
-        const mesWhatsapp = cobrancaUltimoPagamentoInfo?.mes || '';
-        const whatsappMsg = encodeURIComponent(
-          `Olá ${primeiroNomeCobranca}! 👋\nO seu pagamento de *${valorWhatsapp}*${mesWhatsapp ? ` referente a *${mesWhatsapp}*` : ''} foi registado com sucesso.\n\nObrigado por continuar connosco! 💪`
-        );
-        const whatsappUrl = `https://wa.me/${whatsappNum}?text=${whatsappMsg}`;
+      {mostrarCobrancaRapida && alunoParaCobrancaRapida && <QuickPaymentModal model={{ alunoParaCobrancaRapida, pagamentoForm, mesAtualNome, cobrancaUltimoPagamentoInfo, anoAtual, electron, nomeAcademia, alunoSelecionado, pagamentos, notasResumo, appLogo, cobrancaPagamentoSucesso, setMostrarCobrancaRapida, setAlunoParaCobrancaRapida, setCobrancaPagamentoSucesso, setCobrancaUltimoPagamentoInfo, setPagamentoForm, showToast, registrarPagamentoAtomico, adicionarNotificacao, notificarSistema, carregarHistorico, carregarConfiguracoes, getAlunoNomeSeguro, getAvatarColorByName, getAlunoIniciais, abrirNotasRapidas, parseDate }} />}
 
-        const fecharCobrancaRapida = () => {
-          setMostrarCobrancaRapida(false);
-          setAlunoParaCobrancaRapida(null);
-          setCobrancaPagamentoSucesso(false);
-          setCobrancaUltimoPagamentoInfo(null);
-          setPagamentoForm({ valor: '', dataPagamento: formatInputDate(), metodo: DEFAULT_PAYMENT_METHOD });
-        };
-
-        const registrarCobrancaRapida = async () => {
-          if (!valorCobranca || normalizeAmount(valorCobranca) <= 0) {
-            showToast('❌ Valor inválido. Insira um valor maior que zero.');
-            return;
-          }
-          if (!pagamentoForm.dataPagamento) {
-            showToast('❌ Data de pagamento é obrigatória.');
-            return;
-          }
-          try {
-            const selectedMonthName = mesAtualNome;
-            const targetMonthIndex = MONTH_OPTIONS.indexOf(selectedMonthName);
-            const targetYear = anoAtual;
-            const dueDay = (() => {
-              const date = parseFlexibleDate(alunoParaCobrancaRapida.vencimento) || parseFlexibleDate(alunoParaCobrancaRapida.data_matricula) || new Date();
-              return date.getDate();
-            })();
-            const targetDueDate = new Date(targetYear, targetMonthIndex, dueDay);
-            const targetDueDateStr = formatPtDate(targetDueDate);
-            const dataPagamento = formatPtDate(parseDate(pagamentoForm.dataPagamento));
-            const janelaCobranca = buildCoverageWindow(dataPagamento, targetDueDateStr);
-            const valorPagamento = String(normalizeAmount(valorCobranca));
-
-            const novoPagamento: Pagamento = {
-              alunoId: alunoParaCobrancaRapida.id,
-              valor: valorPagamento,
-              status: 'pago',
-              data_pagamento: dataPagamento,
-              metodo_pagamento: pagamentoForm.metodo,
-              mes_referencia: `${selectedMonthName.charAt(0).toUpperCase() + selectedMonthName.slice(1)} ${targetYear}`,
-              referencia_inicio: janelaCobranca.coverageStart,
-              referencia_fim: janelaCobranca.coverageEnd,
-            };
-
-            if (electron) {
-              await registrarPagamentoAtomico(novoPagamento, janelaCobranca.nextChargeDate);
-              adicionarNotificacao('Pagamento Registado', `Pagamento de ${nomeCobranca} (${novoPagamento.mes_referencia}) foi registado com sucesso.`, 'sucesso');
-              await notificarSistema(nomeAcademia, `Pagamento de ${nomeCobranca} registado com sucesso.`);
-
-              setCobrancaUltimoPagamentoInfo({ valor: valorPagamento, mes: novoPagamento.mes_referencia });
-              setCobrancaPagamentoSucesso(true);
-              if (alunoSelecionado?.id === alunoParaCobrancaRapida.id) {
-                carregarHistorico(alunoParaCobrancaRapida.id);
-              }
-              await carregarConfiguracoes();
-            }
-          } catch (error) {
-            console.error('Erro ao registar pagamento rápido:', error);
-            showToast('❌ Erro ao registar pagamento no sistema.');
-          }
-        };
-
-        const avatarBg = getAvatarColorByName(nomeCobranca);
-        const pagamentosAlunoCobranca = pagamentos
-          .filter(p => (p.alunoId || p.aluno_id) === alunoParaCobrancaRapida.id)
-          .sort((a, b) => (b.id || 0) - (a.id || 0));
-        const totalNotasCobranca = notasResumo?.[alunoParaCobrancaRapida.id]?.total || 0;
-        const temNotasCobranca = totalNotasCobranca > 0;
-
-        return (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-[2px] flex items-center justify-center z-[200] p-4 animate-fade-in" onClick={fecharCobrancaRapida}>
-            <div className="bg-[var(--bg-surface)] w-full max-w-[560px] shadow-[0_28px_90px_rgba(0,0,0,0.36)] rounded-[var(--radius-control)] border border-[var(--border)] overflow-hidden flex flex-col animate-scale-in" style={{ maxHeight: 'calc(100vh - 32px)' }} onClick={e => e.stopPropagation()}>
-              <div className="bg-[#F1F4F9] border-b border-[#DDE2EB] h-14 flex items-center shrink-0">
-                <div className="flex-1 flex items-center gap-2.5 px-4">
-                  <div className="h-8 w-8 rounded-md bg-white/65 backdrop-blur-sm p-1.5 border border-white/50 shadow-sm flex items-center justify-center">
-                    <img src={appLogo || APP_ICON_PATH} alt="Logo" className="w-full h-full object-contain" />
-                  </div>
-                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] leading-none">NextLevel</span>
-                </div>
-                <div className="flex-1 text-center whitespace-nowrap">
-                  <h2 className="text-[13px] font-black text-slate-700 uppercase tracking-wider leading-none">Registar Pagamento</h2>
-                </div>
-                <div className="flex-1 flex justify-end px-3">
-                  <button onClick={fecharCobrancaRapida} className="h-8 w-8 flex items-center justify-center rounded-md text-slate-400 hover:bg-red-50 hover:text-red-500 transition-all" title="Fechar">
-                    <X size={16} />
-                  </button>
-                </div>
-              </div>
-
-              {cobrancaPagamentoSucesso ? (
-                <div className="px-5 py-10 text-center space-y-5 bg-gradient-to-b from-emerald-50/50 to-white">
-                  <div className="w-20 h-20 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-600 shadow-lg shadow-emerald-200 flex items-center justify-center mx-auto animate-scale-in">
-                    <CheckCircle2 size={40} className="text-white" />
-                  </div>
-                  <div>
-                    <h3 className="text-[22px] font-black text-emerald-700">Pagamento Registado!</h3>
-                    <p className="text-[14px] text-emerald-600/80 font-semibold mt-1">
-                      {formatCve(normalizeAmount(cobrancaUltimoPagamentoInfo?.valor || valorCobranca))} · {nomeCobranca}
-                    </p>
-                  </div>
-                  {whatsappNum && (
-                    <button
-                      type="button"
-                      onClick={() => electron?.ipcRenderer.invoke('open-external', whatsappUrl)}
-                      className="inline-flex items-center gap-2 h-10 px-6 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.97] text-white rounded-[var(--radius-control)] text-[12px] font-black shadow-lg shadow-emerald-200 transition-all"
-                    >
-                      <Send size={15} /> Enviar Recibo via WhatsApp
-                    </button>
-                  )}
-                </div>
-              ) : (
-                <>
-                  <div className="overflow-y-auto custom-scrollbar">
-                    <section className="px-6 py-5 border-b border-[var(--border-light)]">
-                      <div className="mb-3 flex items-center justify-between">
-                        <p className="text-[9px] font-black uppercase tracking-[0.22em] text-[var(--text-secondary)]">Aluno</p>
-                        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.14em] text-slate-500">Cobrança rápida</span>
-                      </div>
-
-                      <div className="flex items-center gap-3">
-                      <div className={`w-12 h-12 rounded-full flex items-center justify-center text-[15px] font-black text-white overflow-hidden shadow-sm ring-2 ring-white/70 ${avatarBg} shrink-0`}>
-                        {alunoParaCobrancaRapida.foto_path
-                          ? <img src={`local-resource://${alunoParaCobrancaRapida.foto_path}`} className="w-full h-full object-cover" />
-                          : getAlunoIniciais(alunoParaCobrancaRapida)}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-[16px] font-black nl-text truncate leading-tight">{nomeCobranca}</p>
-                        <p className="text-[11px] nl-text-muted truncate flex items-center gap-1.5 mt-0.5">
-                          <Phone size={10} className="shrink-0 opacity-60" />
-                          {alunoParaCobrancaRapida.telefone || 'Sem contacto'}
-                          <span className="opacity-30">·</span>
-                          {alunoParaCobrancaRapida.categoria || 'Geral'}
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => abrirNotasRapidas(alunoParaCobrancaRapida)}
-                        className={`relative flex h-10 w-10 shrink-0 items-center justify-center rounded-[var(--radius-control)] border transition-all ${
-                          temNotasCobranca
-                            ? 'border-amber-400 bg-amber-300 text-amber-950 shadow-sm hover:bg-amber-200 hover:shadow-md'
-                            : 'border-slate-200 bg-white/70 text-slate-300 hover:border-amber-300 hover:bg-amber-50 hover:text-amber-700'
-                        }`}
-                        title={temNotasCobranca ? `${totalNotasCobranca} nota(s) deste aluno` : 'Adicionar nota antes de registar pagamento'}
-                      >
-                        <StickyNote size={16} />
-                        {temNotasCobranca && (
-                          <span className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-white bg-amber-500 px-1 text-[9px] font-black text-white shadow-sm">
-                            {totalNotasCobranca}
-                          </span>
-                        )}
-                      </button>
-                      <div className="text-right shrink-0 bg-slate-50 px-3.5 py-2 rounded-[var(--radius-control)] border border-[var(--border-light)]">
-                        <p className="text-[8px] font-black uppercase tracking-[0.15em] text-[var(--text-secondary)]">Plano</p>
-                        <p className="text-[16px] font-black text-[var(--color-primary)] tabular-nums leading-tight">{formatCve(valorOriginal)}</p>
-                      </div>
-                    </div>
-                    </section>
-
-                    {pagamentosAlunoCobranca.length > 0 && (
-                      <div className="mx-6 mt-4 rounded-[var(--radius-control)] border border-[#D9E2F2] bg-slate-50 px-3 py-2.5 flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <History size={13} className="text-slate-500" />
-                          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.1em]">Último pagamento</span>
-                        </div>
-                        <span className="text-[11px] font-extrabold text-slate-600 truncate max-w-[210px]">
-                          {pagamentosAlunoCobranca[0].mes_referencia || pagamentosAlunoCobranca[0].data_pagamento || 'Registado'}
-                        </span>
-                      </div>
-                    )}
-
-                    <section className="px-6 py-5 border-b border-[var(--border-light)]">
-                      <p className="mb-3 text-[9px] font-black uppercase tracking-[0.22em] text-[var(--text-secondary)]">Valor recebido</p>
-
-                      <div className="relative">
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[13px] font-black text-slate-400">CVE</span>
-                        <input
-                          type="text"
-                          inputMode="decimal"
-                          value={pagamentoForm.valor}
-                          onChange={e => setPagamentoForm(prev => ({ ...prev, valor: e.target.value }))}
-                          className="nl-input w-full h-14 pl-14 pr-4 text-[26px] font-black tracking-tight !rounded-[var(--radius-control)] !bg-white text-slate-900 focus:!border-emerald-500 focus:!ring-4 focus:!ring-emerald-100"
-                          placeholder={String(valorOriginal)}
-                          style={{ fontVariantNumeric: 'tabular-nums' }}
-                        />
-                      </div>
-                    </section>
-
-                    <section className="grid grid-cols-2 gap-3 px-6 py-5 border-b border-[var(--border-light)]">
-                      <div>
-                        <label className="block text-[10px] font-bold nl-text-muted uppercase tracking-[0.12em] mb-1">Mês atual</label>
-                        <select
-                          value={mesAtualNome}
-                          disabled
-                          className="nl-input w-full h-10 px-3 text-[13px] cursor-not-allowed capitalize !bg-slate-50 !border-slate-200 !text-slate-600 !font-bold"
-                        >
-                          <option value={mesAtualNome}>{mesAtualNome.charAt(0).toUpperCase() + mesAtualNome.slice(1)} {anoAtual}</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-[10px] font-bold nl-text-muted uppercase tracking-[0.12em] mb-1">Data</label>
-                        <input
-                          type="date"
-                          value={pagamentoForm.dataPagamento}
-                          onChange={e => setPagamentoForm(prev => ({ ...prev, dataPagamento: e.target.value }))}
-                          className="nl-input w-full h-10 px-3 text-[13px]"
-                        />
-                      </div>
-                    </section>
-
-                    <section className="px-6 py-5 border-b border-[var(--border-light)]">
-                      <label className="block text-[10px] font-bold nl-text-muted uppercase tracking-[0.12em] mb-1">Método</label>
-                      <div className="grid grid-cols-3 gap-2">
-                        {PAYMENT_METHOD_OPTIONS.map((method, idx) => {
-                          const selected = pagamentoForm.metodo === method.label;
-                          return (
-                            <button
-                              key={idx}
-                              type="button"
-                              onClick={() => setPagamentoForm(prev => ({ ...prev, metodo: method.label }))}
-                              className={`h-11 rounded-[var(--radius-control)] border px-2 text-[11px] font-black transition-all ${
-                                selected
-                                  ? 'border-emerald-600 bg-emerald-600 text-white shadow-sm'
-                                  : 'border-[var(--border-light)] bg-white text-[var(--text-secondary)] hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-700'
-                              }`}
-                            >
-                              {method.label}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </section>
-
-                    <section className="px-6 py-5">
-                    <div className="flex items-center justify-between px-4 py-3 rounded-[10px] bg-emerald-600 shadow-sm">
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-8 h-8 rounded-full bg-white/15 flex items-center justify-center">
-                          <Wallet size={15} className="text-white" />
-                        </div>
-                        <div>
-                          <span className="block text-[10px] font-black text-white/80 uppercase tracking-[0.14em]">Total a registar</span>
-                          <span className="block text-[10px] font-semibold text-white/70">{pagamentoForm.metodo} · {mesAtualNome} {anoAtual}</span>
-                        </div>
-                      </div>
-                      <span className="text-[22px] font-black text-white" style={{ fontVariantNumeric: 'tabular-nums' }}>
-                        {formatCve(normalizeAmount(valorCobranca))}
-                      </span>
-                    </div>
-                    </section>
-                  </div>
-
-                  <div className="bg-[#F8F9FC] border-t border-[#DDE2EB] px-6 py-4 flex items-center justify-end gap-3 shrink-0">
-                      <button type="button" onClick={fecharCobrancaRapida} className="nl-btn nl-btn-secondary !h-10 !px-5 !text-[11px] font-bold">Cancelar</button>
-                      <button type="button" onClick={registrarCobrancaRapida} className="nl-btn !h-11 !px-8 !text-[12px] font-black !bg-emerald-600 !text-white !border-none !shadow-sm hover:!bg-emerald-700 active:!scale-[0.98] transition-all">
-                      <CheckCircle2 size={16} /> Confirmar Pagamento
-                      </button>
-                  </div>
-                </>
-              )}
-              </div>
-          </div>
-        );
-      })()}
-
-      {/* Toast Notification */}
-      {toast.visible && (
-        <div className="fixed bottom-6 right-6 z-[9999] animate-slide-up nl-alert nl-alert-success shadow-[0_8px_30px_rgba(9,30,66,0.14)]" style={{ minWidth: 260, maxWidth: 380 }}>
-          <div className="nl-alert-icon"><CheckCircle2 size={15} /></div>
-          <p className="nl-alert-title">{toast.message}</p>
-        </div>
-      )}
+      <ToastNotification message={toast.message} visible={toast.visible} />
     </div>
   );
 }

@@ -1,0 +1,8 @@
+import { AlertTriangle } from 'lucide-react';
+import type { ConfirmDialogState } from '../types/app';
+
+export default function ConfirmDialogModal({ dialog, onClose }: { dialog: ConfirmDialogState; onClose: () => void }) {
+  if (!dialog.visible) return null;
+  const tone = dialog.tone === 'danger' ? ['bg-[#FFECEB]', 'bg-red-600 hover:bg-red-700'] : dialog.tone === 'warning' ? ['bg-[#FFF4E5]', 'bg-orange-500 hover:bg-orange-600'] : ['bg-[var(--color-secondary-lighter)]', 'bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)]'];
+  return <div className="fixed inset-0 nl-modal-overlay flex items-center justify-center z-[9999] p-4 animate-in fade-in duration-200"><div className="nl-modal w-full max-w-md overflow-hidden flex flex-col animate-slide-up"><div className={`px-8 py-6 border-b border-[var(--border)] flex items-center gap-4 ${tone[0]}`}><div className={`w-11 h-11 rounded-[3px] flex items-center justify-center text-white shadow-sm ${tone[1].split(' ')[0]}`}><AlertTriangle size={20} /></div><div><h3 className="text-[18px] font-extrabold nl-text tracking-tight">{dialog.title}</h3><p className="text-[12px] nl-text-muted font-bold uppercase tracking-widest">Confirmação necessária</p></div></div><div className="p-8 space-y-6"><p className="text-[14px] nl-text leading-relaxed">{dialog.message}</p><div className="flex justify-end gap-3"><button onClick={onClose} className="nl-btn nl-btn-ghost h-11 px-6 font-bold uppercase tracking-widest text-[12px]">Cancelar</button><button onClick={async () => { const action = dialog.onConfirm; onClose(); if (action) await action(); }} className={`nl-btn h-11 px-8 font-bold uppercase tracking-widest text-[12px] text-white ${tone[1]}`}>{dialog.confirmLabel}</button></div></div></div></div>;
+}

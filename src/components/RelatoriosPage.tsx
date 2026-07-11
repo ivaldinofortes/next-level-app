@@ -93,14 +93,16 @@ function DonutChart({ segments, size = 120 }: { segments: { label: string; value
   const r = size * 0.38;
   const sw = size * 0.15;
   const circ = 2 * Math.PI * r;
-  let offset = 0;
+  const arcs = segments.reduce<{ dash: number; dashoffset: number }[]>((items, seg) => {
+    const dash = (seg.value / total) * circ;
+    const dashoffset = (items.at(-1)?.dashoffset ?? 0) - (items.at(-1)?.dash ?? 0);
+    items.push({ dash, dashoffset });
+    return items;
+  }, []);
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="shrink-0">
       {segments.map((seg, i) => {
-        const pct = seg.value / total;
-        const dash = pct * circ;
-        const dashoffset = -offset;
-        offset += dash;
+        const { dash, dashoffset } = arcs[i];
         return <circle key={i} cx={cx} cy={cy} r={r} fill="none" stroke={seg.color} strokeWidth={sw} strokeDasharray={`${dash} ${circ - dash}`} strokeDashoffset={dashoffset} transform={`rotate(-90 ${cx} ${cy})`} />;
       })}
       <circle cx={cx} cy={cy} r={r * 0.65} fill="var(--bg-surface, #fff)" />
@@ -226,12 +228,12 @@ const RelatoriosPage = memo(function RelatoriosPage({
       userMap.get(userName)!.push(log);
     });
     return Array.from(userMap.entries());
-  }, [daily?.logsHoje, filtroUser]);
+  }, [daily, filtroUser]);
 
   const usersDisponiveis = useMemo(() => {
     if (!daily?.logsHoje) return [];
     return [...new Set(daily.logsHoje.map(l => l.user_name || 'Sistema'))];
-  }, [daily?.logsHoje]);
+  }, [daily]);
 
   const timelineMonths = MONTH_OPTIONS.map((mes, index) => {
     if (isFutureMonth(index, anoRelatorio, hojeReferencia)) return null;
