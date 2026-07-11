@@ -1,3 +1,5 @@
+import { parseFlexibleDate } from '../lib/billing';
+
 // Student display helpers
 export const getAlunoNomeSeguro = (aluno?: { nome?: string } | null) => {
   const nome = String(aluno?.nome || '').trim();
@@ -13,6 +15,39 @@ export const getAvatarColorByName = (nome?: string) => {
     'bg-rose-500', 'bg-amber-500', 'bg-teal-500', 'bg-indigo-500',
   ];
   return avatarColors[(String(nome || 'A').charCodeAt(0) || 65) % avatarColors.length];
+};
+
+/** Paleta de categoria (chips, bordas, destaques no formulário) */
+export const getCategoryTone = (categoria?: string) => {
+  const palette = [
+    { bg: 'color-mix(in srgb, var(--color-primary) 12%, var(--bg-surface))', fg: 'var(--color-primary)', border: 'color-mix(in srgb, var(--color-primary) 35%, var(--border))', solid: '#2563EB' },
+    { bg: 'color-mix(in srgb, var(--color-success) 12%, var(--bg-surface))', fg: 'var(--color-success)', border: 'color-mix(in srgb, var(--color-success) 35%, var(--border))', solid: '#16A34A' },
+    { bg: 'color-mix(in srgb, #8b5cf6 12%, var(--bg-surface))', fg: '#6d28d9', border: 'color-mix(in srgb, #6d28d9 35%, var(--border))', solid: '#7C3AED' },
+    { bg: 'color-mix(in srgb, #14b8a6 12%, var(--bg-surface))', fg: '#0f766e', border: 'color-mix(in srgb, #0f766e 35%, var(--border))', solid: '#0D9488' },
+    { bg: 'color-mix(in srgb, var(--color-warning) 14%, var(--bg-surface))', fg: 'color-mix(in srgb, var(--color-warning) 75%, #000)', border: 'color-mix(in srgb, var(--color-warning) 40%, var(--border))', solid: '#D97706' },
+    { bg: 'color-mix(in srgb, #f43f5e 12%, var(--bg-surface))', fg: '#be123c', border: 'color-mix(in srgb, #be123c 35%, var(--border))', solid: '#E11D48' },
+    { bg: 'color-mix(in srgb, #0891b2 12%, var(--bg-surface))', fg: '#0e7490', border: 'color-mix(in srgb, #0e7490 35%, var(--border))', solid: '#0891B2' },
+  ];
+  const key = String(categoria || 'Geral').trim().toLowerCase();
+  let hash = 0;
+  for (let i = 0; i < key.length; i++) hash = (hash + key.charCodeAt(i) * (i + 1)) % 997;
+  return palette[hash % palette.length];
+};
+
+/** Novo aluno: matriculado nos últimos `days` dias (exclui importados) */
+export const isNewStudent = (
+  aluno: { data_matricula?: string; status?: string } | null | undefined,
+  reference: Date = new Date(),
+  days = 7,
+) => {
+  if (!aluno) return false;
+  if (aluno.status === 'importado') return false;
+  const enrollment = parseFlexibleDate(aluno.data_matricula || '');
+  if (!enrollment) return false;
+  const start = new Date(reference.getFullYear(), reference.getMonth(), reference.getDate()).getTime();
+  const enr = new Date(enrollment.getFullYear(), enrollment.getMonth(), enrollment.getDate()).getTime();
+  const diffDays = Math.floor((start - enr) / (24 * 60 * 60 * 1000));
+  return diffDays >= 0 && diffDays < days;
 };
 
 // Format and parsing utilities
@@ -77,9 +112,12 @@ export const buildPaymentCardNumber = (studentId?: string, paymentId?: number) =
 // Timeline metrics
 
 export const getTimelineMetricLabel = (summary: { status?: string; daysUntilCharge?: number; overdueDays?: number }, status?: string) => {
-  const isPaused = status === 'pausado' || status === 'suspenso';
+  const isPaused = status === 'pausado' || status === 'suspenso' || status === 'ferias';
   const isBlocked = status === 'bloqueado';
-  
+  const isQuit = status === 'desistente';
+
+  if (isQuit) return 'Desistente';
+  if (status === 'ferias') return 'Férias';
   if (isPaused) return 'Em pausa';
   if (isBlocked) return 'Bloqueado';
   if (summary.status === 'atrasado') return `${summary.overdueDays || 0}d atraso`;
@@ -87,17 +125,37 @@ export const getTimelineMetricLabel = (summary: { status?: string; daysUntilChar
   return `${Math.max(summary.daysUntilCharge || 0, 0)}d restantes`;
 };
 
-export const getTimelineMetricWidth = (summary: { status?: string; daysUntilCharge?: number }, status?: string) => {
-  const isPaused = status === 'pausado' || status === 'suspenso';
-  const isBlocked = status === 'bloqueado';
-  
+export const getTimelineMetricWidth = (summary: { status?: string; daysUntilCharge?: number; overdueDays?: number }, status?: string) => {
+  const isPaused = status === 'pausado' || status === 'suspenso' || status === 'ferias';
+  const isBlocked = status === 'bloqueado' || status === 'desistente';
+
   if (isPaused || isBlocked) return 0;
-  if (summary.status === 'atrasado' || summary.status === 'hoje') return 100;
-  return Math.max(8, Math.min(100, (Math.max(summary.daysUntilCharge || 0, 0) / 30) * 100));
+  // Em atraso: anel/barra cheios (vermelhos)
+  if (summary.status === 'atrasado' || summary.status === 'hoje') {
+    // Suave gradação: quanto mais dias de atraso, mais “cheio” (mín. 55%)
+    const overdue = Math.max(summary.overdueDays || 0, summary.status === 'hoje' ? 0 : 1);
+    if (summary.status === 'hoje') return 92;
+    return Math.max(55, Math.min(100, 55 + overdue * 3));
+  }
+  // Em dia / no prazo: progresso pelo tempo que ainda falta (0–30 dias)
+  return Math.max(6, Math.min(100, (Math.max(summary.daysUntilCharge || 0, 0) / 30) * 100));
 };
 
 export const getTimelineMetricBarClass = (summaryStatus?: string) => {
   if (summaryStatus === 'atrasado' || summaryStatus === 'hoje') return 'bg-red-500';
   if (summaryStatus === 'pago') return 'bg-emerald-500';
   return 'bg-blue-600';
+};
+
+/** Cor do anel de timeline no avatar (CSS color) */
+export const getTimelineRingColor = (summaryStatus?: string, manualStatus?: string) => {
+  if (manualStatus === 'desistente') return '#6d28d9'; // violeta
+  if (manualStatus === 'ferias') return '#0f766e'; // teal
+  if (manualStatus === 'pausado' || manualStatus === 'suspenso') return 'var(--color-warning)';
+  if (manualStatus === 'bloqueado') return 'var(--color-error)';
+  if (manualStatus === 'importado') return 'var(--color-warning)';
+  if (summaryStatus === 'atrasado' || summaryStatus === 'hoje') return 'var(--color-error)';
+  if (summaryStatus === 'pago') return 'var(--color-success)';
+  if (summaryStatus === 'critico' || summaryStatus === 'pendente' || summaryStatus === 'alerta') return 'var(--color-warning)';
+  return 'var(--color-primary)';
 };

@@ -392,27 +392,32 @@ export default function RootPanel({ onLogout }: RootPanelProps) {
               <Shield size={14} className="text-red-500" />
               <p className="text-[11px] font-black text-red-400 uppercase tracking-widest">Root Access</p>
             </div>
-            <p className="text-[10px] text-white/25 font-medium leading-snug">Painel exclusivo de suporte técnico. Todas as ações são registadas.</p>
+            <p className="text-[10px] text-white/25 font-medium leading-snug">
+              Suporte técnico NEXTLevel v1. Utilizadores, exports e logs num só sítio.
+            </p>
           </div>
 
           <nav className="flex-1 px-3 py-3 space-y-0.5">
             {TABS.map(t => (
               <button key={t.id} onClick={() => setTab(t.id)}
-                className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-[4px] text-[12px] font-semibold transition-all text-left"
+                type="button"
+                className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-[6px] text-[12px] font-semibold transition-all text-left"
                 style={{
-                  background: tab === t.id ? 'rgba(185,28,28,0.15)' : 'transparent',
-                  color: tab === t.id ? '#fca5a5' : 'rgba(255,255,255,0.35)',
+                  background: tab === t.id ? 'rgba(185,28,28,0.18)' : 'transparent',
+                  color: tab === t.id ? '#fca5a5' : 'rgba(255,255,255,0.38)',
                   borderLeft: tab === t.id ? '2px solid #b91c1c' : '2px solid transparent',
+                  boxShadow: tab === t.id ? 'inset 0 0 0 1px rgba(185,28,28,0.2)' : 'none',
                 }}>
                 {t.icon} {t.label}
+                {tab === t.id && <ChevronRight size={12} className="ml-auto opacity-60" />}
               </button>
             ))}
           </nav>
 
           <div className="px-3 pb-4 pt-2" style={{ borderTop: '1px solid #1f1f1f' }}>
-            <div className="text-center">
-              <p className="text-[9px] text-white/15 uppercase tracking-widest">NEXT Lab · v1.0</p>
-              <p className="text-[9px] text-white/10 mt-0.5">Ivaldino da Luz Fortes</p>
+            <div className="rounded-[6px] border border-white/5 bg-white/[0.03] px-2.5 py-2 text-center">
+              <p className="text-[9px] text-white/25 uppercase tracking-widest">NEXTLevel · v1.0</p>
+              <p className="text-[9px] text-white/15 mt-0.5">Painel root · NEXT Lab</p>
             </div>
           </div>
         </aside>

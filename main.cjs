@@ -514,13 +514,15 @@ app.whenReady().then(() => {
         UPDATE alunos SET
           nome = ?, telefone = ?, email = ?, sexo = ?, data_nascimento = ?,
           morada = ?, alergias = ?, objetivos = ?, horario_preferido = ?,
-          plano = ?, vencimento = ?, data_matricula = ?, categoria = ?, modo_cobranca = ?
+          plano = ?, vencimento = ?, data_matricula = ?, categoria = ?, modo_cobranca = ?,
+          status = COALESCE(?, status)
         WHERE id = ?
       `);
       stmt.run(
         aluno.nome, aluno.telefone, aluno.email, aluno.sexo, aluno.data_nascimento,
         aluno.morada, aluno.alergias, aluno.objetivos, aluno.horario_preferido,
-        aluno.plano, aluno.vencimento, aluno.data_matricula, aluno.categoria, aluno.modo_cobranca || 'mensalidade_movel', aluno.id
+        aluno.plano, aluno.vencimento, aluno.data_matricula, aluno.categoria, aluno.modo_cobranca || 'mensalidade_movel',
+        aluno.status || null, aluno.id
       );
       registrarLog('Edição', `Dados atualizados para o aluno ${aluno.nome}`);
       return { success: true };

@@ -1,5 +1,14 @@
 // Student and Billing Types
-export type StudentManualStatus = 'ativo' | 'suspenso' | 'pausado' | 'bloqueado' | 'importado' | string | undefined;
+export type StudentManualStatus =
+  | 'ativo'
+  | 'suspenso'
+  | 'pausado'
+  | 'ferias'
+  | 'desistente'
+  | 'bloqueado'
+  | 'importado'
+  | string
+  | undefined;
 
 export interface Student {
   id: string;
@@ -63,6 +72,8 @@ export interface MonthlyBillingSummary {
     | 'futuro'
     | 'suspenso'
     | 'pausado'
+    | 'ferias'
+    | 'desistente'
     | 'bloqueado'
     | 'importado';
   statusLabel: string;

@@ -343,7 +343,7 @@ export default function ImportarDadosModal({ onClose, onSuccess, electron, categ
   const CAMPOS_TABELA: Array<keyof RowData> = ['nome', 'telefone', 'email', 'plano', 'vencimento'];
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[200] flex items-center justify-center nl-modal-overlay">
       <div className="w-[900px] max-w-[96vw] max-h-[90vh] bg-[var(--bg-surface)] rounded-[12px] shadow-2xl flex flex-col border border-[var(--border)] overflow-hidden">
 
         {/* Cabeçalho */}

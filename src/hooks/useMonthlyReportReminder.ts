@@ -22,7 +22,11 @@ export function useMonthlyReportReminder({ enabled, loggedIn, setAvailable, noti
     const month = day >= daysInMonth - 1 ? MONTHS[now.getMonth()] : MONTHS[previousMonth - 1];
     const label = `${month} ${day >= daysInMonth - 1 ? now.getFullYear() : previousYear}`;
     setAvailable(label);
-    notify('Relatório Mensal Disponível', `O relatório de ${label} está pronto para exportar. Aceda a Alunos e exporte em PDF ou Excel.`, 'info');
+    notify(
+      'Relatório mensal disponível',
+      `O relatório de ${label} está pronto. Abra Relatórios (barra superior) para rever finanças, métodos de pagamento e atividade da equipa — e exportar PDF/Excel.`,
+      'info',
+    );
     localStorage.setItem(key, '1');
   }, [enabled, loggedIn, setAvailable, notify]);
 }

@@ -46,15 +46,26 @@ export const HOME_SUBTITLE = 'Gestão diária num só painel.';
 // ─── Status Labels ─────────────────────────────────────────────────────────
 
 export const STUDENT_STATUS_HELPERS = {
-  isPaused: (status?: string) => status === 'pausado' || status === 'suspenso',
+  isPaused: (status?: string) => status === 'pausado' || status === 'suspenso' || status === 'ferias',
+  isOnLeave: (status?: string) => status === 'ferias',
+  isQuit: (status?: string) => status === 'desistente',
   isBlocked: (status?: string) => status === 'bloqueado',
   isImported: (status?: string) => status === 'importado',
-  isOperational: (status?: string) => !STUDENT_STATUS_HELPERS.isPaused(status) && !STUDENT_STATUS_HELPERS.isBlocked(status),
+  /** Fora da contabilidade do mês (pausa, férias, desistente, bloqueado, importado) */
+  isExcludedFromBilling: (status?: string) =>
+    STUDENT_STATUS_HELPERS.isPaused(status)
+    || STUDENT_STATUS_HELPERS.isQuit(status)
+    || STUDENT_STATUS_HELPERS.isBlocked(status)
+    || STUDENT_STATUS_HELPERS.isImported(status),
+  isOperational: (status?: string) => !STUDENT_STATUS_HELPERS.isExcludedFromBilling(status),
 };
 
 export const getStudentStatusLabel = (status?: string) => {
+  if (status === 'ferias') return 'férias';
+  if (status === 'desistente') return 'desistente';
   if (STUDENT_STATUS_HELPERS.isPaused(status)) return 'pausado';
   if (status === 'bloqueado') return 'bloqueado';
+  if (status === 'importado') return 'importado';
   return status || 'ativo';
 };
 
@@ -74,6 +85,10 @@ export const getBillingBadgeLabel = (status?: string) => {
       return 'Pago';
     case 'pausado':
       return 'Pausado';
+    case 'ferias':
+      return 'Férias';
+    case 'desistente':
+      return 'Desistente';
     case 'suspenso':
       return 'Suspenso';
     case 'bloqueado':
@@ -81,6 +96,98 @@ export const getBillingBadgeLabel = (status?: string) => {
     default:
       return 'Ativo';
   }
+};
+
+/**
+ * Cores de estado manual do aluno (lista, badges, relatórios).
+ * Férias e desistente têm paletas distintas entre si e da pausa.
+ */
+export const getManualStatusTone = (status?: string) => {
+  const s = String(status || 'ativo').toLowerCase();
+  if (s === 'ferias') {
+    return {
+      badge: 'badge-leave',
+      label: 'Férias',
+      // Teal — férias / ausência temporária
+      fg: '#0f766e',
+      bg: 'color-mix(in srgb, #14b8a6 12%, var(--bg-surface))',
+      border: 'color-mix(in srgb, #0f766e 32%, var(--border))',
+      barTrack: 'color-mix(in srgb, #14b8a6 22%, transparent)',
+      barFill: '#14b8a6',
+      surface: 'border-teal-200 bg-teal-50/80',
+      accent: 'text-teal-800',
+      color: '#0f766e',
+    };
+  }
+  if (s === 'desistente') {
+    return {
+      badge: 'badge-quit',
+      label: 'Desistente',
+      // Violeta — saiu, fora da contabilidade
+      fg: '#6d28d9',
+      bg: 'color-mix(in srgb, #8b5cf6 12%, var(--bg-surface))',
+      border: 'color-mix(in srgb, #6d28d9 32%, var(--border))',
+      barTrack: 'color-mix(in srgb, #8b5cf6 22%, transparent)',
+      barFill: '#8b5cf6',
+      surface: 'border-violet-200 bg-violet-50/80',
+      accent: 'text-violet-800',
+      color: '#6d28d9',
+    };
+  }
+  if (s === 'pausado' || s === 'suspenso') {
+    return {
+      badge: 'badge-warning',
+      label: s === 'suspenso' ? 'Suspenso' : 'Em pausa',
+      fg: 'var(--color-warning)',
+      bg: 'color-mix(in srgb, var(--color-warning) 12%, var(--bg-surface))',
+      border: 'color-mix(in srgb, var(--color-warning) 32%, var(--border))',
+      barTrack: 'color-mix(in srgb, var(--color-warning) 22%, transparent)',
+      barFill: 'var(--color-warning)',
+      surface: 'border-amber-200 bg-amber-50/80',
+      accent: 'text-amber-800',
+      color: '#d97706',
+    };
+  }
+  if (s === 'bloqueado') {
+    return {
+      badge: 'badge-error',
+      label: 'Bloqueado',
+      fg: 'var(--color-error)',
+      bg: 'color-mix(in srgb, var(--color-error) 10%, var(--bg-surface))',
+      border: 'color-mix(in srgb, var(--color-error) 32%, var(--border))',
+      barTrack: 'color-mix(in srgb, var(--color-error) 22%, transparent)',
+      barFill: 'var(--color-error)',
+      surface: 'border-red-200 bg-red-50/80',
+      accent: 'text-red-700',
+      color: '#dc2626',
+    };
+  }
+  if (s === 'importado') {
+    return {
+      badge: 'badge-warning',
+      label: 'Importado',
+      fg: 'var(--color-warning)',
+      bg: 'color-mix(in srgb, var(--color-warning) 12%, var(--bg-surface))',
+      border: 'color-mix(in srgb, var(--color-warning) 35%, var(--border))',
+      barTrack: 'color-mix(in srgb, var(--color-warning) 28%, transparent)',
+      barFill: 'var(--color-warning)',
+      surface: 'border-amber-200 bg-amber-50/80',
+      accent: 'text-amber-800',
+      color: '#d97706',
+    };
+  }
+  return {
+    badge: 'badge-success',
+    label: 'Ativo',
+    fg: 'var(--color-success)',
+    bg: 'color-mix(in srgb, var(--color-success) 10%, var(--bg-surface))',
+    border: 'color-mix(in srgb, var(--color-success) 28%, var(--border))',
+    barTrack: 'color-mix(in srgb, var(--color-success) 20%, transparent)',
+    barFill: 'var(--color-success)',
+    surface: 'border-emerald-200 bg-emerald-50/80',
+    accent: 'text-emerald-700',
+    color: '#16a34a',
+  };
 };
 
 export const getBillingTone = (status?: string) => {
@@ -103,6 +210,51 @@ export const getBillingTone = (status?: string) => {
         button: 'bg-emerald-600 hover:bg-emerald-700 text-white',
         color: '#16A34A',
       };
+    case 'ferias': {
+      const t = getManualStatusTone('ferias');
+      return {
+        badge: t.badge,
+        surface: t.surface,
+        accent: t.accent,
+        subtle: t.accent,
+        button: 'bg-teal-700 hover:bg-teal-800 text-white',
+        color: t.color,
+      };
+    }
+    case 'desistente': {
+      const t = getManualStatusTone('desistente');
+      return {
+        badge: t.badge,
+        surface: t.surface,
+        accent: t.accent,
+        subtle: t.accent,
+        button: 'bg-violet-700 hover:bg-violet-800 text-white',
+        color: t.color,
+      };
+    }
+    case 'pausado':
+    case 'suspenso': {
+      const t = getManualStatusTone(status);
+      return {
+        badge: t.badge,
+        surface: t.surface,
+        accent: t.accent,
+        subtle: t.accent,
+        button: 'bg-amber-600 hover:bg-amber-700 text-white',
+        color: t.color,
+      };
+    }
+    case 'bloqueado': {
+      const t = getManualStatusTone('bloqueado');
+      return {
+        badge: t.badge,
+        surface: t.surface,
+        accent: t.accent,
+        subtle: t.accent,
+        button: 'bg-red-600 hover:bg-red-700 text-white',
+        color: t.color,
+      };
+    }
     default:
       return {
         badge: 'badge-info',
@@ -249,8 +401,10 @@ export const prioridadeResumoAlunos: Record<string, number> = {
   alerta: 4,
   pago: 5,
   pausado: 6,
+  ferias: 6,
   suspenso: 6,
-  bloqueado: 7,
+  desistente: 7,
+  bloqueado: 8,
 };
 
 export const DEFAULT_HOME_SUBTITLE = 'Operação diária, mensalidades e acompanhamento num só painel.';

@@ -2,19 +2,21 @@ import { memo, useEffect, useState, type CSSProperties, type Dispatch, type SetS
 import {
   Calendar, ChevronLeft, ChevronRight, LayoutList, AlertCircle,
   CheckCircle2, FileSpreadsheet, ChevronDown, ArrowUpDown, Zap,
-  Clock, Search, X, BookUser, Shield, Users, StickyNote, BarChart3,
+  Clock, Search, X, BookUser, Shield, Users, StickyNote, BarChart3, Wallet,
 } from 'lucide-react';
 import { formatCve } from '../lib/billing';
 import type { MonthlyBillingSummary } from '../lib/billing';
 import {
   isFutureMonth,
   getTimelineMetricWidth,
-  getTimelineMetricBarClass,
+  getTimelineRingColor,
   getAlunoIniciais,
   getAlunoNomeSeguro,
+  isNewStudent,
 } from '../utils/formatting';
-import { MONTH_OPTIONS, STUDENT_STATUS_HELPERS } from '../constants';
+import { MONTH_OPTIONS, STUDENT_STATUS_HELPERS, getManualStatusTone } from '../constants';
 import type { StudentSortMode, Student } from '../types';
+import TimeRuler from './TimeRuler';
 
 interface HistoricoMensalItem {
   aluno: Student;
@@ -63,6 +65,7 @@ export interface GestaoPageProps {
   diaProgressoPeriodo: number;
   periodoSelecionadoFuturo: boolean;
   estiloTabelaAlunos: CSSProperties;
+  obterTomPastel: (index: number) => { bg: string; border: string; rowBg: string; rowHover: string };
   setAlunoPerfil: (v: Student | null) => void;
   irParaMesAtualOperacional: (mostrarAviso?: boolean) => void;
   abrirEdicao: (aluno: Student) => void;
@@ -108,6 +111,7 @@ function GestaoPage({
   diaProgressoPeriodo,
   periodoSelecionadoFuturo,
   estiloTabelaAlunos,
+  obterTomPastel,
   irParaMesAtualOperacional,
   abrirEdicao,
   abrirPerfilAluno,
@@ -160,146 +164,143 @@ function GestaoPage({
     };
   })();
 
+  const mesIdxFinanceiro = Math.max(0, MONTH_OPTIONS.indexOf(mesFinanceiro));
+  const rulerMarks = MONTH_OPTIONS.map((mes, index) => {
+    // peso leve: mais alunos “activos” no mês ≈ traço um pouco mais alto (heurística simples)
+    const w = historicoMensalFiltrado.length > 0 && index === mesIdxFinanceiro ? 0.85 : index % 3 === 0 ? 0.35 : 0.15;
+    return { index, weight: w };
+  });
+
   return (
-    <div className="animate-slide-up h-full flex flex-col w-full overflow-hidden bg-[#F8FAFC]">
-      <div className="sticky top-0 z-20 overflow-visible border-b border-[#D7DCE3] bg-[#F0F3F7]/95 shadow-[0_7px_22px_rgba(15,23,42,0.08)] supports-[backdrop-filter]:backdrop-blur-md">
-        {reguaFerramentasMinimizada ? (
-          <div className="flex h-10 items-center justify-between px-5">
-            <button
-              type="button"
-              onClick={() => setReguaFerramentasMinimizada(false)}
-              className="inline-flex h-7 items-center gap-2 rounded-full bg-white/65 px-3 text-[10px] font-black uppercase tracking-[0.14em] text-slate-600 ring-1 ring-slate-200/70 hover:bg-blue-50/80 hover:text-blue-700"
-              title="Mostrar ferramentas da lista"
-            >
-              <LayoutList size={13} />
-              Ferramentas
-              <ChevronDown size={12} className="-rotate-90" />
-            </button>
-            <span className="hidden text-[10px] font-black uppercase tracking-[0.16em] text-slate-400 sm:block">
-              {periodoSelecionadoLabel} · {historicoMensalFiltrado.length} alunos
-            </span>
-          </div>
-        ) : (
-        <div className="overflow-visible py-2">
-          <div className="flex min-h-[44px] w-full min-w-[1180px] items-center gap-3 px-5">
-            <div className="relative z-30 shrink-0">
+    <div className="animate-slide-up flex h-full w-full flex-col overflow-hidden nl-bg-app">
+      {/* Barra única: esquerda | régua centrada | direita */}
+      <div className="sticky top-0 z-20 shrink-0 border-b border-[var(--border)] bg-[var(--bg-header)]">
+        <div className="flex h-12 w-full items-center gap-2 px-3">
+            {/* Esquerda — período / ano */}
+            <div className="relative z-30 flex shrink-0 items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setAnoFinanceiro((prev) => prev - 1)}
+                className="nl-icon-btn nl-icon-btn-sm"
+                title="Ano anterior"
+              >
+                <ChevronLeft size={14} />
+              </button>
               <button
                 type="button"
                 onClick={() => {
                   setMostrarFiltroListaAlunos(false);
                   setMostrarCalendarioMeses((prev) => !prev);
                 }}
-                className={`flex h-10 min-w-[170px] items-center gap-2.5 rounded-[var(--radius-surface)] px-3 text-left transition-colors ${
-                  periodoAtualSelecionado ? 'bg-blue-50/80 text-blue-700 ring-1 ring-blue-100/80 hover:bg-blue-50' : 'bg-rose-50/80 text-rose-700 ring-1 ring-rose-100/80 hover:bg-rose-50'
+                className={`inline-flex h-9 items-center gap-1.5 rounded-[var(--radius-control)] border px-2.5 text-[12px] font-semibold capitalize ${
+                  periodoAtualSelecionado
+                    ? 'border-[var(--color-success)] bg-[color-mix(in_srgb,var(--color-success)_12%,var(--bg-surface))] text-[var(--color-success)]'
+                    : 'border-[var(--border)] bg-[var(--bg-surface)] nl-text'
                 }`}
                 title="Escolher mês e ano"
               >
-                <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-[6px] ${
-                  periodoAtualSelecionado ? 'bg-blue-100 text-blue-700' : 'bg-rose-100 text-rose-700'
-                }`}>
-                  <Calendar size={13} />
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[12px] font-black capitalize leading-none">{periodoSelecionadoLabel}</span>
-                  <span className="mt-0.5 block truncate text-[8px] font-black uppercase tracking-[0.12em] text-current/50">{anoFinanceiro}</span>
-                </span>
-                <ChevronDown size={13} className={`shrink-0 transition-transform ${mostrarCalendarioMeses ? 'rotate-180' : ''}`} />
+                <Calendar size={13} />
+                <span className="max-w-[110px] truncate">{periodoSelecionadoLabel}</span>
+                <ChevronDown size={12} className={mostrarCalendarioMeses ? 'rotate-180' : ''} />
               </button>
+              <button
+                type="button"
+                onClick={() => setAnoFinanceiro((prev) => Math.min(prev + 1, anoAtual))}
+                disabled={anoFinanceiro >= anoAtual}
+                className="nl-icon-btn nl-icon-btn-sm"
+                title="Próximo ano"
+              >
+                <ChevronRight size={14} />
+              </button>
+              {!periodoAtualSelecionado && (
+                <button type="button" onClick={() => irParaMesAtualOperacional()} className="nl-btn nl-btn-ghost nl-btn-sm !h-9 hidden lg:inline-flex">
+                  Hoje
+                </button>
+              )}
 
               {mostrarCalendarioMeses && (
                 <>
                   <div className="fixed inset-0 z-[60]" onClick={() => setMostrarCalendarioMeses(false)} />
-                  <div className="fixed left-5 top-[126px] z-[80] w-[330px] overflow-hidden rounded-[10px] border border-blue-100 bg-white shadow-[0_24px_70px_rgba(15,23,42,0.18)]">
-                    <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50 px-3 py-2.5">
-                      <button type="button" onClick={() => setAnoFinanceiro((prev) => prev - 1)} className="flex h-8 w-8 items-center justify-center rounded-[6px] text-slate-500 hover:bg-white hover:text-blue-700" title="Ano anterior">
-                        <ChevronLeft size={16} />
-                      </button>
-                      <div className="text-center">
-                        <p className="text-[9px] font-black uppercase tracking-[0.18em] text-slate-400">Ano</p>
-                        <span className="text-[15px] font-black text-slate-800">{anoFinanceiro}</span>
-                      </div>
-                      <button type="button" onClick={() => setAnoFinanceiro((prev) => Math.min(prev + 1, anoAtual))} disabled={anoFinanceiro >= anoAtual} className="flex h-8 w-8 items-center justify-center rounded-[6px] text-slate-500 hover:bg-white hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-35" title="Próximo ano">
-                        <ChevronRight size={16} />
-                      </button>
-                    </div>
-                    <div className="grid grid-cols-3 gap-2 p-3">
+                  <div className="absolute left-0 top-[calc(100%+6px)] z-[80] w-[300px] overflow-hidden rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-surface)] shadow-[var(--shadow-lg)]">
+                    <div className="grid grid-cols-3 gap-1.5 p-2.5">
                       {MONTH_OPTIONS.map((mes, index) => {
                         const future = isFutureMonth(index, anoFinanceiro, hojeReferencia);
                         const active = mesFinanceiro === mes && !future;
-                        const current = anoFinanceiro === anoAtual && index === hojeReferencia.getMonth();
                         return (
                           <button
                             key={mes}
                             type="button"
+                            disabled={future}
                             onClick={() => {
                               if (future) return;
                               setMesFinanceiro(mes);
                               setMostrarCalendarioMeses(false);
                             }}
-                            disabled={future}
-                            className={`min-h-[48px] rounded-[var(--radius-compact)] border px-2 py-2 text-left transition-colors ${
+                            className={`rounded-[var(--radius-compact)] border px-2 py-2 text-[11px] font-semibold capitalize ${
                               active
-                                ? 'border-blue-500 bg-blue-600 text-white shadow-sm'
-                                : current
-                                  ? 'border-blue-200 bg-blue-50 text-blue-700'
-                                  : 'border-slate-200 bg-white text-slate-600 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700'
-                            } disabled:cursor-not-allowed disabled:opacity-35`}
+                                ? 'border-[var(--color-success)] bg-[var(--color-success)] text-white'
+                                : 'border-[var(--border)] nl-text hover:bg-[var(--color-secondary-light)]'
+                            } disabled:opacity-35`}
                           >
-                            <span className="block text-[10px] font-black uppercase tracking-[0.12em]">{mes.slice(0, 3)}</span>
-                            <span className={`mt-1 block text-[8px] font-bold uppercase tracking-[0.08em] ${active ? 'text-white/75' : 'text-current/45'}`}>
-                              {current ? 'Atual' : future ? 'Futuro' : 'Aberto'}
-                            </span>
+                            {mes.slice(0, 3)}
                           </button>
                         );
                       })}
                     </div>
-                    {!periodoAtualSelecionado && (
-                      <button type="button" onClick={() => { irParaMesAtualOperacional(); setMostrarCalendarioMeses(false); }} className="mx-3 mb-3 h-9 w-[calc(100%-24px)] rounded-[var(--radius-compact)] bg-blue-600 text-[11px] font-black uppercase tracking-[0.12em] text-white hover:bg-blue-700">
-                        Ir para mês atual
-                      </button>
-                    )}
                   </div>
                 </>
               )}
             </div>
 
-            <div className="relative min-w-[690px] flex-1">
-              <div className="absolute left-0 right-0 top-1/2 h-px -translate-y-1/2 bg-blue-100/80" />
-              <div className="relative grid grid-cols-12 gap-1.5">
-                {MONTH_OPTIONS.map((mes, index) => {
-                  const future = isFutureMonth(index, anoFinanceiro, hojeReferencia);
-                  const active = mesFinanceiro === mes && !future;
-                  const current = anoFinanceiro === anoAtual && index === hojeReferencia.getMonth();
-                  return (
-                    <button
-                      key={mes}
-                      type="button"
-                      onClick={() => {
-                        if (future) return;
-                        setMostrarCalendarioMeses(false);
-                        setMesFinanceiro(mes);
-                      }}
-                      disabled={future}
-                      className={`group flex h-8 min-w-[62px] flex-col items-center justify-center rounded-[7px] border border-transparent px-1.5 transition-all ${
-                        active
-                          ? 'bg-blue-100/90 text-blue-700 ring-1 ring-blue-200/80'
-                          : current
-                            ? 'bg-sky-50/80 text-blue-700 ring-1 ring-sky-100/80'
-                          : 'bg-transparent text-slate-500 hover:bg-white/55 hover:text-blue-700'
-                      } disabled:cursor-not-allowed disabled:opacity-35`}
-                      title={`${mes} ${anoFinanceiro}${future ? ' • futuro' : ''}`}
-                    >
-                      <span className="text-[9px] font-black uppercase tracking-[0.12em]">{mes.slice(0, 3)}</span>
-                      <span className="mt-0.5 text-[7px] font-black uppercase tracking-[0.08em] text-current/45">
-                        {active ? 'Ativo' : current ? 'Atual' : future ? 'Futuro' : 'Aberto'}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
+            {/* Centro — régua de tempo (sempre centrada, compacta) */}
+            <div className="min-w-0 flex-1">
+              <TimeRuler
+                year={anoFinanceiro}
+                selectedIndex={mesIdxFinanceiro}
+                referenceDate={hojeReferencia}
+                accent="alunos"
+                maxWidth={420}
+                marks={rulerMarks}
+                onSelect={(_idx, mes) => {
+                  setMostrarCalendarioMeses(false);
+                  setMesFinanceiro(mes);
+                }}
+                onGoToCurrent={() => {
+                  setMostrarCalendarioMeses(false);
+                  irParaMesAtualOperacional();
+                }}
+              />
             </div>
 
-          <div className="ml-auto flex shrink-0 items-center justify-end gap-2">
+            {/* Depois da régua: pesquisa em destaque + filtros */}
+            <div className="ml-auto flex min-w-0 shrink-0 items-center gap-2">
+          {/* Pesquisa sempre visível, logo após a régua */}
+          <div className="relative w-[min(220px,28vw)] shrink-0">
+            <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 z-[1] -translate-y-1/2 text-[var(--color-primary)]" />
+            <input
+              type="text"
+              placeholder="Pesquisar aluno…"
+              value={pesquisa}
+              onChange={(e) => setPesquisa(e.target.value)}
+              onFocus={() => {
+                setPesquisaAberta(true);
+                setMostrarFiltroListaAlunos(false);
+                setMostrarCalendarioMeses(false);
+              }}
+              className="h-9 w-full rounded-[var(--radius-control)] border-2 border-[var(--color-primary)] bg-[var(--bg-surface)] pl-8 pr-8 text-[12px] font-medium nl-text outline-none shadow-[0_0_0_3px_var(--shadow-primary-focus)] placeholder:text-[var(--text-tertiary)] focus:border-[var(--color-primary-hover)]"
+            />
+            {pesquisa ? (
+              <button
+                type="button"
+                onClick={() => setPesquisa('')}
+                className="absolute right-1.5 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full nl-text-muted hover:bg-[var(--color-secondary-light)]"
+                title="Limpar"
+              >
+                <X size={13} />
+              </button>
+            ) : null}
+          </div>
+
           <div className={`relative ${mostrarFiltroListaAlunos ? 'z-[90]' : 'z-30'}`}>
             <button
               type="button"
@@ -307,17 +308,12 @@ function GestaoPage({
                 setMostrarCalendarioMeses(false);
                 setMostrarFiltroListaAlunos((prev) => !prev);
               }}
-              className="flex h-9 min-w-[198px] items-center justify-between rounded-[var(--radius-surface)] bg-emerald-50/70 px-3 text-[10px] font-black uppercase tracking-[0.1em] text-emerald-800 ring-1 ring-emerald-200/80 hover:bg-emerald-50 hover:text-emerald-900"
+              className="inline-flex h-9 max-w-[180px] items-center gap-1.5 rounded-[var(--radius-control)] border border-[var(--border)] bg-[var(--bg-surface)] px-2.5 text-[11px] font-semibold nl-text hover:bg-[var(--color-secondary-light)]"
               title="Visualização da lista"
             >
-              <span className="flex min-w-0 items-center gap-2">
-                <LayoutList size={14} />
-                <span className="truncate">Visualização</span>
-                <span className="rounded-full bg-white/70 px-1.5 py-0.5 text-[8px] text-emerald-600 ring-1 ring-emerald-100/70">
-                  {filtroAtual} · {ordenacaoAtual}
-                </span>
-              </span>
-              <ChevronDown size={13} className={`transition-transform ${mostrarFiltroListaAlunos ? 'rotate-180' : ''}`} />
+              <LayoutList size={13} />
+              <span className="truncate">{filtroAtual}</span>
+              <ChevronDown size={12} className={mostrarFiltroListaAlunos ? 'rotate-180' : ''} />
             </button>
 
             {mostrarFiltroListaAlunos && (
@@ -403,78 +399,31 @@ function GestaoPage({
             )}
           </div>
 
-          <div className={`relative flex h-9 items-center justify-end transition-all ${pesquisaAberta || pesquisa ? 'w-[240px]' : 'w-9'}`}>
-            {pesquisaAberta || pesquisa ? (
-              <div className="relative w-full">
-                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-secondary)]" />
-                <input
-                  type="text"
-                  autoFocus
-                  placeholder="Buscar aluno..."
-                  value={pesquisa}
-                  onChange={(e) => setPesquisa(e.target.value)}
-                  className="nl-input h-9 w-full !rounded-[var(--radius-surface)] !pl-9 !pr-9 !border-blue-100 !bg-white/75 text-[12px] shadow-none"
-                />
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (pesquisa) setPesquisa('');
-                    else setPesquisaAberta(false);
-                  }}
-                  className="absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full text-[var(--text-tertiary)] transition-colors hover:bg-slate-100 hover:text-[var(--color-primary)]"
-                  title={pesquisa ? 'Limpar pesquisa' : 'Fechar pesquisa'}
-                >
-                  <X size={13} />
-                </button>
-              </div>
-            ) : (
-              <button
-                type="button"
-                onClick={() => {
-                  setMostrarFiltroListaAlunos(false);
-                  setMostrarCalendarioMeses(false);
-                  setPesquisaAberta(true);
-                }}
-                className="flex h-9 w-9 items-center justify-center rounded-[var(--radius-surface)] bg-white/60 text-slate-500 ring-1 ring-slate-200/70 hover:bg-blue-50/80 hover:text-blue-700"
-                title="Pesquisar"
-              >
-                <Search size={15} />
-              </button>
-            )}
-          </div>
-
-          <button
-            type="button"
-            onClick={() => setReguaFerramentasMinimizada(true)}
-            className="flex h-9 items-center gap-2 rounded-[var(--radius-surface)] bg-slate-100/60 px-3 text-[10px] font-black uppercase tracking-[0.12em] text-slate-500 ring-1 ring-slate-200/60 hover:bg-white/70 hover:text-slate-800"
-            title="Recolher ferramentas"
-          >
-            <ChevronDown size={13} className="rotate-180" />
-            Recolher
-          </button>
-
           </div>
         </div>
-        </div>
-        )}
       </div>
 
-      <div className="flex-1 overflow-hidden px-6 py-6">
+      <div className="flex-1 overflow-hidden px-4 py-4">
         <div className="mx-auto h-full w-full" style={{ maxWidth: `${larguraListas}px` }}>
-          <div className="nl-card flex h-full overflow-hidden flex-col !rounded-[var(--radius-md)] !p-0 border border-[var(--border)] bg-[var(--bg-surface)] shadow-[var(--shadow-md)]">
-            {/* Tabela */}
+          <div className="nl-card nl-student-list flex h-full overflow-hidden flex-col !rounded-[var(--radius-md)] !p-0 border border-[var(--border)] bg-[var(--bg-surface)] shadow-[var(--shadow-md)]">
+            {/* Tabela — mesmo layout em claro/escuro; pastéis adaptados pelo tema */}
             <div className="overflow-y-auto flex-1 custom-scrollbar nl-font-list" style={estiloTabelaAlunos}>
             {/* Banner: dados importados aguardando revisão */}
             {alunosImportados.length > 0 && filtroStatus !== 'importados' && (
-              <div className="flex items-center gap-3 px-4 py-2.5 bg-amber-50 border-b border-amber-200 shrink-0">
-                <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse shrink-0" />
-                <p className="text-[11px] font-bold text-amber-800 flex-1">
+              <div className="flex items-center gap-3 px-4 py-2.5 shrink-0 border-b border-[color-mix(in_srgb,var(--color-warning)_35%,var(--border))] bg-[color-mix(in_srgb,var(--color-warning)_14%,var(--bg-surface))]">
+                <div className="w-2 h-2 rounded-full bg-[var(--color-warning)] animate-pulse shrink-0" />
+                <p className="text-[11px] font-bold flex-1" style={{ color: 'color-mix(in srgb, var(--color-warning) 75%, var(--text-primary))' }}>
                   {alunosImportados.length} {alunosImportados.length === 1 ? 'aluno importado aguarda' : 'alunos importados aguardam'} revisão
                 </p>
                 <button
                   type="button"
                   onClick={() => setFiltroStatus('importados')}
-                  className="text-[10px] font-black uppercase tracking-wider text-amber-700 hover:text-amber-900 px-2 py-1 rounded bg-amber-100 hover:bg-amber-200 transition-colors border border-amber-300"
+                  className="text-[10px] font-black uppercase tracking-wider px-2 py-1 rounded border transition-colors"
+                  style={{
+                    color: 'color-mix(in srgb, var(--color-warning) 80%, var(--text-primary))',
+                    background: 'color-mix(in srgb, var(--color-warning) 18%, var(--bg-surface))',
+                    borderColor: 'color-mix(in srgb, var(--color-warning) 40%, var(--border))',
+                  }}
                 >
                   Ver
                 </button>
@@ -506,16 +455,16 @@ function GestaoPage({
                 </div>
               ) : (
                 <table className="w-full table-fixed text-left border-separate border-spacing-0">
-                  <thead className="bg-[var(--color-secondary-lighter)] text-[9px] font-black nl-text-muted uppercase tracking-[0.11em] sticky top-0 z-10 border-b border-[var(--border-light)]">
-                    <tr>
-                      <th style={{ padding: '10px var(--list-row-px)', width: '4%', textAlign: 'center' }}>#</th>
-                      <th style={{ padding: '10px var(--list-row-px)', width: '27%' }}>Aluno</th>
-                      <th style={{ padding: '10px var(--list-row-px)', width: '5%', textAlign: 'center' }}>Notas</th>
-                      <th style={{ padding: '10px var(--list-row-px)', width: '12%' }}>Telefone</th>
-                      <th style={{ padding: '10px var(--list-row-px)', width: '12%', textAlign: 'right' }}>Mensalidade</th>
-                      <th style={{ padding: '10px var(--list-row-px)', width: '13%', textAlign: 'center' }}>Próx. cobrança</th>
-                      <th style={{ padding: '10px var(--list-row-px)', width: '25%' }}>Estado</th>
-                      <th style={{ padding: '10px var(--list-row-px)', width: '4%', textAlign: 'center' }}></th>
+                  <thead className="text-[9px] font-black nl-text-muted uppercase tracking-[0.11em] sticky top-0 z-10 border-b border-[var(--border-light)] backdrop-blur-sm" style={{ background: 'var(--list-thead-bg, var(--color-secondary-lighter))' }}>
+                    <tr style={{ height: 'calc(var(--list-avatar-size) + 14px + (2 * var(--list-row-py)))' }}>
+                      <th className="align-middle" style={{ padding: 'var(--list-row-py) var(--list-row-px)', width: '3.5%', textAlign: 'center' }}>#</th>
+                      <th className="align-middle" style={{ padding: 'var(--list-row-py) var(--list-row-px)', width: '28%' }}>Aluno</th>
+                      <th className="align-middle" style={{ padding: 'var(--list-row-py) var(--list-row-px)', width: '5%', textAlign: 'center' }}>Notas</th>
+                      <th className="align-middle" style={{ padding: 'var(--list-row-py) var(--list-row-px)', width: '12.5%' }}>Telefone</th>
+                      <th className="align-middle" style={{ padding: 'var(--list-row-py) var(--list-row-px)', width: '12.5%', textAlign: 'right' }}>Mensalidade</th>
+                      <th className="align-middle" style={{ padding: 'var(--list-row-py) var(--list-row-px)', width: '12.5%', textAlign: 'center' }}>Próx. cobrança</th>
+                      <th className="align-middle" style={{ padding: 'var(--list-row-py) var(--list-row-px)', width: '22%' }}>Estado</th>
+                      <th className="align-middle" style={{ padding: 'var(--list-row-py) var(--list-row-px)', width: '4%', textAlign: 'center' }}></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -524,102 +473,196 @@ function GestaoPage({
                       const progressoDias = getTimelineMetricWidth(resumo, aluno.status);
                       const paused = STUDENT_STATUS_HELPERS.isPaused(aluno.status);
                       const blocked = STUDENT_STATUS_HELPERS.isBlocked(aluno.status);
+                      const isQuit = STUDENT_STATUS_HELPERS.isQuit(aluno.status);
+                      const isOnLeave = STUDENT_STATUS_HELPERS.isOnLeave(aluno.status);
                       const isAtrasado = resumo.status === 'atrasado' || resumo.status === 'hoje';
                       const isPago = resumo.status === 'pago';
                       const isDentroDoPrazo = !isAtrasado && !isPago;
+                      const tom = obterTomPastel(index);
 
+                      // Cores GNOME / Adwaita — legíveis e consistentes com o tema
                       const estadoCor = (() => {
-                        if (isImported)    return { dot: '#D97706', label: 'Importado', metric: 'Rever', action: 'Confirmar dados', text: '#92400E', bg: '#FFFBEB', barBg: '#FDE68A', border: '#FDE68A' };
-                        if (blocked)       return { dot: '#B91C1C', label: 'Bloqueado', metric: 'Parado', action: 'Resolver acesso', text: '#991B1B', bg: '#FEF2F2', barBg: '#FECACA', border: '#FECACA' };
-                        if (paused)        return { dot: '#B45309', label: 'Pausado', metric: 'Pausa', action: 'Acompanhar retorno', text: '#78350F', bg: '#FFF7ED', barBg: '#FED7AA', border: '#FED7AA' };
-                        if (isAtrasado)    return { dot: '#DC2626', label: resumo.status === 'hoje' ? 'Vence hoje' : 'Atrasado', metric: resumo.status === 'hoje' ? 'Hoje' : `${resumo.overdueDays || 0}d`, action: 'Priorizar cobrança', text: '#B91C1C', bg: '#FEF2F2', barBg: '#FECACA', border: '#FECACA' };
-                        if (isPago)        return { dot: '#16A34A', label: 'Em dia', metric: 'OK', action: resumo.coverageEnd ? `Coberto até ${resumo.coverageEnd}` : 'Cobertura ativa', text: '#15803D', bg: '#F0FDF4', barBg: '#BBF7D0', border: '#BBF7D0' };
-                        if (isDentroDoPrazo) return { dot: '#2563EB', label: 'No prazo', metric: `${Math.max(resumo.daysUntilCharge || 0, 0)}d`, action: 'Acompanhar vencimento', text: '#1D4ED8', bg: '#EFF6FF', barBg: '#BFDBFE', border: '#BFDBFE' };
-                        return             { dot: '#64748b', label: 'Regular', metric: 'Ativo', action: 'Sem pendência', text: '#475569', bg: '#F8FAFC', barBg: '#E2E8F0', border: '#E2E8F0' };
+                        if (isImported) return {
+                          label: 'Importado', metric: 'Rever', hint: 'Confirmar dados',
+                          fg: 'var(--color-warning)', bg: 'color-mix(in srgb, var(--color-warning) 12%, var(--bg-surface))',
+                          barTrack: 'color-mix(in srgb, var(--color-warning) 28%, transparent)', barFill: 'var(--color-warning)',
+                          border: 'color-mix(in srgb, var(--color-warning) 35%, var(--border))',
+                        };
+                        if (isQuit) {
+                          const t = getManualStatusTone('desistente');
+                          return {
+                            label: t.label, metric: 'Saiu', hint: 'Fora da contabilidade',
+                            fg: t.fg, bg: t.bg, barTrack: t.barTrack, barFill: t.barFill, border: t.border,
+                          };
+                        }
+                        if (blocked) {
+                          const t = getManualStatusTone('bloqueado');
+                          return {
+                            label: t.label, metric: '—', hint: 'Sem acesso',
+                            fg: t.fg, bg: t.bg, barTrack: t.barTrack, barFill: t.barFill, border: t.border,
+                          };
+                        }
+                        if (isOnLeave) {
+                          const t = getManualStatusTone('ferias');
+                          return {
+                            label: t.label, metric: 'Aus.', hint: 'Fora da contabilidade',
+                            fg: t.fg, bg: t.bg, barTrack: t.barTrack, barFill: t.barFill, border: t.border,
+                          };
+                        }
+                        if (paused) {
+                          const t = getManualStatusTone('pausado');
+                          return {
+                            label: t.label, metric: 'Pausa', hint: 'Fora da contabilidade',
+                            fg: t.fg, bg: t.bg, barTrack: t.barTrack, barFill: t.barFill, border: t.border,
+                          };
+                        }
+                        if (isAtrasado) return {
+                          label: resumo.status === 'hoje' ? 'Vence hoje' : 'Em atraso',
+                          metric: resumo.status === 'hoje' ? 'Hoje' : `${resumo.overdueDays || 0}d`,
+                          hint: resumo.coverageEnd ? `Até ${resumo.coverageEnd}` : 'Em cobrança',
+                          fg: 'var(--color-error)', bg: 'color-mix(in srgb, var(--color-error) 10%, var(--bg-surface))',
+                          barTrack: 'color-mix(in srgb, var(--color-error) 22%, transparent)', barFill: 'var(--color-error)',
+                          border: 'color-mix(in srgb, var(--color-error) 32%, var(--border))',
+                        };
+                        if (isPago) return {
+                          label: 'Em dia', metric: 'OK',
+                          hint: resumo.coverageEnd ? `Até ${resumo.coverageEnd}` : 'Coberto',
+                          fg: 'var(--color-success)', bg: 'color-mix(in srgb, var(--color-success) 10%, var(--bg-surface))',
+                          barTrack: 'color-mix(in srgb, var(--color-success) 22%, transparent)', barFill: 'var(--color-success)',
+                          border: 'color-mix(in srgb, var(--color-success) 32%, var(--border))',
+                        };
+                        if (isDentroDoPrazo) return {
+                          label: 'No prazo', metric: `${Math.max(resumo.daysUntilCharge || 0, 0)}d`,
+                          hint: resumo.nextChargeDate ? `Próx. ${resumo.nextChargeDate}` : 'Dentro do prazo',
+                          fg: 'var(--color-primary)', bg: 'color-mix(in srgb, var(--color-primary) 10%, var(--bg-surface))',
+                          barTrack: 'color-mix(in srgb, var(--color-primary) 20%, transparent)', barFill: 'var(--color-primary)',
+                          border: 'color-mix(in srgb, var(--color-primary) 28%, var(--border))',
+                        };
+                        return {
+                          label: 'Regular', metric: '—', hint: 'Ver estado',
+                          fg: 'var(--text-secondary)', bg: 'var(--color-secondary-light)',
+                          barTrack: 'var(--border)', barFill: 'var(--text-tertiary)',
+                          border: 'var(--border)',
+                        };
                       })();
-                      const rowAccent = isImported ? '#D97706' : estadoCor.dot;
-                      const showTimeline = !paused && !blocked && !isImported;
+                      const showTimeline = !paused && !blocked && !isImported && !isQuit;
                       const totalNotas = notasResumo?.[aluno.id]?.total || 0;
                       const temNotas = totalNotas > 0;
+                      const podeCobrar = !blocked && !paused && !isQuit;
+                      // Anel SVG: circunferência r=15.5 em viewBox 36 → ~97.4
+                      const RING_C = 2 * Math.PI * 15.5;
+                      const ringPct = showTimeline ? Math.max(0, Math.min(100, progressoDias)) / 100 : (paused || blocked || isImported ? 0.35 : 0);
+                      const ringColor = getTimelineRingColor(resumo.status, aluno.status);
+                      const ringDash = `${(ringPct * RING_C).toFixed(2)} ${RING_C.toFixed(2)}`;
+                      const rowBg = isImported
+                        ? 'color-mix(in srgb, var(--color-warning) 8%, var(--bg-surface))'
+                        : tom.rowBg;
 
                       return (
                         <tr
                           key={`${periodoSelecionadoKey}-${aluno.id}`}
-                          className={`group transition-colors cursor-pointer ${isImported ? 'bg-amber-50 hover:bg-amber-100' : `rp-${index % 6}`}`}
-                          style={{ boxShadow: `inset 3px 0 0 ${rowAccent}, inset 0 -1px 0 var(--border-light)` }}
-                          onClick={() => {
-                            if (isImported) {
-                              abrirEdicao(aluno);
-                              return;
-                            }
-                            if (isPago) {
-                              onEstadoPagamentoClick(aluno, resumo);
-                              return;
-                            }
-                            abrirPerfilAluno(aluno);
+                          className="group transition-colors"
+                          style={{
+                            background: rowBg,
+                            boxShadow: `inset 3px 0 0 ${estadoCor.fg}, inset 0 -1px 0 var(--list-row-divider, var(--border-light))`,
                           }}
-                          title={
-                            isImported
-                              ? 'Clique para editar e confirmar dados'
-                              : isPago
-                                ? 'Pagamento em dia. Clique para ver cobertura e próxima cobrança.'
-                                : 'Clique para ver o perfil completo do aluno'
-                          }
+                          onMouseEnter={(e) => {
+                            if (!isImported) e.currentTarget.style.background = tom.rowHover;
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.background = rowBg;
+                          }}
                         >
                           {/* Nº */}
                           <td className="align-middle text-center" style={{ padding: 'var(--list-row-py) var(--list-row-px)' }}>
-                            <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-white/70 px-1.5 text-[10px] font-black nl-text-muted tabular-nums shadow-sm ring-1 ring-black/[0.04]">{index + 1}</span>
+                            <span className="text-[11px] font-medium tabular-nums nl-text-muted">{index + 1}</span>
                           </td>
-                          {/* Aluno */}
+                          {/* Aluno + avatar com anel de timeline */}
                           <td className="align-middle" style={{ padding: 'var(--list-row-py) var(--list-row-px)' }}>
-                            <div className="flex min-w-0 items-center gap-3">
-                              <div className="rounded-full bg-white flex items-center justify-center font-black nl-text-muted border border-white/80 overflow-hidden shrink-0 shadow-sm ring-1 ring-black/[0.05]" style={{ width: 'var(--list-avatar-size)', height: 'var(--list-avatar-size)', fontSize: 'var(--list-font-secondary)' }}>
-                                {aluno.foto_path ? <img src={`local-resource://${aluno.foto_path}`} className="w-full h-full object-cover" /> : getAlunoIniciais(aluno)}
+                            <div className="flex min-w-0 items-center gap-2.5">
+                              <div
+                                className="relative shrink-0"
+                                style={{ width: 'calc(var(--list-avatar-size) + 7px)', height: 'calc(var(--list-avatar-size) + 7px)' }}
+                                title={
+                                  showTimeline
+                                    ? `Timeline: ${Math.round(ringPct * 100)}% · ${estadoCor.label}`
+                                    : estadoCor.label
+                                }
+                              >
+                                <svg
+                                  className="pointer-events-none absolute inset-0 -rotate-90"
+                                  viewBox="0 0 36 36"
+                                  aria-hidden
+                                >
+                                  <circle cx="18" cy="18" r="15.5" fill="none" stroke="var(--border)" strokeWidth="2.2" />
+                                  <circle
+                                    cx="18"
+                                    cy="18"
+                                    r="15.5"
+                                    fill="none"
+                                    stroke={ringColor}
+                                    strokeWidth="2.4"
+                                    strokeLinecap="round"
+                                    strokeDasharray={ringDash}
+                                    className="transition-[stroke-dasharray] duration-500 ease-out"
+                                    style={{ opacity: showTimeline || paused || blocked || isImported ? 1 : 0.45 }}
+                                  />
+                                </svg>
+                                <div
+                                  className="absolute inset-[3.5px] flex items-center justify-center overflow-hidden rounded-full bg-[var(--bg-surface)] font-semibold nl-text-muted"
+                                  style={{ fontSize: 'var(--list-font-secondary)' }}
+                                >
+                                  {aluno.foto_path
+                                    ? <img src={`local-resource://${aluno.foto_path}`} className="h-full w-full object-cover" alt="" />
+                                    : getAlunoIniciais(aluno)}
+                                </div>
                               </div>
-                              <div className="flex min-w-0 flex-col">
-                                <div className="flex items-center gap-1.5">
+                              <div className="flex min-w-0 flex-col justify-center gap-0.5">
+                                <div className="flex items-center gap-1.5 min-w-0">
                                   <button
                                     type="button"
-                                    onClick={(event) => {
-                                      event.stopPropagation();
-                                      if (isPago) {
-                                        onEstadoPagamentoClick(aluno, resumo);
-                                      } else if (isImported) {
-                                        abrirEdicao(aluno);
-                                      } else {
-                                        abrirPerfilAluno(aluno);
-                                      }
+                                    onClick={() => {
+                                      if (isImported) abrirEdicao(aluno);
+                                      else abrirPerfilAluno(aluno);
                                     }}
-                                    className="min-w-0 text-left font-bold nl-text group-hover:text-[var(--color-primary)] transition-colors truncate leading-tight focus:outline-none focus:text-[var(--color-primary)]"
+                                    className="min-w-0 text-left font-semibold nl-text hover:text-[var(--color-primary)] transition-colors truncate leading-none focus:outline-none focus:text-[var(--color-primary)]"
                                     style={{ fontSize: 'var(--list-font-primary)' }}
-                                    title={isPago ? 'Pagamento em dia. Ver próxima cobrança.' : 'Abrir aluno'}
+                                    title={isImported ? 'Editar importado' : 'Ver perfil (sem cobrança)'}
                                   >
                                     {aluno.nome}
                                   </button>
-                                  {isImported && <span className="text-[8px] font-bold uppercase tracking-wider text-amber-700 bg-amber-100 border border-amber-300 px-1.5 py-0.5 rounded-[3px] shrink-0">importado</span>}
-                                  {!isImported && entrouNesteMes && <span className="text-[8px] font-bold uppercase tracking-wider text-[var(--color-primary)] bg-[var(--color-primary-light)] px-1.5 py-0.5 rounded-[3px] shrink-0">novo</span>}
+                                  {isImported && <span className="badge badge-warning !text-[9px] !py-0 shrink-0">importado</span>}
+                                  {isOnLeave && <span className="badge badge-leave !text-[9px] !py-0 shrink-0">férias</span>}
+                                  {isQuit && <span className="badge badge-quit !text-[9px] !py-0 shrink-0">desistente</span>}
+                                  {paused && !isOnLeave && !isQuit && <span className="badge badge-warning !text-[9px] !py-0 shrink-0">pausa</span>}
+                                  {!isImported && isNewStudent(aluno, hojeReferencia, 7) && (
+                                    <span className="badge badge-warning !text-[9px] !py-0 shrink-0">★ novo</span>
+                                  )}
+                                  {!isImported && !isNewStudent(aluno, hojeReferencia, 7) && entrouNesteMes && (
+                                    <span className="badge badge-info !text-[9px] !py-0 shrink-0">este mês</span>
+                                  )}
                                 </div>
-                                <span className="mt-0.5 truncate text-[8px] font-bold uppercase tracking-[0.12em] text-slate-400 leading-none">
-                                  {aluno.categoria || 'Geral'} · {aluno.modo_cobranca === 'mensalidade_movel' ? 'Mensalidade móvel' : 'Ciclo mensal'}
+                                <span className="truncate font-medium nl-text-muted leading-none" style={{ fontSize: 'var(--list-font-secondary)' }}>
+                                  {aluno.categoria || 'Geral'}
                                 </span>
                               </div>
                             </div>
                           </td>
                           {/* Notas */}
-                          <td className="align-middle text-center" style={{ padding: 'var(--list-row-py) var(--list-row-px)' }} onClick={(event) => event.stopPropagation()}>
+                          <td className="align-middle text-center" style={{ padding: 'var(--list-row-py) var(--list-row-px)' }}>
                             <button
                               type="button"
                               onClick={() => onNotasClick(aluno)}
-                              className={`relative inline-flex h-8 w-8 items-center justify-center rounded-[5px] border transition-all hover:-translate-y-[1px] hover:shadow-sm ${
+                              className={`relative inline-flex h-8 w-8 items-center justify-center rounded-[var(--radius-compact)] border transition-all ${
                                 temNotas
-                                  ? 'border-amber-300 bg-amber-300 text-amber-950 shadow-[0_5px_12px_rgba(217,119,6,0.18)]'
-                                  : 'border-slate-200 bg-slate-100 text-slate-400 opacity-65 hover:opacity-100'
+                                  ? 'border-[var(--color-warning)] bg-[color-mix(in_srgb,var(--color-warning)_22%,var(--bg-surface))] text-[color-mix(in_srgb,var(--color-warning)_70%,#000)]'
+                                  : 'border-[var(--border)] bg-[var(--bg-surface)]/70 nl-text-muted hover:bg-[var(--color-secondary-light)]'
                               }`}
-                              title={temNotas ? `${totalNotas} nota(s). Clique para ver.` : 'Adicionar nota'}
+                              title={temNotas ? `${totalNotas} nota(s)` : 'Adicionar nota'}
                             >
-                              <StickyNote size={15} />
+                              <StickyNote size={13} />
                               {temNotas && (
-                                <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-600 px-1 text-[8px] font-black text-white">
+                                <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--color-warning)] px-0.5 text-[9px] font-bold text-white">
                                   {totalNotas}
                                 </span>
                               )}
@@ -627,67 +670,93 @@ function GestaoPage({
                           </td>
                           {/* Telefone */}
                           <td className="align-middle" style={{ padding: 'var(--list-row-py) var(--list-row-px)' }}>
-                            <span className="block truncate font-normal tabular-nums nl-text-muted" style={{ fontSize: 'var(--list-font-primary)' }}>{aluno.telefone || '—'}</span>
+                            <span className="block truncate font-medium tabular-nums nl-text-sub leading-none" style={{ fontSize: 'var(--list-font-primary)' }}>{aluno.telefone || '—'}</span>
                           </td>
-                          {/* Mensalidade — escudo */}
+                          {/* Mensalidade */}
                           <td className="align-middle text-right" style={{ padding: 'var(--list-row-py) var(--list-row-px)' }}>
-                            <div className="inline-flex items-center justify-end gap-1.5 px-2.5 py-1 rounded-[5px] border border-white/70 bg-white/65 shadow-sm">
-                              <Shield size={10} className="nl-text-muted shrink-0 opacity-60" />
-                              <span className="font-bold nl-text whitespace-nowrap tabular-nums" style={{ fontSize: 'var(--list-font-secondary)' }}>{formatCve(aluno.plano)}</span>
-                            </div>
+                            <span
+                              className="inline-flex items-center gap-1 rounded-[var(--radius-compact)] border px-2 py-0.5 font-semibold tabular-nums nl-text leading-none"
+                              style={{
+                                fontSize: 'var(--list-font-secondary)',
+                                background: 'var(--list-chip-bg, var(--bg-surface))',
+                                borderColor: 'var(--list-chip-border, var(--border-light))',
+                              }}
+                            >
+                              <Shield size={10} className="nl-text-muted opacity-70" />
+                              {formatCve(aluno.plano)}
+                            </span>
                           </td>
                           {/* Próxima cobrança */}
                           <td className="align-middle text-center" style={{ padding: 'var(--list-row-py) var(--list-row-px)' }}>
-                            <span className="inline-flex min-w-[86px] justify-center rounded-[5px] bg-white/55 px-2 py-0.5 font-medium tabular-nums nl-text-muted ring-1 ring-black/[0.04]" style={{ fontSize: 'var(--list-font-secondary)' }}>{resumo.nextChargeDate || '—'}</span>
+                            <span
+                              className="inline-flex min-w-[86px] justify-center rounded-[var(--radius-compact)] border px-2 py-0.5 font-medium tabular-nums nl-text-sub leading-none"
+                              style={{
+                                fontSize: 'var(--list-font-secondary)',
+                                background: 'var(--list-chip-bg, var(--bg-surface))',
+                                borderColor: 'var(--list-chip-border, var(--border-light))',
+                              }}
+                            >
+                              {resumo.nextChargeDate || '—'}
+                            </span>
                           </td>
-                          {/* Estado — painel temporal inteligente */}
+                          {/* Estado — cobrança simples e forte */}
                           <td className="align-middle" style={{ padding: 'var(--list-row-py) var(--list-row-px)' }}>
                             <button
                               type="button"
-                              onClick={(event) => {
-                                event.stopPropagation();
+                              disabled={!podeCobrar && !isImported}
+                              onClick={() => {
+                                if (isImported) {
+                                  abrirEdicao(aluno);
+                                  return;
+                                }
+                                if (!podeCobrar) return;
                                 onEstadoPagamentoClick(aluno, resumo);
                               }}
-                              className="group/pay min-w-0 w-full rounded-[var(--radius-compact)] px-2.5 py-1 text-left shadow-sm ring-1 ring-white/70 transition-all hover:-translate-y-[1px] hover:brightness-[1.02] hover:shadow-md focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/20"
-                              style={{ background: estadoCor.bg, border: `1px solid ${estadoCor.border}` }}
+                              className="group/pay flex min-h-[36px] w-full items-center gap-2 rounded-[var(--radius-control)] px-2.5 py-2 text-left transition-colors hover:brightness-[0.97] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] disabled:opacity-55 disabled:cursor-not-allowed"
+                              style={{
+                                background: estadoCor.bg,
+                                border: `1px solid ${estadoCor.border}`,
+                                boxShadow: `inset 3px 0 0 ${estadoCor.fg}`,
+                              }}
                               title={
-                                isPago
-                                  ? `Pagamento ativo. Clique para rever cobertura e próximo pagamento: ${resumo.nextChargeDate || 'sem data'}.`
-                                  : isAtrasado
-                                    ? 'Mensalidade em atraso. Clique para registar pagamento agora.'
-                                    : 'Clique para abrir a cobrança e ajustar o pagamento deste aluno.'
+                                isImported
+                                  ? 'Confirmar dados do importado'
+                                  : podeCobrar
+                                    ? `${estadoCor.label} · ${estadoCor.hint}`
+                                    : estadoCor.label
                               }
                             >
-                              <div className="flex min-w-0 items-center gap-2">
-                                <span className="flex min-w-[72px] items-center gap-1.5 whitespace-nowrap text-[10px] font-bold uppercase tracking-[0.08em]" style={{ color: estadoCor.text }}>
-                                  <span className="h-2 w-2 rounded-full shrink-0 transition-transform group-hover/pay:scale-125" style={{ background: estadoCor.dot }} />
-                                  {estadoCor.label}
-                                </span>
-                                <span className="ml-auto shrink-0 rounded-full bg-white/70 px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.08em] tabular-nums" style={{ color: estadoCor.text }}>
-                                  {estadoCor.metric}
-                                </span>
-                              </div>
-                              <div className="mt-1 flex min-w-0 items-center gap-2">
-                                {showTimeline ? (
-                                  <div className="h-1.5 flex-1 overflow-hidden rounded-full" style={{ background: estadoCor.barBg }}>
-                                    <div className={`h-full rounded-full transition-all duration-700 ${getTimelineMetricBarClass(resumo.status)}`} style={{ width: `${progressoDias}%` }} />
-                                  </div>
-                                ) : (
-                                  <div className="h-1.5 flex-1 rounded-full" style={{ background: estadoCor.barBg }} />
-                                )}
-                                <p className="max-w-[52%] truncate text-[9px] font-medium leading-none" style={{ color: estadoCor.text }}>
-                                  {estadoCor.action}
-                                </p>
-                              </div>
+                              <Wallet
+                                size={15}
+                                strokeWidth={2.2}
+                                className="shrink-0"
+                                style={{ color: estadoCor.fg }}
+                                aria-hidden
+                              />
+                              <span
+                                className="min-w-0 flex-1 truncate text-[12px] font-semibold leading-none"
+                                style={{ color: estadoCor.fg }}
+                              >
+                                {estadoCor.label}
+                              </span>
+                              <span
+                                className="shrink-0 text-[12px] font-bold tabular-nums leading-none"
+                                style={{ color: estadoCor.fg }}
+                              >
+                                {estadoCor.metric}
+                              </span>
                             </button>
                           </td>
                           {/* Acções */}
-                          <td className="align-middle" style={{ padding: 'var(--list-row-py) var(--list-row-px)' }} onClick={(e) => e.stopPropagation()}>
-                            <div className="flex items-center justify-center gap-1">
-                              <button onClick={(e) => { e.stopPropagation(); abrirPerfilAluno(aluno); }}
-                                className="nl-icon-btn !w-6 !h-6 !rounded-[4px] hover:!bg-[var(--color-primary-light)] hover:!text-[var(--color-primary)] hover:!border-[var(--color-primary)]/20"
-                                title="Ver perfil em Contactos">
-                                <BookUser size={11} />
+                          <td className="align-middle" style={{ padding: 'var(--list-row-py) var(--list-row-px)' }}>
+                            <div className="flex items-center justify-center">
+                              <button
+                                type="button"
+                                onClick={() => abrirPerfilAluno(aluno)}
+                                className="nl-icon-btn !w-7 !h-7"
+                                title="Ver perfil"
+                              >
+                                <BookUser size={13} />
                               </button>
                             </div>
                           </td>
@@ -709,33 +778,33 @@ function GestaoPage({
                 <button
                   type="button"
                   onClick={() => setMostrarResumoMensal(true)}
-                  className="group flex w-full shrink-0 items-center gap-4 border-t border-[var(--border-light)] bg-[var(--color-secondary-lighter)]/30 px-4 py-2 text-left transition-colors hover:bg-blue-50/55"
+                  className="group flex w-full shrink-0 items-center gap-4 border-t border-[var(--border-light)] bg-[var(--color-secondary-lighter)]/30 px-4 py-2 text-left transition-colors hover:bg-[color-mix(in_srgb,var(--color-primary)_10%,var(--bg-surface))]"
                   title="Abrir resumo detalhado do mês"
                 >
                   {/* Barra segmentada */}
                   <div className="flex-1 flex items-center gap-2">
                     <div className="flex-1 h-1.5 rounded-full overflow-hidden bg-[var(--border-light)] flex">
-                      <div className="h-full bg-emerald-500 transition-all duration-700 rounded-l-full" style={{ width: `${pctPago}%` }} />
-                      <div className="h-full bg-red-400 transition-all duration-700 rounded-r-full" style={{ width: `${pctDivida}%` }} />
+                      <div className="h-full bg-[var(--color-success)] transition-all duration-700 rounded-l-full" style={{ width: `${pctPago}%` }} />
+                      <div className="h-full bg-[var(--color-error)] transition-all duration-700 rounded-r-full" style={{ width: `${pctDivida}%` }} />
                     </div>
                   </div>
                   {/* Valores */}
                   <div className="flex items-center gap-4 shrink-0">
-                    <div className="hidden items-center gap-1.5 rounded-full bg-white/70 px-2 py-1 text-[9px] font-black uppercase tracking-[0.1em] text-blue-700 ring-1 ring-blue-100 group-hover:bg-white lg:flex">
+                    <div className="hidden items-center gap-1.5 rounded-full border border-[var(--border-light)] bg-[var(--list-chip-bg,var(--bg-surface))] px-2 py-1 text-[9px] font-black uppercase tracking-[0.1em] text-[var(--color-primary)] lg:flex">
                       <BarChart3 size={12} />
                       Detalhes
                     </div>
                     <div className="flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
+                      <span className="w-2 h-2 rounded-full bg-[var(--color-success)] shrink-0" />
                       <span className="text-[10px] nl-text-muted">Pagos</span>
-                      <span className="text-[10px] font-semibold text-emerald-700">{resumoMensalFinanceiro.pagos.length}</span>
-                      <span className="text-[10px] font-semibold text-emerald-700">{formatCve(totalPago)}</span>
+                      <span className="text-[10px] font-semibold text-[var(--color-success)]">{resumoMensalFinanceiro.pagos.length}</span>
+                      <span className="text-[10px] font-semibold text-[var(--color-success)]">{formatCve(totalPago)}</span>
                     </div>
                     <div className="flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full bg-red-400 shrink-0" />
+                      <span className="w-2 h-2 rounded-full bg-[var(--color-error)] shrink-0" />
                       <span className="text-[10px] nl-text-muted">Devidos</span>
-                      <span className="text-[10px] font-semibold text-red-600">{resumoMensalFinanceiro.devidos.length}</span>
-                      <span className="text-[10px] font-semibold text-red-600">{formatCve(totalDivida)}</span>
+                      <span className="text-[10px] font-semibold text-[var(--color-error)]">{resumoMensalFinanceiro.devidos.length}</span>
+                      <span className="text-[10px] font-semibold text-[var(--color-error)]">{formatCve(totalDivida)}</span>
                     </div>
                     <div className="h-3 w-px bg-[var(--border)]" />
                     <span className="text-[10px] nl-text-muted">{historicoMensalFiltrado.length} alunos · {mesFinanceiro} {anoFinanceiro}</span>
@@ -748,7 +817,7 @@ function GestaoPage({
       </div>
 
       {mostrarResumoMensal && (
-        <div className="fixed inset-0 z-[160] flex items-center justify-center bg-slate-950/35 px-5 py-6 backdrop-blur-sm" onClick={() => setMostrarResumoMensal(false)}>
+        <div className="fixed inset-0 z-[160] flex items-center justify-center nl-modal-overlay px-5 py-6" onClick={() => setMostrarResumoMensal(false)}>
           <div className="w-full max-w-[760px] overflow-hidden rounded-[var(--radius-md)] border border-slate-200 bg-white shadow-[0_30px_90px_rgba(15,23,42,0.25)]" onClick={(event) => event.stopPropagation()}>
             <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50 px-5 py-4">
               <div className="flex items-center gap-3">

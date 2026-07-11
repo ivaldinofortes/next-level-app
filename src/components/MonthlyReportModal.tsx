@@ -1,31 +1,30 @@
 // @ts-nocheck -- Legacy report controller will receive strict typing in the next decomposition pass.
-import { AlertCircle, CheckCircle2, CreditCard, FileSpreadsheet, UserPlus, X } from 'lucide-react';
+import { AlertCircle, CheckCircle2, CreditCard, FileSpreadsheet, UserPlus } from 'lucide-react';
 import { APP_ICON_PATH } from '../constants';
 import { formatCve, normalizeAmount, parseFlexibleDate } from '../lib/billing';
+import AppModalShell from './AppModalShell';
 
 export default function MonthlyReportModal({ model }: { model: unknown }) {
   const { appLogo, mesFinanceiro, anoFinanceiro, totalRecebidoPeriodo, alunosComPagamentoEmDia, alunosEmDivida, alunos, pagamentosDoPeriodo, setMostrarRelatorioMensal, exportarFinancasExcel, showToast, obterTomPastel } = model;
   return (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[120] p-4 animate-fade-in" onClick={() => setMostrarRelatorioMensal(false)}>
-           <div className="bg-[var(--bg-surface)] w-full max-w-[850px] shadow-[0_20px_70px_rgba(0,0,0,0.3)] rounded-[6px] border border-[var(--border)] overflow-hidden flex flex-col animate-scale-in" style={{ maxHeight: 'calc(100vh - 40px)' }} onClick={e => e.stopPropagation()}>
-              <div className="bg-[#F1F4F9] border-b border-[#DDE2EB] h-12 flex items-center shrink-0">
-                <div className="flex-1 flex items-center gap-2.5 px-4">
-                  <div className="h-6 w-6 rounded-md bg-white/50 backdrop-blur-sm p-1 border border-white/40 shadow-sm flex items-center justify-center">
-                    <img src={appLogo || APP_ICON_PATH} alt="Logo" className="w-full h-full object-contain" />
-                  </div>
-                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] leading-none">NextLevel</span>
-                </div>
-                <div className="flex-1 text-center whitespace-nowrap">
-                  <h2 className="text-[12px] font-black text-slate-700 uppercase tracking-wider leading-none">{mesFinanceiro} {anoFinanceiro}</h2>
-                </div>
-                <div className="flex-1 flex justify-end px-3">
-                  <button onClick={() => setMostrarRelatorioMensal(false)} className="h-8 w-8 flex items-center justify-center rounded-md text-slate-400 hover:bg-red-50 hover:text-red-500 transition-all" title="Fechar">
-                    <X size={16} />
-                  </button>
-                </div>
-              </div>
-
-              <div className="flex-1 p-6 overflow-y-auto custom-scrollbar flex flex-col gap-6">
+    <AppModalShell
+      title={`Relatório · ${mesFinanceiro} ${anoFinanceiro}`}
+      subtitle="Estatísticas e fecho de mensalidades"
+      onClose={() => setMostrarRelatorioMensal(false)}
+      appLogo={appLogo || APP_ICON_PATH}
+      maxWidth="max-w-[850px]"
+      zIndex={120}
+      accent="#c64600"
+      footer={(
+        <>
+          <button type="button" onClick={() => setMostrarRelatorioMensal(false)} className="nl-btn nl-btn-secondary !h-9">Fechar</button>
+          <button type="button" onClick={async () => { await exportarFinancasExcel(); showToast('Exportado para Excel'); }} className="nl-btn !h-9 !bg-emerald-600 !text-white !border-emerald-700 hover:!bg-emerald-700">
+            <FileSpreadsheet size={14} /> Exportar Excel
+          </button>
+        </>
+      )}
+    >
+              <div className="flex flex-col gap-6 p-6">
                  {/* Cards Resumo */}
                  <div className="grid grid-cols-4 gap-4">
                     {[
@@ -108,16 +107,6 @@ export default function MonthlyReportModal({ model }: { model: unknown }) {
                     </div>
                  </div>
               </div>
-              <div className="bg-[#F8F9FC] border-t border-[#DDE2EB] px-6 py-4 flex items-center justify-between shrink-0">
-                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Estatísticas & Fecho de Mensalidades</p>
-                 <div className="flex gap-3">
-                    <button onClick={() => setMostrarRelatorioMensal(false)} className="nl-btn nl-btn-secondary !h-9 !px-5 !text-[11px] font-bold">Fechar</button>
-                    <button onClick={async () => { await exportarFinancasExcel(); showToast('Exportado para Excel'); }} className="nl-btn !h-9 !px-6 !text-[11px] font-bold !bg-emerald-600 !text-white hover:!bg-emerald-700 !border-emerald-700">
-                       <FileSpreadsheet size={14} /> Exportar Excel
-                    </button>
-                 </div>
-              </div>
-           </div>
-        </div>
+    </AppModalShell>
   );
 }

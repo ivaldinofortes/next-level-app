@@ -40,7 +40,7 @@ import QuickPaymentModal from './components/QuickPaymentModal';
 import StudentFormModal from './components/StudentFormModal';
 import StudentProfileModal from './components/StudentProfileModal';
 import StudentNotesModal from './components/StudentNotesModal';
-import ActivePaymentModal from './components/ActivePaymentModal';
+
 import MonthlyReportModal from './components/MonthlyReportModal';
 import NotificationsPanel from './components/NotificationsPanel';
 import WelcomeStudentModal from './components/WelcomeStudentModal';
@@ -110,57 +110,61 @@ import {
   formatInputDate, isFutureMonth, getMonthKey, isSameMonthAndYear,
   getPaymentMethodMeta, formatPaymentRecordId, buildPaymentCardNumber,
   getTimelineMetricLabel, getTimelineMetricWidth, getTimelineMetricBarClass,
-  getAlunoIniciais, getAlunoNomeSeguro, getAvatarColorByName,
+  getAlunoIniciais, getAlunoNomeSeguro, getAvatarColorByName, isNewStudent,
 } from './utils/formatting';
 
 
 
 
-// ─── Design System — Light / Dark / Claude ────────────────────────
+// ─── Design System — Adwaita/GNOME-inspired Light · Dark · Claude ──
+// Palette ref: https://developer.gnome.org/hig/reference/palette.html
 const themeVars = {
   light: {
-    '--color-primary':           '#0065FF',
-    '--color-primary-hover':     '#0052CC',
-    '--color-primary-light':     '#DEEBFF',
-    '--color-secondary':         '#626F86',
-    '--color-secondary-light':   '#F4F5F7',
-    '--color-secondary-lighter': '#EBECF0',
-    '--color-success':           '#61BD4F',
-    '--color-error':             '#EB5A46',
-    '--color-warning':           '#FF9F1A',
-    '--color-info':              '#0065FF',
-    '--color-bg-primary':        '#FFFFFF',
-    '--color-bg-secondary':      '#F4F5F7',
-    '--color-bg-tertiary':       '#EBECF0',
-    '--color-text-primary':      '#172B4D',
-    '--color-text-secondary':    '#626F86',
-    '--color-text-tertiary':     '#738496',
-    '--color-border':            '#DFE1E6',
-    '--color-border-light':      '#EBECF0',
-    '--bg-app':                  '#F4F5F7',
-    '--bg-surface':              '#FFFFFF',
-    '--bg-header':               '#FFFFFF',
-    '--bg-input':                '#FFFFFF',
-    '--text-primary':            '#172B4D',
-    '--text-secondary':          '#626F86',
-    '--text-tertiary':           '#738496',
-    '--border':                  '#DFE1E6',
-    '--border-light':            '#EBECF0',
-    '--shadow-xs':               '0 1px 2px rgba(15,23,42,0.04)',
-    '--shadow-sm':               '0 1px 3px rgba(15,23,42,0.06), 0 1px 2px rgba(15,23,42,0.03)',
-    '--shadow-md':               '0 4px 12px rgba(15,23,42,0.08), 0 2px 4px rgba(15,23,42,0.03)',
-    '--shadow-lg':               '0 8px 24px rgba(15,23,42,0.10), 0 2px 6px rgba(15,23,42,0.04)',
-    '--shadow-xl':               '0 16px 48px rgba(15,23,42,0.12), 0 4px 12px rgba(15,23,42,0.05)',
-    '--shadow-primary':          'rgba(0,101,255,0.24)',
-    '--shadow-primary-focus':    'rgba(0,101,255,0.12)',
-    '--radius-sm':               '5px',
-    '--radius-md':               '7px',
-    '--radius-lg':               '9px',
+    '--color-primary':           '#3584e4', // GNOME Blue 3
+    '--color-primary-hover':     '#1c71d8', // Blue 4
+    '--color-primary-light':     '#eaf2fc',
+    '--color-secondary':         '#5e5c64', // Dark 2
+    '--color-secondary-light':   '#f6f5f4', // Light 2
+    '--color-secondary-lighter': '#ededec',
+    '--color-success':           '#26a269', // Green 5
+    '--color-error':             '#e01b24', // Red 3
+    '--color-warning':           '#e5a50a', // Yellow 5
+    '--color-info':              '#1c71d8',
+    '--color-bg-primary':        '#ffffff',
+    '--color-bg-secondary':      '#f6f5f4',
+    '--color-bg-tertiary':       '#ededec',
+    '--color-text-primary':      '#241f31', // Dark 4
+    '--color-text-secondary':    '#5e5c64',
+    '--color-text-tertiary':     '#77767b', // Dark 1
+    '--color-border':            '#deddda', // Light 3
+    '--color-border-light':      '#e8e7e5',
+    '--bg-app':                  '#f6f5f4',
+    '--bg-surface':              '#ffffff',
+    '--bg-header':               '#fafafa',
+    '--bg-input':                '#ffffff',
+    '--text-primary':            '#241f31',
+    '--text-secondary':          '#5e5c64',
+    '--text-tertiary':           '#77767b',
+    '--border':                  '#deddda',
+    '--border-light':            '#e8e7e5',
+    // Adwaita favors borders over heavy drop-shadows
+    '--shadow-xs':               '0 1px 1px rgba(0,0,0,0.04)',
+    '--shadow-sm':               '0 1px 2px rgba(0,0,0,0.06), 0 0 0 1px rgba(0,0,0,0.04)',
+    '--shadow-md':               '0 2px 6px rgba(0,0,0,0.08), 0 0 0 1px rgba(0,0,0,0.05)',
+    '--shadow-lg':               '0 4px 16px rgba(0,0,0,0.10), 0 0 0 1px rgba(0,0,0,0.05)',
+    '--shadow-xl':               '0 12px 32px rgba(0,0,0,0.14), 0 0 0 1px rgba(0,0,0,0.06)',
+    '--shadow-primary':          'rgba(53,132,228,0.28)',
+    '--shadow-primary-focus':    'rgba(53,132,228,0.22)',
+    '--modal-overlay':           'rgba(15, 23, 42, 0.34)',
+    '--modal-overlay-blur':      '7px',
+    '--radius-sm':               '6px',
+    '--radius-md':               '9px',
+    '--radius-lg':               '12px',
     '--font-size-xs':            '11px',
     '--font-size-sm':            '12px',
     '--font-size-base':          '14px',
-    '--font-size-lg':            '16px',
-    '--font-size-xl':            '18px',
+    '--font-size-lg':            '15px',
+    '--font-size-xl':            '17px',
     '--font-size-2xl':           '20px',
     '--font-size-3xl':           '24px',
     '--spacing-xs':              '4px',
@@ -169,56 +173,58 @@ const themeVars = {
     '--spacing-lg':              '16px',
     '--spacing-xl':              '20px',
     '--spacing-2xl':             '24px',
-    '--rp0': '#EEF3FF', '--rp0h': '#DDE8FF',
-    '--rp1': '#F2EEFF', '--rp1h': '#E6DCFF',
-    '--rp2': '#EDFFF5', '--rp2h': '#D7FFE9',
-    '--rp3': '#FFF7EE', '--rp3h': '#FFEEDD',
-    '--rp4': '#FFF0F3', '--rp4h': '#FFE0E6',
-    '--rp5': '#EDFFFE', '--rp5h': '#D6FFFB',
+    '--rp0': '#ffffff', '--rp0h': '#f6f5f4',
+    '--rp1': '#fafafa', '--rp1h': '#f0efed',
+    '--rp2': '#ffffff', '--rp2h': '#f6f5f4',
+    '--rp3': '#fafafa', '--rp3h': '#f0efed',
+    '--rp4': '#ffffff', '--rp4h': '#f6f5f4',
+    '--rp5': '#fafafa', '--rp5h': '#f0efed',
   },
   dark: {
-    '--color-primary':           '#579DFF',
-    '--color-primary-hover':     '#85B8FF',
-    '--color-primary-light':     '#1D3A6A',
-    '--color-secondary':         '#9FADBC',
-    '--color-secondary-light':   '#1D2125',
-    '--color-secondary-lighter': '#282E33',
-    '--color-success':           '#61BD4F',
-    '--color-error':             '#F87171',
-    '--color-warning':           '#FBBF24',
-    '--color-info':              '#60A5FA',
-    '--color-bg-primary':        '#22272B',
-    '--color-bg-secondary':      '#1D2125',
-    '--color-bg-tertiary':       '#282E33',
-    '--color-text-primary':      '#F1F2F4',
-    '--color-text-secondary':    '#9FADBC',
-    '--color-text-tertiary':     '#8696A7',
-    '--color-border':            '#3D474F',
-    '--color-border-light':      '#2C333A',
-    '--bg-app':                  '#161A1D',
-    '--bg-surface':              '#22272B',
-    '--bg-header':               '#1D2125',
-    '--bg-input':                '#282E33',
-    '--text-primary':            '#F1F2F4',
-    '--text-secondary':          '#9FADBC',
-    '--text-tertiary':           '#8696A7',
-    '--border':                  '#3D474F',
-    '--border-light':            '#2C333A',
-    '--shadow-xs':               '0 1px 2px rgba(0,0,0,0.24)',
-    '--shadow-sm':               '0 2px 6px rgba(0,0,0,0.28), 0 1px 2px rgba(0,0,0,0.14)',
-    '--shadow-md':               '0 6px 16px rgba(0,0,0,0.32), 0 2px 4px rgba(0,0,0,0.16)',
-    '--shadow-lg':               '0 12px 32px rgba(0,0,0,0.36), 0 4px 8px rgba(0,0,0,0.18)',
-    '--shadow-xl':               '0 20px 48px rgba(0,0,0,0.40), 0 6px 12px rgba(0,0,0,0.20)',
-    '--shadow-primary':          'rgba(87,157,255,0.28)',
-    '--shadow-primary-focus':    'rgba(87,157,255,0.14)',
-    '--radius-sm':               '5px',
-    '--radius-md':               '7px',
-    '--radius-lg':               '9px',
+    '--color-primary':           '#62a0ea', // Blue 2
+    '--color-primary-hover':     '#99c1f1', // Blue 1
+    '--color-primary-light':     '#1a2f4a',
+    '--color-secondary':         '#c0bfbc',
+    '--color-secondary-light':   '#2d2a35',
+    '--color-secondary-lighter': '#3d3846', // Dark 3
+    '--color-success':           '#33d17a',
+    '--color-error':             '#ed333b',
+    '--color-warning':           '#f8e45c',
+    '--color-info':              '#62a0ea',
+    '--color-bg-primary':        '#2a2433',
+    '--color-bg-secondary':      '#241f31',
+    '--color-bg-tertiary':       '#3d3846',
+    '--color-text-primary':      '#f6f5f4',
+    '--color-text-secondary':    '#c0bfbc',
+    '--color-text-tertiary':     '#9a9996',
+    '--color-border':            'rgba(255,255,255,0.12)',
+    '--color-border-light':      'rgba(255,255,255,0.08)',
+    '--bg-app':                  '#1e1a24',
+    '--bg-surface':              '#2a2433',
+    '--bg-header':               '#241f31',
+    '--bg-input':                '#322c3c',
+    '--text-primary':            '#f6f5f4',
+    '--text-secondary':          '#c0bfbc',
+    '--text-tertiary':           '#9a9996',
+    '--border':                  'rgba(255,255,255,0.12)',
+    '--border-light':            'rgba(255,255,255,0.08)',
+    '--shadow-xs':               '0 1px 1px rgba(0,0,0,0.28)',
+    '--shadow-sm':               '0 1px 3px rgba(0,0,0,0.32), 0 0 0 1px rgba(0,0,0,0.24)',
+    '--shadow-md':               '0 3px 10px rgba(0,0,0,0.36), 0 0 0 1px rgba(0,0,0,0.24)',
+    '--shadow-lg':               '0 8px 24px rgba(0,0,0,0.40), 0 0 0 1px rgba(0,0,0,0.24)',
+    '--shadow-xl':               '0 16px 40px rgba(0,0,0,0.48), 0 0 0 1px rgba(0,0,0,0.28)',
+    '--shadow-primary':          'rgba(98,160,234,0.30)',
+    '--shadow-primary-focus':    'rgba(98,160,234,0.22)',
+    '--modal-overlay':           'rgba(0, 0, 0, 0.48)',
+    '--modal-overlay-blur':      '8px',
+    '--radius-sm':               '6px',
+    '--radius-md':               '9px',
+    '--radius-lg':               '12px',
     '--font-size-xs':            '11px',
     '--font-size-sm':            '12px',
     '--font-size-base':          '14px',
-    '--font-size-lg':            '16px',
-    '--font-size-xl':            '18px',
+    '--font-size-lg':            '15px',
+    '--font-size-xl':            '17px',
     '--font-size-2xl':           '20px',
     '--font-size-3xl':           '24px',
     '--spacing-xs':              '4px',
@@ -227,58 +233,60 @@ const themeVars = {
     '--spacing-lg':              '16px',
     '--spacing-xl':              '20px',
     '--spacing-2xl':             '24px',
-    '--rp0': '#1C2340', '--rp0h': '#222A4A',
-    '--rp1': '#211B38', '--rp1h': '#2A2244',
-    '--rp2': '#172822', '--rp2h': '#1D302A',
-    '--rp3': '#2A2115', '--rp3h': '#32281B',
-    '--rp4': '#2A1A1D', '--rp4h': '#342025',
-    '--rp5': '#162828', '--rp5h': '#1C3131',
+    '--rp0': '#2a2433', '--rp0h': '#322c3c',
+    '--rp1': '#261f30', '--rp1h': '#30293a',
+    '--rp2': '#2a2433', '--rp2h': '#322c3c',
+    '--rp3': '#261f30', '--rp3h': '#30293a',
+    '--rp4': '#2a2433', '--rp4h': '#322c3c',
+    '--rp5': '#261f30', '--rp5h': '#30293a',
   },
 
-  // ── Tema Claude — inspirado no design do claude.ai ───────────────
+  // Claude — mesma geometria Adwaita, paleta quente
   claude: {
-    '--color-primary':           '#CF7C5A',  // terracota quente (acento Claude)
-    '--color-primary-hover':     '#B86A48',
-    '--color-primary-light':     '#FAEEE7',  // terracota muito suave
-    '--color-secondary':         '#7D6B5C',  // castanho médio
-    '--color-secondary-light':   '#F2EDE6',  // creme
-    '--color-secondary-lighter': '#EAE2D9',  // bege claro
-    '--color-success':           '#2E7D52',  // verde floresta
-    '--color-error':             '#C84B4B',  // vermelho quente
-    '--color-warning':           '#A85A00',  // âmbar escuro
-    '--color-info':              '#3B6FA8',  // azul muted
-    '--color-bg-primary':        '#FAF7F3',  // creme quase branco
-    '--color-bg-secondary':      '#F2EDE6',  // creme
-    '--color-bg-tertiary':       '#EAE2D9',  // bege
-    '--color-text-primary':      '#1E1612',  // castanho quase preto
-    '--color-text-secondary':    '#6B5F52',  // castanho médio
-    '--color-text-tertiary':     '#9C8A7A',  // castanho claro
-    '--color-border':            '#DDD4C8',  // bege border
-    '--color-border-light':      '#EAE2D9',  // bege muito claro
-    '--bg-app':                  '#EDE7DF',  // pergaminho de fundo
-    '--bg-surface':              '#FAF7F3',  // superfície creme
-    '--bg-header':               '#F2EDE6',  // header bege
-    '--bg-input':                '#FAF7F3',  // input creme
-    '--text-primary':            '#1E1612',
-    '--text-secondary':          '#6B5F52',
-    '--text-tertiary':           '#9C8A7A',
-    '--border':                  '#DDD4C8',
-    '--border-light':            '#EAE2D9',
-    '--shadow-xs':               '0 1px 2px rgba(60,30,10,0.05)',
-    '--shadow-sm':               '0 2px 6px rgba(60,30,10,0.07), 0 1px 2px rgba(60,30,10,0.04)',
-    '--shadow-md':               '0 6px 16px rgba(60,30,10,0.09), 0 2px 4px rgba(60,30,10,0.05)',
-    '--shadow-lg':               '0 12px 32px rgba(60,30,10,0.11), 0 4px 8px rgba(60,30,10,0.06)',
-    '--shadow-xl':               '0 20px 48px rgba(60,30,10,0.14), 0 6px 12px rgba(60,30,10,0.07)',
-    '--shadow-primary':          'rgba(207,124,90,0.26)',
-    '--shadow-primary-focus':    'rgba(207,124,90,0.14)',
-    '--radius-sm':               '5px',
-    '--radius-md':               '7px',
-    '--radius-lg':               '9px',
+    '--color-primary':           '#c6613f',
+    '--color-primary-hover':     '#a84e30',
+    '--color-primary-light':     '#f7ebe6',
+    '--color-secondary':         '#6b5f52',
+    '--color-secondary-light':   '#f2ede6',
+    '--color-secondary-lighter': '#eae2d9',
+    '--color-success':           '#26a269',
+    '--color-error':             '#c01c28',
+    '--color-warning':           '#e5a50a',
+    '--color-info':              '#3584e4',
+    '--color-bg-primary':        '#faf7f3',
+    '--color-bg-secondary':      '#f2ede6',
+    '--color-bg-tertiary':       '#eae2d9',
+    '--color-text-primary':      '#241f1a',
+    '--color-text-secondary':    '#6b5f52',
+    '--color-text-tertiary':     '#9c8a7a',
+    '--color-border':            '#ddd4c8',
+    '--color-border-light':      '#eae2d9',
+    '--bg-app':                  '#f0ebe4',
+    '--bg-surface':              '#faf7f3',
+    '--bg-header':               '#f5f0e9',
+    '--bg-input':                '#faf7f3',
+    '--text-primary':            '#241f1a',
+    '--text-secondary':          '#6b5f52',
+    '--text-tertiary':           '#9c8a7a',
+    '--border':                  '#ddd4c8',
+    '--border-light':            '#eae2d9',
+    '--shadow-xs':               '0 1px 1px rgba(60,30,10,0.04)',
+    '--shadow-sm':               '0 1px 2px rgba(60,30,10,0.06), 0 0 0 1px rgba(60,30,10,0.04)',
+    '--shadow-md':               '0 2px 6px rgba(60,30,10,0.08), 0 0 0 1px rgba(60,30,10,0.05)',
+    '--shadow-lg':               '0 4px 16px rgba(60,30,10,0.10), 0 0 0 1px rgba(60,30,10,0.05)',
+    '--shadow-xl':               '0 12px 32px rgba(60,30,10,0.14), 0 0 0 1px rgba(60,30,10,0.06)',
+    '--shadow-primary':          'rgba(198,97,63,0.26)',
+    '--shadow-primary-focus':    'rgba(198,97,63,0.18)',
+    '--modal-overlay':           'rgba(36, 31, 26, 0.36)',
+    '--modal-overlay-blur':      '7px',
+    '--radius-sm':               '6px',
+    '--radius-md':               '9px',
+    '--radius-lg':               '12px',
     '--font-size-xs':            '11px',
     '--font-size-sm':            '12px',
     '--font-size-base':          '14px',
-    '--font-size-lg':            '16px',
-    '--font-size-xl':            '18px',
+    '--font-size-lg':            '15px',
+    '--font-size-xl':            '17px',
     '--font-size-2xl':           '20px',
     '--font-size-3xl':           '24px',
     '--spacing-xs':              '4px',
@@ -287,12 +295,12 @@ const themeVars = {
     '--spacing-lg':              '16px',
     '--spacing-xl':              '20px',
     '--spacing-2xl':             '24px',
-    '--rp0': '#EBF0FA', '--rp0h': '#DBEAFF',
-    '--rp1': '#EFE9F6', '--rp1h': '#E3D9F0',
-    '--rp2': '#EAF7EF', '--rp2h': '#D8F0E4',
-    '--rp3': '#FAF2E8', '--rp3h': '#F5EAD8',
-    '--rp4': '#F7E9EE', '--rp4h': '#F0D9E5',
-    '--rp5': '#E9F5F3', '--rp5h': '#D8EEEA',
+    '--rp0': '#faf7f3', '--rp0h': '#f2ede6',
+    '--rp1': '#f7f3ee', '--rp1h': '#efe9e1',
+    '--rp2': '#faf7f3', '--rp2h': '#f2ede6',
+    '--rp3': '#f7f3ee', '--rp3h': '#efe9e1',
+    '--rp4': '#faf7f3', '--rp4h': '#f2ede6',
+    '--rp5': '#f7f3ee', '--rp5h': '#efe9e1',
   },
 };
 
@@ -302,26 +310,28 @@ const GlobalStyles = ({ theme }: { theme: 'light' | 'dark' | 'claude' }) => {
 
   return (
     <style dangerouslySetInnerHTML={{ __html: `
-      @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+      @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
       :root {
-        --font-ui: 'Inter', -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
-        --font-list: 'Inter', -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+        /* Cantarell-like stack: Inter + system UI (Adwaita feel on Linux/macOS/Windows) */
+        --font-ui: 'Inter', 'Cantarell', system-ui, -apple-system, 'Segoe UI', sans-serif;
+        --font-list: var(--font-ui);
         font-family: var(--font-ui);
         ${cssVars}
         --accent-primary: var(--color-primary);
         --accent-light: var(--color-primary-light);
         --header-bg: var(--bg-header);
-        --transition-fast: 130ms cubic-bezier(0.4,0,0.2,1);
-        --transition-base: 200ms cubic-bezier(0.4,0,0.2,1);
-        --transition-slow: 300ms cubic-bezier(0.4,0,0.2,1);
-        --radius-control: 7px;
-        --radius-surface: 8px;
-        --radius-compact: 5px;
+        --transition-fast: 120ms cubic-bezier(0.25, 0.1, 0.25, 1);
+        --transition-base: 180ms cubic-bezier(0.25, 0.1, 0.25, 1);
+        --transition-slow: 280ms cubic-bezier(0.25, 0.1, 0.25, 1);
+        --radius-control: 9px;
+        --radius-surface: 12px;
+        --radius-compact: 6px;
+        --radius-pill: 999px;
       }
 
       @keyframes slideUp {
-        from { opacity: 0; transform: translateY(10px); }
+        from { opacity: 0; transform: translateY(8px); }
         to   { opacity: 1; transform: translateY(0); }
       }
       @keyframes fadeIn {
@@ -329,7 +339,7 @@ const GlobalStyles = ({ theme }: { theme: 'light' | 'dark' | 'claude' }) => {
         to   { opacity: 1; }
       }
       @keyframes scaleIn {
-        from { opacity: 0; transform: scale(0.97); }
+        from { opacity: 0; transform: scale(0.98); }
         to   { opacity: 1; transform: scale(1); }
       }
       @keyframes spin {
@@ -340,9 +350,9 @@ const GlobalStyles = ({ theme }: { theme: 'light' | 'dark' | 'claude' }) => {
         50%       { opacity: 0.55; }
       }
 
-      .animate-slide-up  { animation: slideUp  0.22s var(--transition-base) both; }
-      .animate-fade-in   { animation: fadeIn   0.18s var(--transition-fast) both; }
-      .animate-scale-in  { animation: scaleIn  0.18s var(--transition-base) both; }
+      .animate-slide-up  { animation: slideUp  0.2s var(--transition-base) both; }
+      .animate-fade-in   { animation: fadeIn   0.16s var(--transition-fast) both; }
+      .animate-scale-in  { animation: scaleIn  0.16s var(--transition-base) both; }
       .animate-spin      { animation: spin 0.7s linear infinite; }
       .animate-pulse-soft{ animation: pulseSoft 1.8s ease-in-out infinite; }
 
@@ -354,28 +364,41 @@ const GlobalStyles = ({ theme }: { theme: 'light' | 'dark' | 'claude' }) => {
         -moz-osx-font-smoothing: grayscale;
         background-color: var(--bg-app);
         color: var(--text-primary);
-        line-height: 1.5;
+        line-height: 1.45;
         font-size: var(--font-size-base);
+        font-weight: 400;
         overflow: hidden;
-        letter-spacing: -0.005em;
+        letter-spacing: 0;
+      }
+
+      ::selection {
+        background: color-mix(in srgb, var(--color-primary) 28%, transparent);
+        color: var(--text-primary);
       }
 
       button, input, select, textarea { font: inherit; }
 
-      /* ── Card ── */
+      :focus-visible {
+        outline: 2px solid var(--color-primary);
+        outline-offset: 2px;
+      }
+      button:focus:not(:focus-visible),
+      a:focus:not(:focus-visible) { outline: none; }
+
+      /* ── Card (Adwaita boxed list / content block) ── */
       .nl-card {
         background: var(--bg-surface);
         border-radius: var(--radius-surface);
-        box-shadow: var(--shadow-xs);
-        padding: 20px;
-        transition: box-shadow var(--transition-base), background-color var(--transition-base);
-        border: 1px solid var(--border-light);
+        box-shadow: none;
+        padding: 18px;
+        transition: background-color var(--transition-base), border-color var(--transition-base);
+        border: 1px solid var(--border);
       }
       .nl-card:hover {
-        box-shadow: var(--shadow-sm);
+        border-color: color-mix(in srgb, var(--border) 70%, var(--color-secondary));
       }
 
-      /* ── Buttons ── */
+      /* ── Buttons (libadwaita-like) ── */
       .nl-btn {
         display: inline-flex;
         align-items: center;
@@ -384,27 +407,25 @@ const GlobalStyles = ({ theme }: { theme: 'light' | 'dark' | 'claude' }) => {
         height: 34px;
         padding: 0 14px;
         border-radius: var(--radius-control);
-        font-size: 12px;
+        font-size: 13px;
         font-weight: 600;
         cursor: pointer;
-        transition: all var(--transition-fast);
+        transition: background-color var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast), box-shadow var(--transition-fast);
         border: 1px solid transparent;
         outline: none;
         white-space: nowrap;
-        letter-spacing: 0.01em;
+        letter-spacing: 0;
         user-select: none;
       }
-      .nl-btn:active { transform: scale(0.97); }
+      .nl-btn:active { filter: brightness(0.96); }
 
       .nl-btn-primary {
         background: var(--color-primary);
-        color: white;
-        border-color: var(--color-primary);
-        box-shadow: 0 1px 2px var(--shadow-primary);
+        color: #ffffff;
+        border-color: color-mix(in srgb, var(--color-primary) 85%, #000);
       }
       .nl-btn-primary:hover {
         background: var(--color-primary-hover);
-        box-shadow: 0 2px 8px var(--shadow-primary);
       }
 
       .nl-btn-secondary {
@@ -414,7 +435,6 @@ const GlobalStyles = ({ theme }: { theme: 'light' | 'dark' | 'claude' }) => {
       }
       .nl-btn-secondary:hover {
         background: var(--color-secondary-lighter);
-        border-color: var(--color-secondary);
       }
 
       .nl-btn-ghost {
@@ -429,23 +449,25 @@ const GlobalStyles = ({ theme }: { theme: 'light' | 'dark' | 'claude' }) => {
       .nl-btn-danger {
         background: transparent;
         color: var(--color-error);
+        border-color: transparent;
       }
       .nl-btn-danger:hover {
-        background: #FEF2F2;
-        border-color: #FECACA;
+        background: color-mix(in srgb, var(--color-error) 12%, transparent);
+        border-color: color-mix(in srgb, var(--color-error) 28%, transparent);
       }
 
       .nl-btn-sm {
         height: 28px;
         padding: 0 10px;
-        font-size: 11px;
+        font-size: 12px;
         gap: 4px;
+        border-radius: var(--radius-compact);
       }
 
       .nl-btn-lg {
         height: 40px;
-        padding: 0 20px;
-        font-size: 13px;
+        padding: 0 18px;
+        font-size: 14px;
         gap: 8px;
       }
 
@@ -464,73 +486,86 @@ const GlobalStyles = ({ theme }: { theme: 'light' | 'dark' | 'claude' }) => {
       }
       .nl-input:focus {
         border-color: var(--color-primary);
-        box-shadow: 0 0 0 2px var(--shadow-primary-focus);
+        box-shadow: 0 0 0 3px var(--shadow-primary-focus);
         background: var(--bg-surface);
       }
-      .nl-input::placeholder { color: var(--text-tertiary); opacity: 0.65; }
+      .nl-input::placeholder { color: var(--text-tertiary); opacity: 0.9; }
 
-      /* ── Badges ── */
+      /* ── Badges (sentence case, soft Adwaita chips) ── */
       .badge {
         display: inline-flex;
         align-items: center;
         gap: 4px;
         padding: 2px 8px;
-        border-radius: 4px;
-        font-size: 10px;
-        font-weight: 700;
-        letter-spacing: 0.03em;
-        text-transform: uppercase;
+        border-radius: var(--radius-pill);
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0;
+        text-transform: none;
         border: 1px solid transparent;
       }
-      .badge-success { background: #DFFCF0; color: #216E4E; border-color: #B3EED4; }
-      .badge-error   { background: #FFECEB; color: #AE2A19; border-color: #FFD5D2; }
-      .badge-warning { background: #FFF7D6; color: #974F0C; border-color: #FFE380; }
-      .badge-info    { background: #DEEBFF; color: #0052CC; border-color: #B3D4FF; }
+      .badge-success { background: color-mix(in srgb, var(--color-success) 14%, var(--bg-surface)); color: var(--color-success); border-color: color-mix(in srgb, var(--color-success) 28%, transparent); }
+      .badge-error   { background: color-mix(in srgb, var(--color-error) 12%, var(--bg-surface)); color: var(--color-error); border-color: color-mix(in srgb, var(--color-error) 28%, transparent); }
+      .badge-warning { background: color-mix(in srgb, var(--color-warning) 16%, var(--bg-surface)); color: color-mix(in srgb, var(--color-warning) 70%, #000); border-color: color-mix(in srgb, var(--color-warning) 35%, transparent); }
+      .badge-info    { background: color-mix(in srgb, var(--color-primary) 12%, var(--bg-surface)); color: var(--color-primary); border-color: color-mix(in srgb, var(--color-primary) 28%, transparent); }
       .badge-neutral { background: var(--color-secondary-lighter); color: var(--text-secondary); border-color: var(--border); }
+      /* Férias (teal) vs Desistente (violeta) — distintos entre si e da pausa (âmbar) */
+      .badge-leave { background: color-mix(in srgb, #14b8a6 16%, var(--bg-surface)); color: #0f766e; border-color: color-mix(in srgb, #0f766e 35%, transparent); }
+      .badge-quit  { background: color-mix(in srgb, #8b5cf6 16%, var(--bg-surface)); color: #6d28d9; border-color: color-mix(in srgb, #6d28d9 35%, transparent); }
 
       /* ── Accent color utilities ── */
-      .text-accent-teal   { color: var(--color-accent-teal); }
-      .text-accent-violet { color: var(--color-accent-violet); }
-      .text-accent-rose   { color: var(--color-accent-rose); }
-      .text-accent-amber  { color: var(--color-accent-amber); }
-      .bg-accent-teal     { background: var(--color-accent-teal); }
-      .bg-accent-violet   { background: var(--color-accent-violet); }
-      .bg-accent-rose     { background: var(--color-accent-rose); }
-      .bg-accent-amber    { background: var(--color-accent-amber); }
-      .border-accent-teal   { border-color: var(--color-accent-teal); }
-      .border-accent-violet { border-color: var(--color-accent-violet); }
-      .border-accent-rose   { border-color: var(--color-accent-rose); }
-      .border-accent-amber  { border-color: var(--color-accent-amber); }
+      .text-accent-teal   { color: var(--color-accent-teal, #26a269); }
+      .text-accent-violet { color: var(--color-accent-violet, #9141ac); }
+      .text-accent-rose   { color: var(--color-accent-rose, #e01b24); }
+      .text-accent-amber  { color: var(--color-accent-amber, #e5a50a); }
+      .bg-accent-teal     { background: var(--color-accent-teal, #26a269); }
+      .bg-accent-violet   { background: var(--color-accent-violet, #9141ac); }
+      .bg-accent-rose     { background: var(--color-accent-rose, #e01b24); }
+      .bg-accent-amber    { background: var(--color-accent-amber, #e5a50a); }
+      .border-accent-teal   { border-color: var(--color-accent-teal, #26a269); }
+      .border-accent-violet { border-color: var(--color-accent-violet, #9141ac); }
+      .border-accent-rose   { border-color: var(--color-accent-rose, #e01b24); }
+      .border-accent-amber  { border-color: var(--color-accent-amber, #e5a50a); }
 
       /* ── Status pill ── */
       .status-pill {
         display: inline-flex;
         align-items: center;
         gap: 5px;
-        padding: 2px 7px;
-        border-radius: 20px;
-        font-size: 10px;
-        font-weight: 700;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
+        padding: 2px 8px;
+        border-radius: var(--radius-pill);
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0;
+        text-transform: none;
       }
       .status-pill::before {
         content: '';
         display: inline-block;
-        width: 5px; height: 5px;
+        width: 6px; height: 6px;
         border-radius: 50%;
         background: currentColor;
       }
 
-      /* ── Scrollbar ── */
-      ::-webkit-scrollbar { width: 6px; height: 6px; }
+      /* ── Scrollbar (thin, quiet) ── */
+      ::-webkit-scrollbar { width: 10px; height: 10px; }
       ::-webkit-scrollbar-track { background: transparent; }
-      ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 8px; }
-      ::-webkit-scrollbar-thumb:hover { background: var(--color-secondary); }
-      .custom-scrollbar::-webkit-scrollbar { width: 5px; }
+      ::-webkit-scrollbar-thumb {
+        background: color-mix(in srgb, var(--border) 80%, var(--color-secondary));
+        border-radius: 999px;
+        border: 2px solid transparent;
+        background-clip: content-box;
+      }
+      ::-webkit-scrollbar-thumb:hover { background: var(--color-secondary); background-clip: content-box; border: 2px solid transparent; }
+      .custom-scrollbar::-webkit-scrollbar { width: 8px; }
       .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-      .custom-scrollbar::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 8px; }
-      .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: var(--border); }
+      .custom-scrollbar::-webkit-scrollbar-thumb {
+        background: var(--border);
+        border-radius: 999px;
+        border: 2px solid transparent;
+        background-clip: content-box;
+      }
+      .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: var(--color-secondary); background-clip: content-box; border: 2px solid transparent; }
 
       /* ── Utility ── */
       .nl-text       { color: var(--text-primary); }
@@ -543,14 +578,18 @@ const GlobalStyles = ({ theme }: { theme: 'light' | 'dark' | 'claude' }) => {
       .nl-bg-app     { background-color: var(--bg-app); }
       .nl-bg-input   { background-color: var(--bg-input); }
 
+      /* Header bar — flat Adwaita headerbar */
       .nl-glass {
         background: var(--bg-header);
-        border-bottom: 1px solid var(--border-light);
-        box-shadow: var(--shadow-xs);
+        border-bottom: 1px solid var(--border);
+        box-shadow: none;
       }
 
+      /* Fundo translúcido + blur — vê-se o ecrã por trás do popup */
       .nl-modal-overlay {
-        background: rgba(15, 23, 42, 0.50);
+        background: var(--modal-overlay, rgba(15, 23, 42, 0.34));
+        backdrop-filter: blur(var(--modal-overlay-blur, 7px)) saturate(1.05);
+        -webkit-backdrop-filter: blur(var(--modal-overlay-blur, 7px)) saturate(1.05);
       }
       .nl-modal {
         background: var(--bg-surface);
@@ -562,53 +601,55 @@ const GlobalStyles = ({ theme }: { theme: 'light' | 'dark' | 'claude' }) => {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        border-bottom: 1px solid var(--border-light);
-        padding: 16px 20px;
+        border-bottom: 1px solid var(--border);
+        padding: 14px 18px;
+        background: var(--bg-header);
       }
       .nl-modal-body {
-        padding: 20px;
+        padding: 18px;
       }
       .nl-modal-footer {
         display: flex;
         align-items: center;
         justify-content: flex-end;
         gap: 8px;
-        border-top: 1px solid var(--border-light);
-        padding: 12px 20px;
+        border-top: 1px solid var(--border);
+        padding: 12px 18px;
+        background: var(--color-secondary-light);
       }
 
-      .nl-table thead { background: var(--color-secondary-lighter); }
+      .nl-table thead { background: var(--color-secondary-light); }
       .nl-table thead th {
-        font-size: 10px;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.08em;
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: none;
+        letter-spacing: 0;
         color: var(--text-secondary);
-        padding: 8px 12px;
+        padding: 9px 12px;
       }
       .nl-table tbody tr { transition: background-color var(--transition-fast); }
-      .nl-table tbody tr:hover { background: color-mix(in srgb, var(--color-secondary-lighter) 60%, transparent); }
+      .nl-table tbody tr:hover { background: color-mix(in srgb, var(--color-primary) 6%, var(--bg-surface)); }
       .nl-table td {
-        padding: 8px 12px;
+        padding: 9px 12px;
         font-size: 13px;
         border-bottom: 1px solid var(--border-light);
       }
 
-      /* ── Unified alert / notification component ── */
+      /* ── Unified alert ── */
       .nl-alert { display:flex; align-items:flex-start; gap:10px; padding:10px 14px; border-radius:var(--radius-control); border:1px solid; }
       .nl-alert-icon { width:28px; height:28px; min-width:28px; border-radius:var(--radius-compact); display:flex; align-items:center; justify-content:center; flex-shrink:0; }
-      .nl-alert-success  { background:#F0FDF4; border-color:#BBF7D0; color:#166534; }
-      .nl-alert-success  .nl-alert-icon { background:#DCFCE7; color:#059669; }
-      .nl-alert-warning  { background:#FFFBEB; border-color:#FDE68A; color:#92400E; }
-      .nl-alert-warning  .nl-alert-icon { background:#FEF3C7; color:#D97706; }
-      .nl-alert-error    { background:#FEF2F2; border-color:#FECACA; color:#991B1B; }
-      .nl-alert-error    .nl-alert-icon { background:#FEE2E2; color:#DC2626; }
-      .nl-alert-info     { background:#F0F9FF; border-color:#BAE6FD; color:#075985; }
-      .nl-alert-info     .nl-alert-icon { background:#E0F2FE; color:#0284C7; }
-      .nl-alert-title    { font-size:12px; font-weight:700; line-height:1.3; }
-      .nl-alert-body     { font-size:11px; opacity:.75; margin-top:1px; line-height:1.4; }
+      .nl-alert-success  { background: color-mix(in srgb, var(--color-success) 10%, var(--bg-surface)); border-color: color-mix(in srgb, var(--color-success) 28%, transparent); color: color-mix(in srgb, var(--color-success) 80%, #000); }
+      .nl-alert-success  .nl-alert-icon { background: color-mix(in srgb, var(--color-success) 16%, var(--bg-surface)); color: var(--color-success); }
+      .nl-alert-warning  { background: color-mix(in srgb, var(--color-warning) 12%, var(--bg-surface)); border-color: color-mix(in srgb, var(--color-warning) 32%, transparent); color: color-mix(in srgb, var(--color-warning) 55%, #000); }
+      .nl-alert-warning  .nl-alert-icon { background: color-mix(in srgb, var(--color-warning) 18%, var(--bg-surface)); color: color-mix(in srgb, var(--color-warning) 70%, #000); }
+      .nl-alert-error    { background: color-mix(in srgb, var(--color-error) 10%, var(--bg-surface)); border-color: color-mix(in srgb, var(--color-error) 28%, transparent); color: color-mix(in srgb, var(--color-error) 75%, #000); }
+      .nl-alert-error    .nl-alert-icon { background: color-mix(in srgb, var(--color-error) 14%, var(--bg-surface)); color: var(--color-error); }
+      .nl-alert-info     { background: color-mix(in srgb, var(--color-primary) 10%, var(--bg-surface)); border-color: color-mix(in srgb, var(--color-primary) 28%, transparent); color: color-mix(in srgb, var(--color-primary) 75%, #000); }
+      .nl-alert-info     .nl-alert-icon { background: color-mix(in srgb, var(--color-primary) 14%, var(--bg-surface)); color: var(--color-primary); }
+      .nl-alert-title    { font-size: 13px; font-weight: 600; line-height: 1.3; }
+      .nl-alert-body     { font-size: 12px; opacity: .85; margin-top: 2px; line-height: 1.4; }
 
-      /* ── Row palette — pastel alternating rows ── */
+      /* ── Row palette — subtle alternating ── */
       tr.rp-0 { background-color: var(--rp0); } tr.rp-0:hover { background-color: var(--rp0h); }
       tr.rp-1 { background-color: var(--rp1); } tr.rp-1:hover { background-color: var(--rp1h); }
       tr.rp-2 { background-color: var(--rp2); } tr.rp-2:hover { background-color: var(--rp2h); }
@@ -616,27 +657,27 @@ const GlobalStyles = ({ theme }: { theme: 'light' | 'dark' | 'claude' }) => {
       tr.rp-4 { background-color: var(--rp4); } tr.rp-4:hover { background-color: var(--rp4h); }
       tr.rp-5 { background-color: var(--rp5); } tr.rp-5:hover { background-color: var(--rp5h); }
 
-      /* ── Timeline chip ── */
+      /* ── Timeline chip / view-switcher pill ── */
       .nl-chip {
         display: inline-flex;
         align-items: center;
         gap: 4px;
-        padding: 3px 9px;
-        border-radius: 20px;
-        font-size: 10px;
-        font-weight: 700;
-        letter-spacing: 0.10em;
-        text-transform: uppercase;
-        border: 1px solid var(--border-light);
+        padding: 4px 10px;
+        border-radius: var(--radius-pill);
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: 0;
+        text-transform: none;
+        border: 1px solid var(--border);
         background: var(--bg-surface);
         color: var(--text-secondary);
         transition: all var(--transition-fast);
       }
       .nl-chip-active {
         background: var(--color-primary);
-        color: white;
+        color: #ffffff;
         border-color: var(--color-primary);
-        box-shadow: 0 0 0 3px var(--shadow-primary-focus);
+        box-shadow: none;
       }
 
       /* ── Action icon buttons ── */
@@ -645,7 +686,7 @@ const GlobalStyles = ({ theme }: { theme: 'light' | 'dark' | 'claude' }) => {
         align-items: center;
         justify-content: center;
         width: 34px; height: 34px;
-        border-radius: var(--radius-compact);
+        border-radius: var(--radius-control);
         border: 1px solid transparent;
         background: transparent;
         color: var(--text-secondary);
@@ -656,12 +697,13 @@ const GlobalStyles = ({ theme }: { theme: 'light' | 'dark' | 'claude' }) => {
       .nl-icon-btn:hover {
         background: var(--color-secondary-lighter);
         color: var(--text-primary);
-        border-color: var(--border);
+        border-color: transparent;
       }
-      .nl-icon-btn:active { transform: scale(0.93); }
+      .nl-icon-btn:active { filter: brightness(0.97); }
 
       .nl-icon-btn-sm {
         width: 28px; height: 28px;
+        border-radius: var(--radius-compact);
       }
 
       .nl-icon-btn-lg {
@@ -673,7 +715,7 @@ const GlobalStyles = ({ theme }: { theme: 'light' | 'dark' | 'claude' }) => {
       }
       .nl-icon-btn-primary:hover {
         background: var(--color-primary-light);
-        border-color: var(--color-primary);
+        border-color: transparent;
         color: var(--color-primary);
       }
 
@@ -681,17 +723,50 @@ const GlobalStyles = ({ theme }: { theme: 'light' | 'dark' | 'claude' }) => {
         color: var(--color-error);
       }
       .nl-icon-btn-danger:hover {
-        background: #FEF2F2;
-        border-color: #FECACA;
+        background: color-mix(in srgb, var(--color-error) 12%, transparent);
+        border-color: transparent;
         color: var(--color-error);
+      }
+
+      /* View switcher (header nav) */
+      .nl-view-switcher {
+        display: inline-flex;
+        align-items: center;
+        gap: 2px;
+        padding: 3px;
+        border-radius: var(--radius-control);
+        background: var(--color-secondary-lighter);
+        border: 1px solid var(--border-light);
+      }
+      .nl-view-switcher-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        height: 30px;
+        padding: 0 14px;
+        border-radius: 7px;
+        border: none;
+        background: transparent;
+        color: var(--text-secondary);
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all var(--transition-fast);
+      }
+      .nl-view-switcher-btn:hover { color: var(--text-primary); }
+      .nl-view-switcher-btn.is-active {
+        background: var(--bg-surface);
+        color: var(--text-primary);
+        box-shadow: var(--shadow-xs);
       }
 
       /* ── Section label ── */
       .nl-section-label {
-        font-size: 10px;
-        font-weight: 700;
-        letter-spacing: 0.14em;
-        text-transform: uppercase;
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: 0;
+        text-transform: none;
         color: var(--text-tertiary);
       }
 
@@ -862,7 +937,7 @@ function App() {
   const [alunoParaCobrancaRapida, setAlunoParaCobrancaRapida] = useState<Aluno | null>(null);
   const [cobrancaPagamentoSucesso, setCobrancaPagamentoSucesso] = useState(false);
   const [cobrancaUltimoPagamentoInfo, setCobrancaUltimoPagamentoInfo] = useState<any>(null);
-  const [pagamentoAtivoInfo, setPagamentoAtivoInfo] = useState<{ aluno: Aluno; resumo: any } | null>(null);
+  const [cobrancaResumo, setCobrancaResumo] = useState<any>(null);
 
   // Estados para gestão de utilizadores
   const [listaUtilizadores, setListaUtilizadores] = useState<any[]>([]);
@@ -1005,7 +1080,7 @@ function App() {
   const [mostrarSobreApp, setMostrarSobreApp] = useState(false);
   const agora = useCurrentTime();
   const { confirmDialog, setConfirmDialog, abrirConfirmacao, fecharConfirmacao } = useConfirmDialog();
-  const { zoomListaNormalizado, larguraListas, larguraSidebarContactos, estiloTabelaAlunos, obterTomPastel } = useListLayout(zoomLista);
+  const { zoomListaNormalizado, larguraListas, larguraSidebarContactos, estiloTabelaAlunos, estiloHome, obterTomPastel } = useListLayout(zoomLista, appTheme);
   const timelineAnnouncementRef = useRef('');
 
   // Notificação automática de relatório diário
@@ -1063,8 +1138,7 @@ function App() {
     if (mostrarFormNovoUtilizador) { setMostrarFormNovoUtilizador(false); return true; }
     if (mostrarBoasVindas) { setMostrarBoasVindas(false); setAlunoBoasVindas(null); setMsgBoasVindas(''); return true; }
     if (alunoNotasRapidas) { setAlunoNotasRapidas(null); return true; }
-    if (pagamentoAtivoInfo) { setPagamentoAtivoInfo(null); return true; }
-    if (mostrarCobrancaRapida) { setMostrarCobrancaRapida(false); setAlunoParaCobrancaRapida(null); setCobrancaPagamentoSucesso(false); setCobrancaUltimoPagamentoInfo(null); return true; }
+    if (mostrarCobrancaRapida) { setMostrarCobrancaRapida(false); setAlunoParaCobrancaRapida(null); setCobrancaPagamentoSucesso(false); setCobrancaUltimoPagamentoInfo(null); setCobrancaResumo(null); return true; }
     if (mostrarPerfilModal) { setMostrarPerfilModal(false); setMostrarHistoricoPerfil(false); setAlunoPerfil(null); setPerfilPagamentoSucesso(false); return true; }
     if (mostrarRelatorioMensal) { setMostrarRelatorioMensal(false); return true; }
     if (mostrarModalDuplicados) { setMostrarModalDuplicados(false); return true; }
@@ -1077,7 +1151,7 @@ function App() {
     mostrarUserMenu, mostrarMenuAcoes, contextMenu, mostrarNotificacoes,
     mostrarDropdownRecentes, mostrarSobreDoc, utilizadorEmEdicao,
     mostrarFormNovoUtilizador, mostrarBoasVindas, alunoNotasRapidas,
-    pagamentoAtivoInfo, mostrarCobrancaRapida, mostrarPerfilModal,
+    mostrarCobrancaRapida, mostrarPerfilModal,
     mostrarRelatorioMensal, mostrarModalDuplicados, mostrarModalExport,
     mostrarModalPagamento, mostrarImportar, fecharConfirmacao,
   ]);
@@ -1139,6 +1213,7 @@ function App() {
     modo_cobranca: 'mensalidade_movel',
     modo_inscricao: 'matricula' as 'matricula' | 'matricula_pago',
     dia_pagamento: 1 as 1 | 'ultimo',
+    status: 'ativo',
   }), []);
   const [novoAluno, setNovoAluno] = useState(novoAlunoDefault);
   const [previewVencimento, setPreviewVencimento] = useState('');
@@ -1270,17 +1345,17 @@ function App() {
   const cobrancasCriticas = useMemo(() => alunosAtivos.filter(({ resumo }) => ['hoje', 'critico'].includes(resumo.status)).length, [alunosAtivos]);
   const mesAtualOperacional = `${hojeReferencia.getFullYear()}-${String(hojeReferencia.getMonth() + 1).padStart(2, '0')}`;
   const backupMensalPendente = backupReminderEnabled && ultimoBackupMes !== mesAtualOperacional;
-  const novosInscritosRecentes = [...alunos]
-    .sort((left, right) => {
-      const leftDate = parseFlexibleDate(left.data_matricula)?.getTime();
-      const rightDate = parseFlexibleDate(right.data_matricula)?.getTime();
-      // sem data = recém adicionado → aparece primeiro
-      if (!leftDate && !rightDate) return 0;
-      if (!leftDate) return -1;
-      if (!rightDate) return 1;
-      return rightDate - leftDate;
-    })
-    .slice(0, 5);
+  /** Novos alunos (7 dias) — exclui importados; aparecem na Início com ★ */
+  const novosInscritosRecentes = useMemo(() => (
+    alunos
+      .filter((aluno) => isNewStudent(aluno, hojeReferencia, 7))
+      .sort((left, right) => {
+        const leftDate = parseFlexibleDate(left.data_matricula)?.getTime() || 0;
+        const rightDate = parseFlexibleDate(right.data_matricula)?.getTime() || 0;
+        return rightDate - leftDate;
+      })
+      .slice(0, 24)
+  ), [alunos, hojeReferencia]);
   const generoStats = alunos.reduce(
     (acc, aluno) => {
       const bucket = getGenderBucket(aluno.sexo);
@@ -1521,8 +1596,8 @@ function App() {
       } catch (error) {
         console.error('Erro ao carregar dados:', error);
       } finally {
-        // Simular um pequeno delay para o Splash Screen ser visível (estética)
-        setTimeout(() => setLoadingConfig(false), 1200);
+        // Splash curto — app deve abrir rápido (v1)
+        setTimeout(() => setLoadingConfig(false), 420);
       }
     }
   // setCategorias é estável; a função é definida abaixo para depender de guardarConfiguracao.
@@ -1979,7 +2054,18 @@ function App() {
       };
 
       if (electron) {
-        await electron.ipcRenderer.invoke('add-aluno', alunoParaSalvar);
+        // Não gravar campo temporário de foto no registo
+        const { _fotoBase64, ...alunoDb } = alunoParaSalvar as typeof alunoParaSalvar & { _fotoBase64?: string };
+        await electron.ipcRenderer.invoke('add-aluno', alunoDb);
+
+        // Foto opcional escolhida no formulário
+        if (_fotoBase64) {
+          try {
+            await electron.ipcRenderer.invoke('upload-foto', { alunoId: id, base64Data: _fotoBase64 });
+          } catch (fotoErr) {
+            console.warn('Foto não guardada na matrícula:', fotoErr);
+          }
+        }
 
         // Se pagou na inscrição → registar pagamento imediato
         if (pagouAgora) {
@@ -2024,7 +2110,6 @@ function App() {
     setAlunoSelecionado(prev => prev?.id === alunoAtualizado.id ? { ...prev, ...alunoAtualizado } : prev);
     setAlunoEdicao(prev => prev?.id === alunoAtualizado.id ? { ...prev, ...alunoAtualizado } : prev);
     setAlunoParaCobrancaRapida(prev => prev?.id === alunoAtualizado.id ? { ...prev, ...alunoAtualizado } : prev);
-    setPagamentoAtivoInfo(prev => prev?.aluno?.id === alunoAtualizado.id ? { ...prev, aluno: { ...prev.aluno, ...alunoAtualizado } } : prev);
   };
 
   // Função para abrir edição
@@ -2046,7 +2131,8 @@ function App() {
       categoria: aluno.categoria || '',
       modo_cobranca: aluno.modo_cobranca || 'mensalidade_movel',
       modo_inscricao: (aluno as any).modo_inscricao || 'matricula',
-      dia_pagamento: (aluno as any).dia_pagamento || 1
+      dia_pagamento: (aluno as any).dia_pagamento || 1,
+      status: aluno.status || 'ativo',
     } as typeof novoAlunoDefault);
     setMostrarFormEdicao(true);
     setMostrarForm(false);
@@ -2284,11 +2370,17 @@ function App() {
         if (aluno) {
           sincronizarAlunoAtualizado({ ...aluno, status: novoStatus } as Aluno);
           const statusLabel = getStudentStatusLabel(novoStatus).toUpperCase();
-          adicionarNotificacao('Alteração de Status', `O aluno ${aluno.nome} agora está ${statusLabel}.`, isPausedStatus(novoStatus) ? 'alerta' : 'info');
+          const tone =
+            novoStatus === 'desistente' || isBlockedStatus(novoStatus)
+              ? 'alerta'
+              : isPausedStatus(novoStatus)
+                ? 'alerta'
+                : 'info';
+          adicionarNotificacao('Alteração de Status', `O aluno ${aluno.nome} agora está ${statusLabel}.`, tone);
         }
         setMenuAlunoAberto(null);
         await carregarConfiguracoes();
-        showToast(`Status atualizado para: ${novoStatus}`);
+        showToast(`Estado actualizado: ${getStudentStatusLabel(novoStatus)}`);
       } catch (error) {
         showToast('❌ Erro ao atualizar status.');
       }
@@ -2395,38 +2487,46 @@ function App() {
     return acc + normalizeAmount(a.plano);
   }, 0);
 
-  const marcarComoPago = (alunoId: string) => {
-    const aluno = alunos.find(a => a.id === alunoId);
-    if (aluno) {
-      const alunoSeguro = {
-        ...aluno,
-        nome: getAlunoNomeSeguro(aluno),
-        plano: String(aluno.plano || ''),
-        telefone: aluno.telefone || '',
-        status: aluno.status || 'ativo',
-      } as Aluno;
-      setAlunoParaCobrancaRapida(alunoSeguro);
-      setCobrancaPagamentoSucesso(false);
-      setCobrancaUltimoPagamentoInfo(null);
-      setPagamentoForm({
-        valor: String(normalizeAmount(alunoSeguro.plano) || ''),
-        dataPagamento: formatInputDate(),
-        metodo: DEFAULT_PAYMENT_METHOD,
-        mesReferencia: mesAtualNome,
-      });
-      setMostrarCobrancaRapida(true);
-    } else {
+  /** Único fluxo de cobrança — sempre o mesmo popup (cartão da barra de dias / atalhos). */
+  const abrirCobrancaUnificada = (aluno: Aluno, resumo?: any) => {
+    if (!aluno?.id) {
       showToast('❌ Aluno não encontrado para cobrança.');
+      return;
     }
+    const alunoSeguro = {
+      ...aluno,
+      nome: getAlunoNomeSeguro(aluno),
+      plano: String(aluno.plano || ''),
+      telefone: aluno.telefone || '',
+      status: aluno.status || 'ativo',
+    } as Aluno;
+    const resumoFinal =
+      resumo ||
+      getStudentStatusForMonth(alunoSeguro, pagamentos, anoFinanceiro, mesFinanceiroIndex, hojeReferencia);
+    setAlunoParaCobrancaRapida(alunoSeguro);
+    setCobrancaResumo(resumoFinal);
+    setCobrancaPagamentoSucesso(false);
+    setCobrancaUltimoPagamentoInfo(null);
+    // Valor só com dígitos (sem espaços unicode nem "CVE")
+    const valorLimpo = String(normalizeAmount(alunoSeguro.plano) || 0).replace(/[^\d]/g, '');
+    setPagamentoForm({
+      valor: valorLimpo === '0' ? '' : valorLimpo,
+      dataPagamento: formatInputDate(),
+      metodo: DEFAULT_PAYMENT_METHOD,
+      mesReferencia: mesAtualNome,
+    });
+    setMostrarCobrancaRapida(true);
+  };
+
+  const marcarComoPago = (alunoId: string) => {
+    const aluno = alunos.find((a) => a.id === alunoId);
+    if (aluno) abrirCobrancaUnificada(aluno);
+    else showToast('❌ Aluno não encontrado para cobrança.');
   };
 
   const abrirAcaoPagamentoDaLista = (aluno: Aluno, resumo: any) => {
     if (!aluno) return;
-    if (resumo?.status === 'pago') {
-      setPagamentoAtivoInfo({ aluno, resumo });
-      return;
-    }
-    marcarComoPago(aluno.id);
+    abrirCobrancaUnificada(aluno, resumo);
   };
 
 
@@ -3079,7 +3179,7 @@ function App() {
   if (!licencaAtiva) return <LicenseBlockedPage model={{ chaveReativacao, erroReativacao, electron, GlobalStyles, setChaveReativacao, setErroReativacao, setLicencaAtiva, carregarConfiguracoes, showToast, gerarBackup }} />;
 
   // ── Split-Screen Premium Login ────────────────────────────────────
-  if (!isLoggedIn) return <LoginPage model={{ agora, appLogo, nomeAcademia, moradaAcademia, telefoneAcademia, loginForm, mostrarDropdownRecentes, lembrarUtilizadores, utilizadoresRecentes, mostrarSenha, permitirGuardarSessao, guardarSessao, loginError, carregandoLogin, loginSlideshowUsers, quickAccessExpanded, slideshowImages, currentSlide, slideshowTextEnabled, electron, GlobalStyles, handleLogin, setLoginForm, setMostrarDropdownRecentes, setMostrarSenha, setGuardarSessao, setQuickAccessExpanded, setCarregandoLogin, setSessionUser, setIsLoggedIn, setCurrentSlide }} />;
+  if (!isLoggedIn) return <LoginPage model={{ agora, appLogo, nomeAcademia, moradaAcademia, telefoneAcademia, bannerAcademia, loginForm, mostrarDropdownRecentes, lembrarUtilizadores, utilizadoresRecentes, mostrarSenha, permitirGuardarSessao, guardarSessao, loginError, carregandoLogin, loginSlideshowUsers, quickAccessExpanded, electron, GlobalStyles, handleLogin, setLoginForm, setMostrarDropdownRecentes, setMostrarSenha, setGuardarSessao, setQuickAccessExpanded, setCarregandoLogin, setSessionUser, setIsLoggedIn, utilizadorAvatares }} />;
 
   // Painel Root Técnico (acesso exclusivo root@nextlab.com)
   if (sessionUser?.role === 'root') {
@@ -3133,6 +3233,20 @@ function App() {
           recebido: totalRecebidoPeriodo,
         }}
         larguraListas={larguraListas}
+        appTheme={appTheme}
+        utilizadorAvatares={utilizadorAvatares}
+        setUtilizadorAvatares={setUtilizadorAvatares}
+        onCycleTheme={() => {
+          const order: Array<'light' | 'dark' | 'claude'> = ['light', 'dark', 'claude'];
+          const next = order[(order.indexOf(appTheme) + 1) % order.length];
+          setAppTheme(next);
+          localStorage.setItem('nl_app_theme', next);
+          try {
+            electron?.ipcRenderer?.invoke?.('update-configuracao', 'app_theme', next);
+          } catch {
+            /* offline / sem IPC — localStorage basta */
+          }
+        }}
       />
 
       {/* Container Principal */}
@@ -3172,8 +3286,14 @@ function App() {
             prepararAcaoOperacionalNoMesAtual={prepararAcaoOperacionalNoMesAtual}
             novosInscritosRecentes={novosInscritosRecentes}
             abrirPerfilAluno={abrirPerfilAluno}
+            abrirNotasRapidas={abrirNotasRapidas}
+            onCobrarAluno={marcarComoPago}
             notasRecentes={notasRecentes}
             onUploadBanner={handleUploadBanner}
+            larguraListas={larguraListas}
+            estiloHome={estiloHome}
+            isAdmin={sessionUser?.role === 'admin' || String(sessionUser?.role) === 'root'}
+            onImport={() => setMostrarImportar(true)}
           />
         )}
 
@@ -3233,6 +3353,7 @@ function App() {
             diaProgressoPeriodo={diaProgressoPeriodo}
             periodoSelecionadoFuturo={periodoSelecionadoFuturo}
             estiloTabelaAlunos={estiloTabelaAlunos}
+            obterTomPastel={obterTomPastel}
             setAlunoPerfil={setAlunoPerfil}
             irParaMesAtualOperacional={irParaMesAtualOperacional}
             abrirEdicao={abrirEdicao}
@@ -3446,25 +3567,76 @@ function App() {
           MODAL DE PERFIL DO ALUNO — Painel Unificado com Abas
           Abas: [ Perfil ] [ Histórico ] [ Cobrar ]
       ═══════════════════════════════════════════════════════════════════════ */}
-      {mostrarPerfilModal && alunoPerfil && <StudentProfileModal model={{
-        alunoPerfil, pagamentos, anoFinanceiro, mesFinanceiroIndex, hojeReferencia, notasResumo,
-        pagamentoForm, perfilUltimoPagamentoInfo, perfilPagamentoSucesso, perfilEditForm,
-        editandoPerfil, mostrarHistoricoPerfil, mesAtualNome, anoAtual, electron, nomeAcademia,
-        alunoSelecionado, setMostrarPerfilModal, setMostrarHistoricoPerfil, setEditandoPerfil,
-        setPerfilEditForm, setCol1Minimizada, setCol2Minimizada, setPerfilAba,
-        setPerfilPagamentoSucesso, setPerfilUltimoPagamentoInfo, setPagamentoForm,
-        sincronizarAlunoAtualizado, carregarConfiguracoes, adicionarNotificacao, showToast,
-        registrarPagamentoAtomico, notificarSistema, carregarHistorico, abrirNotasRapidas, parseDate,
-      }} />}
+      {mostrarPerfilModal && alunoPerfil && (
+        <StudentProfileModal
+          model={{
+            alunoPerfil,
+            pagamentos,
+            anoFinanceiro,
+            mesFinanceiroIndex,
+            hojeReferencia,
+            notasResumo,
+            perfilEditForm,
+            editandoPerfil,
+            mostrarHistoricoPerfil,
+            setMostrarPerfilModal,
+            setMostrarHistoricoPerfil,
+            setEditandoPerfil,
+            setPerfilEditForm,
+            setCol1Minimizada,
+            setCol2Minimizada,
+            setPerfilAba,
+            setPerfilPagamentoSucesso,
+            setPerfilUltimoPagamentoInfo,
+            setPagamentoForm,
+            sincronizarAlunoAtualizado,
+            carregarConfiguracoes,
+            adicionarNotificacao,
+            abrirNotasRapidas,
+            onAbrirCobranca: abrirCobrancaUnificada,
+          }}
+        />
+      )}
 
       {/* Modal: notas rápidas */}
       {alunoNotasRapidas && <StudentNotesModal aluno={alunoNotasRapidas} notas={notasRapidas} novaNota={novaNotaRapida} onNovaNotaChange={setNovaNotaRapida} onAdd={adicionarNotaRapida} onDelete={eliminarNotaRapida} onOpenContact={abrirContactoAPartirNotas} onClose={() => setAlunoNotasRapidas(null)} />}
 
-      {/* Modal: Pagamento ativo */}
-      {pagamentoAtivoInfo && <ActivePaymentModal aluno={pagamentoAtivoInfo.aluno} resumo={pagamentoAtivoInfo.resumo || {}} onClose={() => setPagamentoAtivoInfo(null)} onReview={(alunoId) => { setPagamentoAtivoInfo(null); marcarComoPago(alunoId); }} />}
-
-      {/* Modal Minimalista de Cobrança Rápida */}
-      {mostrarCobrancaRapida && alunoParaCobrancaRapida && <QuickPaymentModal model={{ alunoParaCobrancaRapida, pagamentoForm, mesAtualNome, cobrancaUltimoPagamentoInfo, anoAtual, electron, nomeAcademia, alunoSelecionado, pagamentos, notasResumo, appLogo, cobrancaPagamentoSucesso, setMostrarCobrancaRapida, setAlunoParaCobrancaRapida, setCobrancaPagamentoSucesso, setCobrancaUltimoPagamentoInfo, setPagamentoForm, showToast, registrarPagamentoAtomico, adicionarNotificacao, notificarSistema, carregarHistorico, carregarConfiguracoes, getAlunoNomeSeguro, getAvatarColorByName, getAlunoIniciais, abrirNotasRapidas, parseDate }} />}
+      {/* Modal único de cobrança (cartão da barra de dias) */}
+      {mostrarCobrancaRapida && alunoParaCobrancaRapida && (
+        <QuickPaymentModal
+          model={{
+            alunoParaCobrancaRapida,
+            pagamentoForm,
+            mesAtualNome,
+            cobrancaUltimoPagamentoInfo,
+            cobrancaResumo,
+            anoAtual,
+            electron,
+            nomeAcademia,
+            alunoSelecionado,
+            pagamentos,
+            notasResumo,
+            cobrancaPagamentoSucesso,
+            setMostrarCobrancaRapida,
+            setAlunoParaCobrancaRapida,
+            setCobrancaPagamentoSucesso,
+            setCobrancaUltimoPagamentoInfo,
+            setCobrancaResumo,
+            setPagamentoForm,
+            showToast,
+            registrarPagamentoAtomico,
+            adicionarNotificacao,
+            notificarSistema,
+            carregarHistorico,
+            carregarConfiguracoes,
+            getAlunoNomeSeguro,
+            getAvatarColorByName,
+            getAlunoIniciais,
+            abrirNotasRapidas,
+            parseDate,
+          }}
+        />
+      )}
 
       <ToastNotification message={toast.message} visible={toast.visible} />
     </div>

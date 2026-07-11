@@ -13,6 +13,7 @@ import {
   COMPANY_WEBSITE,
   NEXT_LAB_ICON,
 } from '../constants';
+import { getUserAvatar, userInitials } from '../utils/userAvatar';
 
 export interface ConfiguracoesPageProps {
   aba: string;
@@ -544,7 +545,7 @@ function ConfiguracoesPage({
                   <p className="px-6 py-8 text-center text-[13px] nl-text-muted">Nenhum utilizador registado.</p>
                 )}
                 {listaUtilizadores.map(user => {
-                  const avatar = utilizadorAvatares[String(user.id)];
+                  const avatar = getUserAvatar(utilizadorAvatares, user);
                   const isCurrent = sessionUser?.email === user.email;
                   const activityCount = logs.filter(l => l.user_name === user.name).length;
                   return (
@@ -572,7 +573,7 @@ function ConfiguracoesPage({
                              style={{ background: avatar ? 'transparent' : `hsl(${(user.name.charCodeAt(0) * 37) % 360}, 60%, 88%)`, color: `hsl(${(user.name.charCodeAt(0) * 37) % 360}, 60%, 35%)` }}>
                           {avatar
                             ? <img src={avatar} className="w-full h-full object-cover" alt={user.name} />
-                            : user.name.slice(0, 2).toUpperCase()}
+                            : userInitials(user.name)}
                         </div>
                         {isCurrent && <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-500 border-2 border-white" />}
                       </div>

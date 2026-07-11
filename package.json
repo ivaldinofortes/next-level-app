@@ -2,7 +2,7 @@
   "name": "next-level-app",
   "productName": "Next Level Academia",
   "private": true,
-  "version": "1.0.0-beta.2.2",
+  "version": "1.0.0",
   "description": "Sistema de gestão da Next Level Academia desenvolvido pela NEXT LAB.",
   "main": "main.cjs",
   "author": {
@@ -16,10 +16,13 @@
     "test": "vitest run",
     "preview": "vite preview",
     "electron": "electron .",
+    "start:native": "VITE_DEV_SERVER_URL=http://127.0.0.1:3000 electron .",
+    "verify": "npm test && npm run build && node scripts/verify-release.mjs",
     "dist": "npm run build && electron-builder",
     "dist:win": "npm run build && electron-builder --win --x64",
     "dist:win:portable": "npm run build && electron-builder --win --x64 --config.win.target=portable",
-    "rebuild": "electron-rebuild"
+    "dist:mac": "npm run build && electron-builder --mac",
+    "rebuild": "electron-rebuild -f -w better-sqlite3"
   },
   "dependencies": {
     "adm-zip": "^0.5.17",

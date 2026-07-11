@@ -1,31 +1,25 @@
 // @ts-nocheck -- Legacy controller typing is isolated during App decomposition.
-import { CheckCircle2, Trash2, X } from 'lucide-react';
+import { CheckCircle2, Trash2 } from 'lucide-react';
 import { APP_ICON_PATH } from '../constants';
 import { getAlunoIniciais } from '../utils/formatting';
+import AppModalShell from './AppModalShell';
 
 export default function DuplicateStudentsModal({ model }: { model: unknown }) {
   const { duplicadosEncontrados, appLogo, electron, setMostrarModalDuplicados, setDuplicadosEncontrados, abrirPerfilAluno, abrirConfirmacao, carregarConfiguracoes, showToast } = model;
   return (
-      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[160] p-4 animate-fade-in" onClick={() => setMostrarModalDuplicados(false)}>
-        <div className="bg-[var(--bg-surface)] w-full max-w-[600px] shadow-[0_20px_70px_rgba(0,0,0,0.3)] rounded-[6px] border border-[var(--border)] overflow-hidden flex flex-col animate-scale-in" style={{ maxHeight: '85vh' }} onClick={e => e.stopPropagation()}>
-          <div className="bg-[#F1F4F9] border-b border-[#DDE2EB] h-12 flex items-center shrink-0">
-            <div className="flex-1 flex items-center gap-2.5 px-4">
-              <div className="h-6 w-6 rounded-md bg-white/50 backdrop-blur-sm p-1 border border-white/40 shadow-sm flex items-center justify-center">
-                <img src={appLogo || APP_ICON_PATH} alt="Logo" className="w-full h-full object-contain" />
-              </div>
-              <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] leading-none">NextLevel</span>
-            </div>
-            <div className="flex-1 text-center whitespace-nowrap">
-              <h2 className="text-[12px] font-black text-slate-700 uppercase tracking-wider leading-none">Duplicados ({duplicadosEncontrados.length})</h2>
-            </div>
-            <div className="flex-1 flex justify-end px-3">
-              <button onClick={() => setMostrarModalDuplicados(false)} className="h-8 w-8 flex items-center justify-center rounded-md text-slate-400 hover:bg-red-50 hover:text-red-500 transition-all" title="Fechar">
-                <X size={16} />
-              </button>
-            </div>
-          </div>
-
-          <div className="flex-1 overflow-y-auto p-5 custom-scrollbar space-y-5">
+    <AppModalShell
+      title={`Duplicados (${duplicadosEncontrados.length})`}
+      subtitle="Contactos com nome ou telefone repetido"
+      onClose={() => setMostrarModalDuplicados(false)}
+      appLogo={appLogo || APP_ICON_PATH}
+      maxWidth="max-w-[600px]"
+      zIndex={160}
+      accent="var(--color-primary)"
+      footer={(
+        <button type="button" onClick={() => setMostrarModalDuplicados(false)} className="nl-btn nl-btn-secondary !h-9">Fechar</button>
+      )}
+    >
+          <div className="space-y-5 p-5">
             {duplicadosEncontrados.length === 0 ? (
               <div className="py-12 text-center space-y-3">
                 <div className="w-16 h-16 rounded-full bg-emerald-50 flex items-center justify-center mx-auto">
@@ -98,11 +92,6 @@ export default function DuplicateStudentsModal({ model }: { model: unknown }) {
               </div>
             )}
           </div>
-
-          <div className="bg-[#F8F9FC] border-t border-[#DDE2EB] px-6 py-4 flex items-center justify-center shrink-0">
-            <button onClick={() => setMostrarModalDuplicados(false)} className="nl-btn nl-btn-secondary !h-9 !px-5 !text-[11px] font-bold">Fechar</button>
-          </div>
-        </div>
-      </div>
+    </AppModalShell>
   );
 }

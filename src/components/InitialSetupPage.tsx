@@ -5,7 +5,7 @@ import { APP_ICON_PATH, COMPANY_EMAIL, COMPANY_PHONE, COMPANY_WEBSITE } from '..
 export default function InitialSetupPage({ model }: { model: unknown }) {
   const { appLogo, setupStep, setupData, setupLicenseInfo, setupError, electron, setAppLogo, setSetupData, setSetupStep, saltarSetupDesenvolvedor, proximoPassoSetup, finalizarSetupTotal } = model;
     return (
-      <div className="fixed inset-0 bg-black/60 backdrop-blur-[2px] flex items-center justify-center z-[1000] p-4">
+      <div className="fixed inset-0 nl-modal-overlay flex items-center justify-center z-[1000] p-4">
         <div className="bg-[var(--bg-surface)] w-full max-w-[600px] h-[500px] shadow-[0_20px_70px_rgba(0,0,0,0.3)] rounded-[6px] border border-[var(--border)] overflow-hidden flex flex-col animate-scale-in">
           
           <div className="bg-[#F1F4F9] border-b border-[#DDE2EB] h-12 flex items-center shrink-0">

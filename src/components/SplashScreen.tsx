@@ -1,24 +1,42 @@
 import { NEXT_LAB_ICON } from '../constants';
 
+/**
+ * Splash leve e rápido — sem blur pesado nem loops longos.
+ */
 export default function SplashScreen({ appLogo }: { appLogo: string }) {
   return (
-    <div className="fixed inset-0 bg-[#0a0a0a] flex flex-col items-center justify-center z-[2000] text-white">
-      <div className="relative w-32 h-32 mb-12 flex items-center justify-center">
-        <div className="absolute inset-0 bg-blue-600/20 blur-3xl rounded-full animate-pulse" />
-        <img src={appLogo} alt="App Logo" className="w-full h-full object-contain relative z-10 animate-in zoom-in duration-700" />
-      </div>
-      <div className="flex flex-col items-center gap-6">
-        <div className="text-center space-y-1">
-          <h1 className="text-3xl font-black tracking-tighter uppercase">NEXT<span className="font-light normal-case">Level</span></h1>
-          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.4em]">Sistema de gerenciamento de Academias</p>
+    <div className="fixed inset-0 z-[2000] flex flex-col items-center justify-center bg-[var(--bg-app,#f6f5f4)] nl-font-ui">
+      <div className="flex flex-col items-center gap-5 animate-in fade-in zoom-in-95 duration-300">
+        <div className="relative flex h-20 w-20 items-center justify-center rounded-[20px] border border-[var(--border)] bg-[var(--bg-surface)] shadow-[var(--shadow-md)]">
+          <img src={appLogo} alt="" className="h-12 w-12 object-contain" />
         </div>
-        <div className="w-40 h-0.5 bg-slate-800 rounded-full overflow-hidden"><div className="h-full bg-blue-500 animate-progress-loading" /></div>
-        <div className="flex items-center gap-2 mt-8 opacity-40 hover:opacity-100 transition-opacity">
-          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Powered by</span>
-          <img src={NEXT_LAB_ICON} alt="NEXT Lab" className="h-4 object-contain" />
+
+        <div className="text-center">
+          <h1 className="text-[20px] font-bold tracking-tight nl-text">
+            NEXT<span className="font-semibold text-[var(--color-primary)]">Level</span>
+          </h1>
+          <p className="mt-1 text-[11px] font-medium nl-text-muted">A carregar o sistema…</p>
+        </div>
+
+        <div className="h-1 w-36 overflow-hidden rounded-full bg-[var(--border-light)]">
+          <div className="h-full w-1/2 rounded-full bg-[var(--color-primary)] animate-splash-bar" />
+        </div>
+
+        <div className="mt-4 flex items-center gap-1.5 opacity-50">
+          <span className="text-[9px] font-bold uppercase tracking-widest nl-text-muted">by</span>
+          <img src={NEXT_LAB_ICON} alt="NEXT Lab" className="h-3.5 object-contain" />
         </div>
       </div>
-      <style>{`@keyframes progress-loading { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } } .animate-progress-loading { width: 100%; animation: progress-loading 1.5s ease-in-out infinite; }`}</style>
+
+      <style>{`
+        @keyframes splash-bar {
+          0% { transform: translateX(-120%); }
+          100% { transform: translateX(280%); }
+        }
+        .animate-splash-bar {
+          animation: splash-bar 0.9s ease-in-out infinite;
+        }
+      `}</style>
     </div>
   );
 }

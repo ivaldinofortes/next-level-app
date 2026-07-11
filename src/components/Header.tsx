@@ -1,10 +1,20 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
-  Layout, Users, ChevronLeft, FileBarChart, BookUser, Settings,
-  Plus, Star, FileText, RotateCw, Bell, Info, LogOut, AlertCircle, Wallet,
-  Activity, X, TrendingUp, CheckCircle2, Clock,
+  Layout, Users, FileBarChart, BookUser, Settings,
+  RotateCw, Bell, Info, LogOut, Wallet,
+  Activity, X, TrendingUp, CheckCircle2, Sun, Moon, Sparkles, Camera,
+  ChevronLeft, ChevronRight, Dumbbell,
 } from 'lucide-react';
 import { formatCve } from '../lib/billing';
+import {
+  getUserAvatar,
+  persistUserAvatars,
+  setUserAvatar,
+  userInitials,
+  type UserAvatarMap,
+} from '../utils/userAvatar';
+
+type AppTheme = 'light' | 'dark' | 'claude';
 
 interface HeaderProps {
   nomeAcademia: string;
@@ -29,22 +39,61 @@ interface HeaderProps {
   setMostrarRelatorioMensal: (v: boolean) => void;
   mostrarDailyReport: boolean;
   setMostrarDailyReport: (v: boolean) => void;
+  appTheme?: AppTheme;
+  onCycleTheme?: () => void;
   listaStats?: {
     total: number;
     atrasados: number;
     recebido: number;
   };
   larguraListas?: number;
+  utilizadorAvatares?: UserAvatarMap;
+  setUtilizadorAvatares?: React.Dispatch<React.SetStateAction<UserAvatarMap>>;
 }
 
-const NAV_ITEMS = [
-  { id: 'home', label: 'Início', icon: <Layout size={18} strokeWidth={2.6} /> },
-  { id: 'gestao', label: 'Alunos', icon: <Users size={18} strokeWidth={2.6} /> },
+const THEME_CYCLE: AppTheme[] = ['light', 'dark', 'claude'];
+const THEME_META: Record<AppTheme, { label: string; icon: typeof Sun }> = {
+  light: { label: 'Tema claro', icon: Sun },
+  dark: { label: 'Tema escuro', icon: Moon },
+  claude: { label: 'Tema Claude', icon: Sparkles },
+};
+
+/** 3 abas principais — cada uma com cor própria */
+const NAV_TABS = [
+  {
+    id: 'home',
+    label: 'Início',
+    icon: Layout,
+    // azul GNOME
+    active: 'bg-[var(--color-primary)] text-white shadow-[var(--shadow-xs)]',
+    idle: 'text-[var(--color-primary)] hover:bg-[var(--color-primary-light)]',
+    dot: 'bg-[var(--color-primary)]',
+    roles: ['admin', 'root', 'operador', 'staff', 'user'] as string[],
+  },
+  {
+    id: 'gestao',
+    label: 'Alunos',
+    icon: Users,
+    // verde
+    active: 'bg-[var(--color-success)] text-white shadow-[var(--shadow-xs)]',
+    idle: 'text-[var(--color-success)] hover:bg-[color-mix(in_srgb,var(--color-success)_12%,var(--bg-surface))]',
+    dot: 'bg-[var(--color-success)]',
+    roles: ['admin', 'root', 'operador', 'staff', 'user'] as string[],
+  },
+  {
+    id: 'relatorios_detalhado',
+    label: 'Relatórios',
+    icon: FileBarChart,
+    // laranja GNOME
+    active: 'bg-[#c64600] text-white shadow-[var(--shadow-xs)]',
+    idle: 'text-[#c64600] hover:bg-[color-mix(in_srgb,#c64600_12%,var(--bg-surface))]',
+    dot: 'bg-[#c64600]',
+    roles: ['admin', 'root'] as string[],
+  },
 ];
 
 const Header: React.FC<HeaderProps> = React.memo(({
   nomeAcademia,
-  COMPANY_NAME,
   appLogo,
   aba,
   setAba,
@@ -62,11 +111,84 @@ const Header: React.FC<HeaderProps> = React.memo(({
   onMatricular,
   mostrarDailyReport,
   setMostrarDailyReport,
-  listaStats,
-  larguraListas = 1120,
+  appTheme = 'light',
+  onCycleTheme,
+  utilizadorAvatares = {},
+  setUtilizadorAvatares,
 }) => {
   const [dailyData, setDailyData] = useState<any>(null);
   const [dailyLoading, setDailyLoading] = useState(false);
+  const avatarInputRef = useRef<HTMLInputElement | null>(null);
+  /** Histórico tipo browser para ← → */
+  const [navHistory, setNavHistory] = useState<string[]>([aba || 'home']);
+  const [navIndex, setNavIndex] = useState(0);
+  const navSkipRef = useRef(false);
+  const role = sessionUser?.role || 'operador';
+  const isAdmin = role === 'admin' || role === 'root';
+  const themeMeta = THEME_META[appTheme] || THEME_META.light;
+  const ThemeIcon = themeMeta.icon;
+  const sessionAvatar = getUserAvatar(utilizadorAvatares, sessionUser);
+
+  useEffect(() => {
+    if (navSkipRef.current) {
+      navSkipRef.current = false;
+      return;
+    }
+    const current = navHistory[navIndex];
+    if (aba && aba !== current) {
+      setNavHistory((prev) => {
+        const trimmed = prev.slice(0, navIndex + 1);
+        trimmed.push(aba);
+        const next = trimmed.slice(-40);
+        setNavIndex(next.length - 1);
+        return next;
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [aba]);
+
+  const canGoBack = navIndex > 0;
+  const canGoForward = navIndex < navHistory.length - 1;
+
+  const goBack = () => {
+    if (!canGoBack) return;
+    const next = navIndex - 1;
+    navSkipRef.current = true;
+    setNavIndex(next);
+    setAba(navHistory[next]);
+  };
+
+  const goForward = () => {
+    if (!canGoForward) return;
+    const next = navIndex + 1;
+    navSkipRef.current = true;
+    setNavIndex(next);
+    setAba(navHistory[next]);
+  };
+
+  const onPickAvatar = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !sessionUser || !setUtilizadorAvatares) return;
+    if (!file.type.startsWith('image/')) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = String(reader.result || '');
+      if (!dataUrl) return;
+      setUtilizadorAvatares((prev) => {
+        const next = setUserAvatar(prev, sessionUser, dataUrl);
+        persistUserAvatars(next);
+        return next;
+      });
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  // Relatórios só admin/root
+  const visibleTabs = NAV_TABS.filter((t) => {
+    if (t.id === 'relatorios_detalhado') return isAdmin;
+    return true;
+  });
 
   useEffect(() => {
     if (!mostrarDailyReport) return;
@@ -85,287 +207,338 @@ const Header: React.FC<HeaderProps> = React.memo(({
     load();
     return () => { mounted = false; };
   }, [mostrarDailyReport]);
-  return (
-    <header className="nl-glass relative h-[56px] flex shrink-0 items-center justify-between gap-2 px-4 z-[100]">
-      {/* Stats overlay (gestao only) */}
-      {aba === 'gestao' && listaStats && (
-        <div
-          className="absolute top-1/2 hidden -translate-y-1/2 flex-col items-start gap-1 xl:flex"
-          style={{ left: `max(260px, calc((100vw - ${larguraListas}px) / 2))` }}
-        >
-          <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.08em] nl-text-sub leading-none">
-            <Users size={12} strokeWidth={2.6} className="text-[var(--color-primary)]" />
-            {listaStats.total} alunos
-          </span>
-          <span className={`flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.08em] leading-none ${listaStats.atrasados > 0 ? 'text-[var(--color-error)]' : 'text-[var(--color-success)]'}`}>
-            <AlertCircle size={12} strokeWidth={2.6} />
-            {listaStats.atrasados} atraso
-          </span>
-          <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--color-success)] leading-none">
-            <Wallet size={12} strokeWidth={2.6} />
-            {formatCve(listaStats.recebido)}
-          </span>
-        </div>
-      )}
 
-      {/* Left: Branding */}
-      <div className="flex min-w-0 items-center gap-2.5">
-        <div className="w-7 h-7 rounded-[var(--radius-compact)] flex items-center justify-center overflow-hidden shrink-0" style={{ background: 'var(--color-primary-light)' }}>
-          <img src={appLogo} alt="Logo" className="w-4 h-4 object-contain" />
+  const activeTab = visibleTabs.find((t) => t.id === aba) || visibleTabs[0];
+
+  return (
+    <header className="nl-glass relative z-[100] flex h-14 shrink-0 items-center gap-3 px-4">
+      {/* faixa de cor dinâmica da aba activa */}
+      <div
+        className={`pointer-events-none absolute inset-x-0 bottom-0 h-[2px] opacity-90 transition-colors duration-300 ${
+          activeTab?.id === 'gestao' || aba === 'contactos'
+            ? 'bg-[var(--color-success)]'
+            : activeTab?.id === 'relatorios_detalhado'
+              ? 'bg-[#c64600]'
+              : 'bg-[var(--color-primary)]'
+        }`}
+      />
+
+      {/* ── Esquerda: marca + refresh + navegação browser ── */}
+      <div className="flex min-w-0 shrink-0 items-center gap-1.5 sm:gap-2">
+        <div
+          className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-[var(--radius-control)] border border-[var(--border-light)] shadow-[var(--shadow-xs)]"
+          style={{ background: 'var(--color-primary-light)' }}
+        >
+          <img src={appLogo} alt="" className="h-5 w-5 object-contain" />
         </div>
-        <div className="flex flex-col min-w-0 leading-tight">
-          <span className="text-[11px] font-bold nl-text uppercase truncate">{nomeAcademia}</span>
-          <span className="text-[8px] font-semibold nl-text-muted uppercase tracking-[0.12em] truncate">{COMPANY_NAME}</span>
+        <div className="hidden min-w-0 flex-col leading-tight sm:flex">
+          <span className="max-w-[140px] truncate text-[13px] font-semibold nl-text">
+            {nomeAcademia}
+          </span>
+          <span className="text-[10px] font-medium nl-text-muted">
+            {activeTab?.label || 'Painel'}
+          </span>
+        </div>
+
+        <button
+          type="button"
+          onClick={onRefreshApp}
+          className="nl-icon-btn ml-0.5"
+          title="Atualizar"
+          aria-label="Atualizar aplicação"
+        >
+          <RotateCw size={14} className={sincronizando ? 'animate-spin' : ''} />
+        </button>
+
+        <div className="ml-0.5 flex items-center gap-0.5 rounded-[var(--radius-control)] border border-[var(--border)] bg-[var(--color-secondary-light)] p-0.5">
+          <button
+            type="button"
+            onClick={goBack}
+            disabled={!canGoBack}
+            className="nl-icon-btn nl-icon-btn-sm !h-7 !w-7 disabled:opacity-30"
+            title="Voltar"
+            aria-label="Navegação: voltar"
+          >
+            <ChevronLeft size={15} />
+          </button>
+          <button
+            type="button"
+            onClick={goForward}
+            disabled={!canGoForward}
+            className="nl-icon-btn nl-icon-btn-sm !h-7 !w-7 disabled:opacity-30"
+            title="Avançar"
+            aria-label="Navegação: avançar"
+          >
+            <ChevronRight size={15} />
+          </button>
         </div>
       </div>
 
-      {/* Center: Navigation */}
-      <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
-        <nav className="flex items-center gap-1 rounded-[var(--radius-md)] bg-[var(--color-secondary-lighter)] p-0.5">
-          {NAV_ITEMS.map((nav) => (
+      {/* ── Centro: 3 abas coloridas ── */}
+      <nav
+        className="absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-1/2 items-center gap-1 rounded-[var(--radius-control)] border border-[var(--border)] bg-[var(--color-secondary-light)] p-1 shadow-[var(--shadow-xs)]"
+        aria-label="Navegação principal"
+      >
+        {visibleTabs.map((tab) => {
+          const Icon = tab.icon;
+          const active = aba === tab.id || (tab.id === 'gestao' && (aba === 'contactos'));
+          const softActive = tab.id === 'gestao' && aba === 'contactos';
+          return (
             <button
-              key={nav.id}
-              onClick={() => setAba(nav.id)}
-              className={`flex h-9 items-center justify-center gap-2 rounded-[var(--radius-sm)] px-5 text-[13px] font-semibold tracking-tight transition-all duration-150 ${
-                aba === nav.id
-                  ? 'bg-[var(--bg-surface)] text-[var(--color-primary)] shadow-[var(--shadow-xs)]'
-                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+              key={tab.id}
+              type="button"
+              onClick={() => setAba(tab.id)}
+              className={`inline-flex h-9 items-center gap-1.5 rounded-[8px] px-3.5 text-[13px] font-semibold transition-all duration-200 ${
+                active && !softActive
+                  ? tab.active
+                  : softActive
+                    ? 'bg-[color-mix(in_srgb,var(--color-success)_18%,var(--bg-surface))] text-[var(--color-success)]'
+                    : tab.idle
               }`}
             >
-              <span className="[&>svg]:w-[17px] [&>svg]:h-[17px]">
-                {nav.icon}
-              </span>
-              <span>{nav.label}</span>
+              <Icon size={15} strokeWidth={2.2} />
+              <span className="hidden sm:inline">{tab.label}</span>
+              {tab.id === 'relatorios_detalhado' && relatorioMensalDisponivel && (
+                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white/90" title="Relatório mensal disponível" />
+              )}
             </button>
-          ))}
-        </nav>
-      </div>
+          );
+        })}
+      </nav>
 
-      {/* Right: Actions + Profile */}
-      <div className="ml-auto flex items-center justify-end gap-2">
-        {/* Secondary page indicator */}
-        {(aba === 'relatorios_detalhado' || aba === 'configuracoes' || aba === 'contactos') && (
-          <div className="flex items-center gap-2 pr-2 border-r border-[var(--border-light)]">
-            <button
-              onClick={() => setAba('home')}
-              className="flex items-center gap-1 text-[10px] font-semibold nl-text-muted hover:text-[var(--color-primary)] transition-colors"
-              title="Voltar ao Painel"
-            >
-              <ChevronLeft size={12} />
-            </button>
-            <span className={`flex items-center gap-1.5 px-2 py-0.5 rounded-[var(--radius-compact)] text-[10px] font-bold ${
-              aba === 'relatorios_detalhado'
-                ? 'bg-amber-50 text-amber-700'
-                : aba === 'contactos'
-                ? 'bg-violet-50 text-violet-700'
-                : 'bg-[var(--color-secondary-lighter)] nl-text-sub'
-            }`}>
-              {aba === 'relatorios_detalhado' ? <FileBarChart size={10} /> : aba === 'contactos' ? <BookUser size={10} /> : <Settings size={10} />}
-              {aba === 'relatorios_detalhado' ? 'Relatório' : aba === 'contactos' ? 'Contactos' : 'Ajustes'}
-            </span>
-          </div>
-        )}
-
-        {/* Gestao toolbar */}
+      {/* ── Direita: acções ── */}
+      <div className="ml-auto flex min-w-0 shrink-0 items-center justify-end gap-2">
         {aba === 'gestao' && (
-          <div className="flex items-center gap-1">
-            <button
-              onClick={() => setAba('contactos')}
-              className="nl-icon-btn"
-              title="Contactos"
-            >
-              <BookUser size={15} strokeWidth={2.2} />
-            </button>
-            <button onClick={onMatricular} className="nl-btn nl-btn-primary nl-btn-sm">
-              <Plus size={13} /> Matricular
-            </button>
-            {(sessionUser?.role === 'admin' || sessionUser?.role === 'root') && (
-              <button
-                onClick={() => setAba('relatorios_detalhado')}
-                className={`nl-btn nl-btn-sm ${
-                  relatorioMensalDisponivel
-                    ? '!bg-[var(--color-success)] !text-white'
-                    : 'nl-btn-secondary'
-                }`}
-                title="Relatórios administrativos"
-              >
-                {relatorioMensalDisponivel ? <Star size={12} className="fill-current" /> : <FileText size={12} />}
-                Relatório
-              </button>
-            )}
-          </div>
-        )}
-
-        {/* Utility buttons */}
-        <div className="flex items-center gap-0.5 rounded-[var(--radius-sm)] border border-[var(--border-light)] p-0.5">
-          <button onClick={onRefreshApp} className="nl-icon-btn nl-icon-btn-sm" title="Atualizar">
-            <RotateCw size={13} className={sincronizando ? 'animate-spin' : ''} />
-          </button>
-          <button onClick={() => setMostrarDailyReport(!mostrarDailyReport)} className="nl-icon-btn nl-icon-btn-sm relative" title="Resumo diário">
-            <Activity size={13} />
-          </button>
-          <button onClick={() => setMostrarNotificacoes(!mostrarNotificacoes)} className="nl-icon-btn nl-icon-btn-sm relative" title="Notificações">
-            <Bell size={13} />
-            {notificacoesNaoLidas > 0 && (
-              <span className="absolute top-1 right-1 w-1.5 h-1.5 bg-[var(--color-error)] rounded-full" />
-            )}
-          </button>
-        </div>
-
-        {/* Daily Report Popup */}
-        {mostrarDailyReport && (
           <>
-            <div className="fixed inset-0 z-[200]" onClick={() => setMostrarDailyReport(false)} />
-            <div className="absolute right-36 top-full mt-2 w-[380px] nl-modal p-0 z-[210] animate-slide-up overflow-hidden shadow-[var(--shadow-xl)]">
-              <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-4 py-3 flex items-center justify-between">
-                <div>
-                  <p className="text-[8px] font-black uppercase tracking-[0.18em] text-blue-200">Resumo Diário</p>
-                  <p className="text-[14px] font-black text-white mt-0.5">{new Date().toLocaleDateString('pt-PT')}</p>
-                </div>
-                <button onClick={() => setMostrarDailyReport(false)} className="h-7 w-7 rounded-full bg-white/15 flex items-center justify-center text-white hover:bg-white/25 transition-colors"><X size={13} /></button>
-              </div>
-              <div className="p-4 space-y-3 max-h-[400px] overflow-y-auto custom-scrollbar">
-                {dailyLoading ? (
-                  <div className="py-8 text-center text-[11px] font-bold text-slate-400">A carregar resumo...</div>
-                ) : dailyData ? (
-                  <>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div className="rounded-[var(--radius-control)] bg-emerald-50 border border-emerald-100 p-3">
-                        <div className="flex items-center gap-1.5 mb-1">
-                          <TrendingUp size={12} className="text-emerald-600" />
-                          <span className="text-[8px] font-black uppercase tracking-[0.12em] text-emerald-700">Receita</span>
-                        </div>
-                        <p className="text-[16px] font-black text-emerald-700 tabular-nums">{formatCve(dailyData.pagamentosHoje.reduce((s: number, p: any) => s + (Number(p.valor) || 0), 0))}</p>
-                      </div>
-                      <div className="rounded-[var(--radius-control)] bg-blue-50 border border-blue-100 p-3">
-                        <div className="flex items-center gap-1.5 mb-1">
-                          <CheckCircle2 size={12} className="text-blue-600" />
-                          <span className="text-[8px] font-black uppercase tracking-[0.12em] text-blue-700">Pagamentos</span>
-                        </div>
-                        <p className="text-[16px] font-black text-blue-700 tabular-nums">{dailyData.pagamentosHoje.length}</p>
-                      </div>
-                    </div>
-
-                    {dailyData.pagamentosHoje.length > 0 && (
-                      <div>
-                        <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-500 mb-1.5">Pagamentos de hoje</p>
-                        <div className="space-y-1">
-                          {dailyData.pagamentosHoje.slice(0, 4).map((p: any) => (
-                            <div key={p.id} className="flex items-center justify-between rounded-[var(--radius-control)] bg-emerald-50/60 px-3 py-1.5">
-                              <span className="text-[11px] font-bold text-slate-700 truncate">{p.nome || p.aluno_id}</span>
-                              <span className="text-[11px] font-black text-emerald-700 tabular-nums">{formatCve(p.valor)}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    <div className="grid grid-cols-3 gap-2 text-center">
-                      <div className="rounded-[var(--radius-control)] bg-slate-50 border border-slate-200 p-2">
-                        <p className="text-[16px] font-black text-slate-700 tabular-nums">{dailyData.logsHoje.length}</p>
-                        <p className="text-[7px] font-bold uppercase tracking-[0.12em] text-slate-400 mt-0.5">Ações</p>
-                      </div>
-                      <div className="rounded-[var(--radius-control)] bg-blue-50 border border-blue-100 p-2">
-                        <p className="text-[16px] font-black text-blue-700 tabular-nums">{dailyData.loginsHoje.length}</p>
-                        <p className="text-[7px] font-bold uppercase tracking-[0.12em] text-blue-500 mt-0.5">Acessos</p>
-                      </div>
-                      <div className="rounded-[var(--radius-control)] bg-amber-50 border border-amber-100 p-2">
-                        <p className="text-[16px] font-black text-amber-700 tabular-nums">{dailyData.matriculasHoje.length}</p>
-                        <p className="text-[7px] font-bold uppercase tracking-[0.12em] text-amber-500 mt-0.5">Matrículas</p>
-                      </div>
-                    </div>
-                  </>
-                ) : (
-                  <div className="py-8 text-center text-[11px] font-bold text-slate-400">Erro ao carregar resumo.</div>
-                )}
-              </div>
-              <div className="border-t border-[var(--border-light)] px-4 py-2.5 flex justify-between items-center bg-[#FAFBFC]">
-                <span className="text-[9px] text-slate-400 font-semibold">Atualizado automaticamente</span>
-                <button onClick={() => { setMostrarDailyReport(false); setAba('relatorios_detalhado'); }} className="inline-flex h-7 items-center gap-1 rounded-[var(--radius-control)] bg-blue-600 px-3 text-[9px] font-black uppercase tracking-[0.12em] text-white hover:bg-blue-700 transition-colors">
-                  Ver mais <ChevronLeft size={11} className="rotate-180" />
-                </button>
-              </div>
-            </div>
+            <button type="button" onClick={() => setAba('contactos')} className="nl-icon-btn" title="Contactos">
+              <BookUser size={15} />
+            </button>
+            <button
+              type="button"
+              onClick={onMatricular}
+              className="inline-flex h-9 items-center gap-2 rounded-full px-4 text-[13px] font-semibold text-white shadow-[0_4px_14px_rgba(37,99,235,0.35)] transition-all hover:brightness-110 hover:shadow-[0_6px_18px_rgba(37,99,235,0.42)] active:scale-[0.98]"
+              style={{
+                background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 48%, #1d4ed8 100%)',
+              }}
+              title="Matricular aluno"
+            >
+              <Dumbbell size={15} strokeWidth={2.2} />
+              <span className="hidden md:inline">Matricular</span>
+            </button>
           </>
         )}
+        {aba === 'contactos' && (
+          <button type="button" onClick={() => setAba('gestao')} className="nl-btn nl-btn-secondary nl-btn-sm !h-9">
+            <Users size={14} /> Alunos
+          </button>
+        )}
+        {aba === 'home' && (
+          <button
+            type="button"
+            onClick={onMatricular}
+            className="inline-flex h-9 items-center gap-2 rounded-full px-4 text-[13px] font-semibold text-white shadow-[0_4px_14px_rgba(37,99,235,0.35)] transition-all hover:brightness-110 hover:shadow-[0_6px_18px_rgba(37,99,235,0.42)] active:scale-[0.98]"
+            style={{
+              background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 48%, #1d4ed8 100%)',
+            }}
+            title="Matricular aluno"
+          >
+            <Dumbbell size={15} strokeWidth={2.2} />
+            <span className="hidden md:inline">Matricular</span>
+          </button>
+        )}
 
-        {/* User Avatar & Menu */}
+        <div className="mx-0.5 h-6 w-px bg-[var(--border)]" />
+
+        {/* Tema: claro → escuro → claude */}
+        <button
+          type="button"
+          onClick={onCycleTheme}
+          className="nl-icon-btn relative"
+          title={`${themeMeta.label} — clique para mudar`}
+          aria-label={`Tema actual: ${themeMeta.label}. Clique para alternar.`}
+        >
+          <ThemeIcon size={15} className="transition-transform duration-300" />
+        </button>
+
+        {isAdmin && (
+          <button
+            type="button"
+            onClick={() => setMostrarDailyReport(!mostrarDailyReport)}
+            className="nl-icon-btn relative"
+            title="Resumo diário"
+          >
+            <Activity size={14} />
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={() => setMostrarNotificacoes(!mostrarNotificacoes)}
+          className="nl-icon-btn relative"
+          title="Notificações"
+        >
+          <Bell size={14} />
+          {notificacoesNaoLidas > 0 && (
+            <span className="absolute top-1.5 right-1.5 h-1.5 w-1.5 rounded-full bg-[var(--color-error)]" />
+          )}
+        </button>
+
         <div className="relative">
           <button
+            type="button"
             onClick={() => setMostrarUserMenu(!mostrarUserMenu)}
-            className={`w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-[12px] border-2 border-[var(--bg-app)] shadow-[var(--shadow-xs)] hover:shadow-[var(--shadow-md)] transition-all ${
-              aba === 'relatorios_detalhado' ? 'ring-2 ring-amber-400' :
-              aba === 'configuracoes' ? 'ring-2 ring-slate-400' :
-              aba === 'contactos' ? 'ring-2 ring-violet-400' :
-              'ring-1 ring-[var(--border)]'
-            }`}
-            style={{ background: 'var(--color-primary)' }}
-            title={aba === 'relatorios_detalhado' ? 'Relatório activo' : aba === 'configuracoes' ? 'Ajustes activos' : aba === 'contactos' ? 'Contactos activos' : 'Menu'}
+            className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full text-[13px] font-semibold text-white ring-2 ring-[var(--border-light)] transition-transform hover:scale-105"
+            style={{ background: sessionAvatar ? 'transparent' : 'var(--color-primary)' }}
+            title={sessionUser?.name || 'Menu'}
           >
-            {(sessionUser?.name || 'U').charAt(0).toUpperCase()}
+            {sessionAvatar
+              ? <img src={sessionAvatar} alt="" className="h-full w-full object-cover" />
+              : userInitials(sessionUser?.name)}
           </button>
+          <input
+            ref={avatarInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={onPickAvatar}
+          />
 
           {mostrarUserMenu && (
             <>
               <div className="fixed inset-0 z-[100]" onClick={() => setMostrarUserMenu(false)} />
-              <div className="absolute right-0 mt-2 w-[220px] nl-modal py-1.5 z-[110] animate-slide-up">
-                <div className="px-3.5 py-2 border-b border-[var(--border-light)] mb-1">
-                  <p className="text-[12px] font-bold nl-text leading-tight">{sessionUser?.name}</p>
-                  <p className="text-[9px] font-semibold nl-text-muted uppercase tracking-widest mt-0.5">{sessionUser?.role === 'admin' ? 'Administrador' : 'Operador'}</p>
+              <div className="absolute right-0 z-[110] mt-2 w-[240px] animate-slide-up nl-modal py-1.5">
+                <div className="mb-1 flex items-center gap-2.5 border-b border-[var(--border-light)] px-3.5 py-2.5">
+                  <div
+                    className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full text-[12px] font-bold text-white"
+                    style={{ background: sessionAvatar ? 'transparent' : 'var(--color-primary)' }}
+                  >
+                    {sessionAvatar
+                      ? <img src={sessionAvatar} alt="" className="h-full w-full object-cover" />
+                      : userInitials(sessionUser?.name)}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="truncate text-[13px] font-semibold leading-tight nl-text">{sessionUser?.name}</p>
+                    <p className="mt-0.5 text-[11px] font-medium nl-text-muted">
+                      {isAdmin ? 'Administrador' : 'Operador'}
+                    </p>
+                  </div>
                 </div>
-
-                <div className="px-1 space-y-0.5">
-                  {sessionUser?.role === 'admin' && (
-                    <>
-                      <p className="px-2.5 pt-1 pb-0.5 text-[8px] font-bold uppercase tracking-[0.18em] nl-text-muted">Ferramentas</p>
-                      <button
-                        onClick={() => { setAba('relatorios_detalhado'); setMostrarUserMenu(false); }}
-                        className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-[var(--radius-sm)] hover:bg-amber-50 text-[12px] font-semibold text-amber-700 transition-colors"
-                      >
-                        <FileBarChart size={14} className="text-amber-500 shrink-0" />
-                        <span className="flex-1 text-left">Relatório</span>
-                        <kbd className="nl-kbd ml-auto">⌘R</kbd>
-                      </button>
-                      <button
-                        onClick={() => { setAba('configuracoes'); setMostrarUserMenu(false); }}
-                        className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-[var(--radius-sm)] hover:bg-[var(--color-secondary-light)] text-[12px] font-semibold nl-text transition-colors"
-                      >
-                        <Settings size={14} className="nl-text-muted shrink-0" />
-                        <span className="flex-1 text-left">Ajustes</span>
-                        <kbd className="nl-kbd ml-auto">⌘,</kbd>
-                      </button>
-                      <button
-                        onClick={() => { setAba('contactos'); setMostrarUserMenu(false); }}
-                        className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-[var(--radius-sm)] hover:bg-violet-50 text-[12px] font-semibold text-violet-700 transition-colors"
-                      >
-                        <BookUser size={14} className="text-violet-500 shrink-0" />
-                        <span className="flex-1 text-left">Contactos</span>
-                        <kbd className="nl-kbd ml-auto">⌘J</kbd>
-                      </button>
-                      <div className="nl-divider my-1 mx-2" />
-                    </>
-                  )}
-
+                <div className="space-y-0.5 px-1">
                   <button
+                    type="button"
+                    onClick={() => avatarInputRef.current?.click()}
+                    className="flex w-full items-center gap-2.5 rounded-[var(--radius-sm)] px-2.5 py-1.5 text-[12px] font-medium nl-text transition-colors hover:bg-[var(--color-secondary-light)]"
+                  >
+                    <Camera size={14} className="nl-text-muted" /> Personalizar foto
+                  </button>
+                  {isAdmin && (
+                    <button
+                      type="button"
+                      onClick={() => { setAba('configuracoes'); setMostrarUserMenu(false); }}
+                      className="flex w-full items-center gap-2.5 rounded-[var(--radius-sm)] px-2.5 py-1.5 text-[12px] font-medium nl-text transition-colors hover:bg-[var(--color-secondary-light)]"
+                    >
+                      <Settings size={14} className="nl-text-muted" /> Ajustes
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => { setAba('contactos'); setMostrarUserMenu(false); }}
+                    className="flex w-full items-center gap-2.5 rounded-[var(--radius-sm)] px-2.5 py-1.5 text-[12px] font-medium nl-text transition-colors hover:bg-[var(--color-secondary-light)]"
+                  >
+                    <BookUser size={14} className="nl-text-muted" /> Contactos
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => { setMostrarSobreDoc(true); setMostrarUserMenu(false); }}
-                    className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-[var(--radius-sm)] hover:bg-[var(--color-secondary-light)] text-[12px] font-medium nl-text transition-colors"
+                    className="flex w-full items-center gap-2.5 rounded-[var(--radius-sm)] px-2.5 py-1.5 text-[12px] font-medium nl-text transition-colors hover:bg-[var(--color-secondary-light)]"
                   >
                     <Info size={14} className="nl-text-muted" /> Sobre
                   </button>
-
                   <div className="nl-divider my-1 mx-2" />
-
                   <button
+                    type="button"
                     onClick={onLogout}
-                    className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-[var(--radius-sm)] hover:bg-red-50 text-[12px] font-medium text-[var(--color-error)] transition-colors"
+                    className="flex w-full items-center gap-2.5 rounded-[var(--radius-sm)] px-2.5 py-1.5 text-[12px] font-medium text-[var(--color-error)] transition-colors hover:bg-[color-mix(in_srgb,var(--color-error)_10%,var(--bg-surface))]"
                   >
-                    <LogOut size={14} /> Terminar Sessão
+                    <LogOut size={14} /> Terminar sessão
                   </button>
                 </div>
               </div>
             </>
           )}
         </div>
+
+        {/* Daily report popover */}
+        {mostrarDailyReport && (
+          <>
+            <div className="fixed inset-0 z-[200]" onClick={() => setMostrarDailyReport(false)} />
+            <div className="absolute right-3 top-full z-[210] mt-2 w-[360px] overflow-hidden animate-slide-up nl-modal p-0">
+              <div className="nl-modal-header !py-2.5">
+                <div>
+                  <p className="text-[11px] font-medium nl-text-muted">Resumo diário</p>
+                  <p className="text-[14px] font-semibold nl-text">{new Date().toLocaleDateString('pt-PT')}</p>
+                </div>
+                <button type="button" onClick={() => setMostrarDailyReport(false)} className="nl-icon-btn nl-icon-btn-sm" aria-label="Fechar">
+                  <X size={14} />
+                </button>
+              </div>
+              <div className="max-h-[360px] space-y-3 overflow-y-auto p-3 custom-scrollbar">
+                {dailyLoading ? (
+                  <p className="py-6 text-center text-[12px] nl-text-muted">A carregar…</p>
+                ) : dailyData ? (
+                  <>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="rounded-[var(--radius-control)] border border-[var(--border)] bg-[var(--color-secondary-light)] p-2.5">
+                        <div className="mb-1 flex items-center gap-1 text-[var(--color-success)]">
+                          <TrendingUp size={12} />
+                          <span className="text-[11px] font-medium">Receita</span>
+                        </div>
+                        <p className="text-[15px] font-semibold tabular-nums text-[var(--color-success)]">
+                          {formatCve(dailyData.pagamentosHoje.reduce((s: number, p: any) => s + (Number(p.valor) || 0), 0))}
+                        </p>
+                      </div>
+                      <div className="rounded-[var(--radius-control)] border border-[var(--border)] bg-[var(--color-primary-light)] p-2.5">
+                        <div className="mb-1 flex items-center gap-1 text-[var(--color-primary)]">
+                          <CheckCircle2 size={12} />
+                          <span className="text-[11px] font-medium">Pagamentos</span>
+                        </div>
+                        <p className="text-[15px] font-semibold tabular-nums text-[var(--color-primary)]">
+                          {dailyData.pagamentosHoje.length}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-3 gap-1.5 text-center">
+                      <div className="rounded-[var(--radius-compact)] border border-[var(--border)] p-2">
+                        <p className="text-[15px] font-semibold tabular-nums">{dailyData.logsHoje.length}</p>
+                        <p className="text-[10px] nl-text-muted">Ações</p>
+                      </div>
+                      <div className="rounded-[var(--radius-compact)] border border-[var(--border)] p-2">
+                        <p className="text-[15px] font-semibold tabular-nums">{dailyData.loginsHoje.length}</p>
+                        <p className="text-[10px] nl-text-muted">Acessos</p>
+                      </div>
+                      <div className="rounded-[var(--radius-compact)] border border-[var(--border)] p-2">
+                        <p className="text-[15px] font-semibold tabular-nums">{dailyData.matriculasHoje.length}</p>
+                        <p className="text-[10px] nl-text-muted">Matrículas</p>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <p className="py-6 text-center text-[12px] nl-text-muted">Erro ao carregar.</p>
+                )}
+              </div>
+              {isAdmin && (
+                <div className="nl-modal-footer !justify-end">
+                  <button
+                    type="button"
+                    onClick={() => { setMostrarDailyReport(false); setAba('relatorios_detalhado'); }}
+                    className="nl-btn nl-btn-primary nl-btn-sm"
+                  >
+                    <Wallet size={13} /> Abrir relatórios
+                  </button>
+                </div>
+              )}
+            </div>
+          </>
+        )}
       </div>
     </header>
   );

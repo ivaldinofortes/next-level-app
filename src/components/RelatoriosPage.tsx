@@ -1,121 +1,229 @@
 import { memo, useEffect, useMemo, useState } from 'react';
 import {
-  AlertCircle, BarChart2, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight,
-  Clock, Database, Download, FileBarChart, Printer, Search, ShieldCheck,
-  StickyNote, TrendingUp, UserCheck, Users, Wallet, XCircle, Activity,
-  BookUser, Smartphone, Edit, LogIn, CreditCard, Ban,
+  Activity,
+  Banknote,
+  BookUser,
+  CalendarDays,
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+  CreditCard,
+  Download,
+  Landmark,
+  LogIn,
+  Maximize2,
+  Minimize2,
+  Palmtree,
+  Pause,
+  Printer,
+  ShieldCheck,
+  StickyNote,
+  TrendingUp,
+  UserX,
+  Users,
+  Wallet,
 } from 'lucide-react';
 import {
-  formatCve, getStudentStatusForMonth, isPaymentInsideMonth, normalizeAmount, parseFlexibleDate,
+  formatCve,
+  getStudentStatusForMonth,
+  isPaymentInsideMonth,
+  normalizeAmount,
+  parseFlexibleDate,
 } from '../lib/billing';
-import {
-  MONTH_OPTIONS, getBillingBadgeLabel, STUDENT_STATUS_HELPERS,
-} from '../constants';
+import { MONTH_OPTIONS, PAYMENT_METHOD_OPTIONS, STUDENT_STATUS_HELPERS, getStudentStatusLabel, getManualStatusTone } from '../constants';
 import { isFutureMonth } from '../utils/formatting';
-import type { Student, Payment } from '../types';
+import type { Payment, Student } from '../types';
+import TimeRuler from './TimeRuler';
+
+type BentoTone = 'default' | 'green' | 'red' | 'blue' | 'orange' | 'teal' | 'violet';
+
+/**
+ * Card bento (mesmo espírito da Início):
+ * - tamanhos assimétricos via spanClosed/spanOpen (grelha 12)
+ * - expandMode width = cresce na linha | height = cresce para baixo
+ * - cores do sistema por tone
+ */
+function BentoPanel({
+  isOpen,
+  onToggle,
+  header,
+  preview,
+  children,
+  tone = 'default',
+  expandMode = 'height',
+  spanClosed = 'col-span-12 md:col-span-4',
+  spanOpen,
+  heightClosed = 'h-[220px]',
+  heightOpen,
+}: {
+  isOpen: boolean;
+  onToggle: () => void;
+  header: React.ReactNode;
+  /** Conteúdo compacto quando fechado (opcional; senão usa children) */
+  preview?: React.ReactNode;
+  children: React.ReactNode;
+  tone?: BentoTone;
+  expandMode?: 'width' | 'height';
+  spanClosed?: string;
+  spanOpen?: string;
+  heightClosed?: string;
+  heightOpen?: string;
+}) {
+  const toneCls: Record<BentoTone, string> = {
+    default: 'border-[var(--border)] bg-[var(--bg-surface)]',
+    green: 'border-[color-mix(in_srgb,var(--color-success)_38%,var(--border))] bg-[color-mix(in_srgb,var(--color-success)_8%,var(--bg-surface))]',
+    red: 'border-[color-mix(in_srgb,var(--color-error)_38%,var(--border))] bg-[color-mix(in_srgb,var(--color-error)_8%,var(--bg-surface))]',
+    blue: 'border-[color-mix(in_srgb,var(--color-primary)_38%,var(--border))] bg-[color-mix(in_srgb,var(--color-primary)_8%,var(--bg-surface))]',
+    orange: 'border-[color-mix(in_srgb,#e66100_40%,var(--border))] bg-[color-mix(in_srgb,#e66100_8%,var(--bg-surface))]',
+    teal: 'border-[color-mix(in_srgb,#0f766e_40%,var(--border))] bg-[color-mix(in_srgb,#14b8a6_9%,var(--bg-surface))]',
+    violet: 'border-[color-mix(in_srgb,#6d28d9_38%,var(--border))] bg-[color-mix(in_srgb,#8b5cf6_9%,var(--bg-surface))]',
+  };
+
+  const openSpan = spanOpen || (expandMode === 'width' ? 'col-span-12' : spanClosed);
+  const openH = heightOpen || (expandMode === 'width' ? 'min-h-[320px] max-h-[520px]' : 'min-h-[360px] max-h-[560px]');
+  const sizeCls = isOpen
+    ? `${openH} shadow-[var(--shadow-md)]`
+    : `${heightClosed} shadow-[var(--shadow-xs)]`;
+
+  return (
+    <div
+      className={`flex flex-col overflow-hidden rounded-[var(--radius-lg)] border transition-all duration-300 ease-out ${toneCls[tone]} ${sizeCls} ${
+        isOpen ? openSpan : spanClosed
+      }`}
+    >
+      <div className="flex shrink-0 items-start justify-between gap-2 border-b border-[var(--border-light)] px-3.5 py-2.5">
+        <div className="min-w-0 flex-1">{header}</div>
+        <button
+          type="button"
+          onClick={onToggle}
+          className="nl-icon-btn nl-icon-btn-sm shrink-0"
+          title={isOpen ? 'Recolher' : 'Expandir'}
+        >
+          {isOpen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+        </button>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto custom-scrollbar px-3 py-2.5">
+        {isOpen ? children : (preview ?? children)}
+      </div>
+    </div>
+  );
+}
+
+// ── helpers ───────────────────────────────────────────────────────────────
 
 const parseAdminDate = (value?: string | null) => {
   if (!value) return null;
   const raw = String(value).trim();
   if (!raw) return null;
-  const ptMatch = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
-  if (ptMatch) return new Date(Number(ptMatch[3]), Number(ptMatch[2]) - 1, Number(ptMatch[1]));
-  const isoLike = raw.includes(' ') ? raw.replace(' ', 'T') : raw;
-  const date = new Date(isoLike);
-  return Number.isNaN(date.getTime()) ? parseFlexibleDate(raw) : date;
+  const pt = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (pt) return new Date(Number(pt[3]), Number(pt[2]) - 1, Number(pt[1]));
+  const d = new Date(raw.includes(' ') ? raw.replace(' ', 'T') : raw);
+  return Number.isNaN(d.getTime()) ? parseFlexibleDate(raw) : d;
 };
 
-const isSameDay = (left?: string | null, right = new Date()) => {
-  const date = parseAdminDate(left);
-  return Boolean(date && date.getFullYear() === right.getFullYear() && date.getMonth() === right.getMonth() && date.getDate() === right.getDate());
+const dayKey = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+const formatDayLabel = (isoKey: string) => {
+  const [y, m, d] = isoKey.split('-').map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString('pt-PT', { weekday: 'short', day: '2-digit', month: 'short' });
 };
 
-const isInsideMonth = (value: string | null | undefined, monthIndex: number, year: number) => {
-  const date = parseAdminDate(value);
-  return Boolean(date && date.getFullYear() === year && date.getMonth() === monthIndex);
+const normalizeMethod = (method?: string) => {
+  const m = String(method || '').trim().toLowerCase();
+  if (m.includes('multi') || m.includes('pos') || m.includes('cart')) return 'Multicaixa';
+  if (m.includes('transf') || m.includes('bank') || m.includes('dep')) return 'Transferência';
+  if (m.includes('din') || m.includes('cash')) return 'Dinheiro';
+  return method?.trim() || 'Outro';
 };
 
-type DailySummary = {
-  pagamentosHoje: any[];
-  matriculasHoje: any[];
-  logsHoje: any[];
-  loginsHoje: any[];
-  notasHoje: any[];
-  totalAlunos: number;
-  ativos: number;
-  pausados: number;
+const METHOD_META: Record<string, { icon: React.ReactNode; color: string; soft: string }> = {
+  Dinheiro: {
+    icon: <Banknote size={16} />,
+    color: 'var(--color-success)',
+    soft: 'color-mix(in srgb, var(--color-success) 12%, var(--bg-surface))',
+  },
+  Multicaixa: {
+    icon: <CreditCard size={16} />,
+    color: 'var(--color-primary)',
+    soft: 'color-mix(in srgb, var(--color-primary) 12%, var(--bg-surface))',
+  },
+  Transferência: {
+    icon: <Landmark size={16} />,
+    color: '#9141ac',
+    soft: 'color-mix(in srgb, #9141ac 12%, var(--bg-surface))',
+  },
+  Outro: {
+    icon: <Wallet size={16} />,
+    color: 'var(--text-secondary)',
+    soft: 'var(--color-secondary-light)',
+  },
 };
 
-const ACTION_ICONS: Record<string, React.ReactNode> = {
-  'Matrícula': <BookUser size={13} />,
-  'Pagamento': <Wallet size={13} />,
-  'Login': <LogIn size={13} />,
-  'Edição': <Edit size={13} />,
-  'Status Alterado': <Ban size={13} />,
-  'Eliminação (Soft)': <XCircle size={13} />,
-  'Importação': <Database size={13} />,
-};
-
-const ACTION_COLORS: Record<string, string> = {
-  'Matrícula': 'bg-blue-50 text-blue-700 border-blue-100',
-  'Pagamento': 'bg-emerald-50 text-emerald-700 border-emerald-100',
-  'Login': 'bg-slate-50 text-slate-600 border-slate-200',
-  'Edição': 'bg-amber-50 text-amber-700 border-amber-100',
-  'Status Alterado': 'bg-rose-50 text-rose-700 border-rose-100',
-  'Eliminação (Soft)': 'bg-red-50 text-red-700 border-red-100',
-  'Importação': 'bg-violet-50 text-violet-700 border-violet-100',
-};
-
-function BarChart({ data, height = 160 }: { data: { label: string; value: number; color?: string }[]; height?: number }) {
-  const max = Math.max(...data.map(d => d.value), 1);
-  const barW = Math.max(20, Math.min(40, (600 / data.length) - 4));
+function MiniBar({ data, height = 110 }: { data: { label: string; value: number; color?: string }[]; height?: number }) {
+  const max = Math.max(...data.map((d) => d.value), 1);
   return (
-    <div className="flex items-end gap-1.5" style={{ height }}>
-      {data.map((item, i) => {
-        const pct = (item.value / max) * 100;
-        const color = item.color || '#3B82F6';
-        return (
-          <div key={i} className="flex flex-1 flex-col items-center justify-end h-full">
-            <span className="text-[7px] font-bold text-slate-400 mb-0.5 tabular-nums">{item.value}</span>
-            <div className="w-full rounded-[3px] transition-all hover:opacity-80" style={{ height: `${Math.max(pct, 3)}%`, backgroundColor: color, minWidth: barW }} title={`${item.label}: ${item.value}`} />
-            <span className="text-[7px] font-bold text-slate-400 mt-0.5 truncate w-full text-center">{item.label.slice(0, 3)}</span>
-          </div>
-        );
-      })}
+    <div className="flex items-end gap-1" style={{ height }}>
+      {data.map((item, i) => (
+        <div key={i} className="flex h-full min-w-0 flex-1 flex-col items-center justify-end">
+          <span className="mb-0.5 text-[9px] font-semibold tabular-nums nl-text-muted">
+            {item.value > 0 ? (item.value >= 1000 ? `${Math.round(item.value / 1000)}k` : item.value) : ''}
+          </span>
+          <div
+            className="w-full max-w-[28px] rounded-t-[4px] transition-all"
+            style={{
+              height: `${Math.max(4, (item.value / max) * 100)}%`,
+              background: item.color || 'var(--color-primary)',
+              opacity: item.value > 0 ? 1 : 0.25,
+            }}
+            title={`${item.label}: ${formatCve(item.value)}`}
+          />
+          <span className="mt-1 w-full truncate text-center text-[9px] font-medium nl-text-muted">{item.label}</span>
+        </div>
+      ))}
     </div>
   );
 }
 
-function DonutChart({ segments, size = 120 }: { segments: { label: string; value: number; color: string }[]; size?: number }) {
-  const total = segments.reduce((s, seg) => s + seg.value, 0) || 1;
-  const cx = size / 2;
-  const cy = size / 2;
-  const r = size * 0.38;
-  const sw = size * 0.15;
+function Donut({ segments, size = 132 }: { segments: { label: string; value: number; color: string }[]; size?: number }) {
+  const total = segments.reduce((s, x) => s + x.value, 0) || 1;
+  const r = size * 0.36;
+  const sw = size * 0.14;
   const circ = 2 * Math.PI * r;
-  const arcs = segments.reduce<{ dash: number; dashoffset: number }[]>((items, seg) => {
+  const arcs = segments.reduce<{ dash: number; offset: number; color: string; i: number }[]>((acc, seg, i) => {
     const dash = (seg.value / total) * circ;
-    const dashoffset = (items.at(-1)?.dashoffset ?? 0) - (items.at(-1)?.dash ?? 0);
-    items.push({ dash, dashoffset });
-    return items;
+    const offset = acc.length ? acc[acc.length - 1].offset + acc[acc.length - 1].dash : 0;
+    acc.push({ dash, offset, color: seg.color, i });
+    return acc;
   }, []);
   return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="shrink-0">
-      {segments.map((seg, i) => {
-        const { dash, dashoffset } = arcs[i];
-        return <circle key={i} cx={cx} cy={cy} r={r} fill="none" stroke={seg.color} strokeWidth={sw} strokeDasharray={`${dash} ${circ - dash}`} strokeDashoffset={dashoffset} transform={`rotate(-90 ${cx} ${cy})`} />;
-      })}
-      <circle cx={cx} cy={cy} r={r * 0.65} fill="var(--bg-surface, #fff)" />
-    </svg>
+    <div className="relative shrink-0" style={{ width: size, height: size }}>
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+        {arcs.map((arc) => (
+          <circle
+            key={arc.i}
+            cx={size / 2}
+            cy={size / 2}
+            r={r}
+            fill="none"
+            stroke={arc.color}
+            strokeWidth={sw}
+            strokeDasharray={`${arc.dash} ${circ - arc.dash}`}
+            strokeDashoffset={-arc.offset}
+            transform={`rotate(-90 ${size / 2} ${size / 2})`}
+          />
+        ))}
+        <circle cx={size / 2} cy={size / 2} r={r * 0.62} fill="var(--bg-surface)" />
+      </svg>
+      <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+        <span className="text-[11px] font-medium nl-text-muted">Total</span>
+        <span className="text-[13px] font-semibold tabular-nums nl-text">{formatCve(total)}</span>
+      </div>
+    </div>
   );
 }
 
-function ActivityIcon({ acao }: { acao: string }) {
-  const key = Object.keys(ACTION_ICONS).find(k => acao.toLowerCase().includes(k.toLowerCase()));
-  const icon = key ? ACTION_ICONS[key] : <Activity size={13} />;
-  const colors = key ? ACTION_COLORS[key] : 'bg-slate-50 text-slate-600 border-slate-200';
-  return <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full border ${colors}`}>{icon}</span>;
-}
+// ── types ─────────────────────────────────────────────────────────────────
 
 export interface RelatoriosPageProps {
   mesRelatorio: string;
@@ -135,464 +243,1112 @@ export interface RelatoriosPageProps {
   onExportarPdf: () => void;
 }
 
+type MainTab = 'financeiro' | 'atividade';
+
+// ── page ──────────────────────────────────────────────────────────────────
+
 const RelatoriosPage = memo(function RelatoriosPage({
-  mesRelatorio, setMesRelatorio, anoRelatorio, setAnoRelatorio,
-  timelineFinanceiraMinimizada, setTimelineFinanceiraMinimizada,
-  alunos, pagamentos, hojeReferencia, larguraListas,
-  appLogo, nomeAcademia, sessionUser,
-  onExportarExcel, onExportarPdf,
+  mesRelatorio,
+  setMesRelatorio,
+  anoRelatorio,
+  setAnoRelatorio,
+  timelineFinanceiraMinimizada,
+  setTimelineFinanceiraMinimizada,
+  alunos,
+  pagamentos,
+  hojeReferencia,
+  larguraListas,
+  nomeAcademia,
+  sessionUser,
+  onExportarExcel,
+  onExportarPdf,
 }: RelatoriosPageProps) {
-  const [daily, setDaily] = useState<DailySummary | null>(null);
-  const [dailyLoading, setDailyLoading] = useState(true);
-  const [pesquisa, setPesquisa] = useState('');
-  const [abaAtividade, setAbaAtividade] = useState<'hoje' | 'timeline'>('hoje');
-  const [filtroUser, setFiltroUser] = useState<string>('todos');
-
   const isAdmin = sessionUser?.role === 'admin' || sessionUser?.role === 'root';
-  const mesIdxRel = MONTH_OPTIONS.indexOf(mesRelatorio);
-  const refRelatorio = useMemo(() => new Date(anoRelatorio, mesIdxRel + 1, 0), [anoRelatorio, mesIdxRel]);
-  const hoje = useMemo(() => new Date(), []);
+  const mesIdx = MONTH_OPTIONS.indexOf(mesRelatorio);
+  const [mainTab, setMainTab] = useState<MainTab>('financeiro');
+  const [selectedDay, setSelectedDay] = useState<string | null>(null);
+  const [filtroMetodo, setFiltroMetodo] = useState<string>('todos');
+  const [filtroUser, setFiltroUser] = useState<string>('todos');
+  /** Painéis bento — cada um expande sozinho (como na Início) */
+  const [openPanels, setOpenPanels] = useState({
+    metodos: false,
+    mix: false,
+    graficos: false,
+    cobertura: false,
+    movimentos: false,
+    inactivos: false,
+    equipa: true,
+    timeline: false,
+  });
+  const [adminData, setAdminData] = useState<{ users: any[]; logs: any[]; notes: any[] }>({
+    users: [],
+    logs: [],
+    notes: [],
+  });
+  const [adminLoading, setAdminLoading] = useState(false);
 
+  const togglePanel = (id: keyof typeof openPanels) => {
+    setOpenPanels((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  // Carregar atividade (logs, notas, users) — ligado ao backend
   useEffect(() => {
+    if (!isAdmin) return;
     let mounted = true;
     const load = async () => {
-      setDailyLoading(true);
+      setAdminLoading(true);
       try {
         const electron = (window as any).electron;
         if (!electron) return;
-        const res = await electron.ipcRenderer.invoke('reports:daily-summary');
-        if (mounted && res?.success) setDaily(res);
+        const res = await electron.ipcRenderer.invoke('reports:admin-data');
+        if (mounted && res?.success) {
+          setAdminData({
+            users: res.users || [],
+            logs: res.logs || [],
+            notes: res.notes || [],
+          });
+        }
+      } catch (e) {
+        console.error('Erro reports:admin-data', e);
       } finally {
-        if (mounted) setDailyLoading(false);
+        if (mounted) setAdminLoading(false);
       }
     };
     load();
-    const interval = setInterval(load, 60000);
-    return () => { mounted = false; clearInterval(interval); };
-  }, []);
+    const t = setInterval(load, 90000);
+    return () => {
+      mounted = false;
+      clearInterval(t);
+    };
+  }, [isAdmin, mesRelatorio, anoRelatorio]);
 
-  const alunosFiltrados = useMemo(() => {
-    if (!pesquisa.trim()) return alunos;
-    const q = pesquisa.trim().toLowerCase();
-    return alunos.filter(a => a.nome.toLowerCase().includes(q) || a.telefone?.includes(q));
-  }, [alunos, pesquisa]);
+  // ── Financeiro do período ──────────────────────────────────────────────
+  const finance = useMemo(() => {
+    const pagamentosMes = pagamentos.filter((p) => isPaymentInsideMonth(p, mesRelatorio, anoRelatorio));
+    const receitaMes = pagamentosMes.reduce((s, p) => s + normalizeAmount(p.valor), 0);
 
-  const relatorio = useMemo(() => {
-    const alunosPeriodo = alunosFiltrados
-      .filter((aluno) => {
-        const entrada = parseFlexibleDate(aluno.data_matricula);
-        return entrada ? entrada.getTime() <= refRelatorio.getTime() : true;
-      })
-      .sort((a, b) => a.nome.localeCompare(b.nome));
+    // Por método
+    const byMethodMap = new Map<string, { count: number; total: number }>();
+    for (const p of pagamentosMes) {
+      const key = normalizeMethod(p.metodo_pagamento);
+      const cur = byMethodMap.get(key) || { count: 0, total: 0 };
+      cur.count += 1;
+      cur.total += normalizeAmount(p.valor);
+      byMethodMap.set(key, cur);
+    }
+    // Garantir os 3 métodos principais
+    for (const m of PAYMENT_METHOD_OPTIONS.map((x) => x.label)) {
+      if (!byMethodMap.has(m)) byMethodMap.set(m, { count: 0, total: 0 });
+    }
+    const byMethod = Array.from(byMethodMap.entries())
+      .map(([method, v]) => ({ method, ...v, meta: METHOD_META[method] || METHOD_META.Outro }))
+      .sort((a, b) => b.total - a.total);
 
-    const resumos = alunosPeriodo.map((aluno) => ({
-      aluno,
-      resumo: getStudentStatusForMonth(aluno, pagamentos, anoRelatorio, mesIdxRel, hojeReferencia),
+    // Entradas diárias do mês
+    const daysInMonth = new Date(anoRelatorio, mesIdx + 1, 0).getDate();
+    const dailyMap = new Map<string, { total: number; count: number; items: Payment[] }>();
+    for (let d = 1; d <= daysInMonth; d++) {
+      const key = `${anoRelatorio}-${String(mesIdx + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      dailyMap.set(key, { total: 0, count: 0, items: [] });
+    }
+    for (const p of pagamentosMes) {
+      const date = parseAdminDate(p.data_pagamento);
+      if (!date) continue;
+      const key = dayKey(date);
+      const bucket = dailyMap.get(key);
+      if (!bucket) continue;
+      bucket.total += normalizeAmount(p.valor);
+      bucket.count += 1;
+      bucket.items.push(p);
+    }
+    const dailySeries = Array.from(dailyMap.entries()).map(([key, v]) => ({
+      key,
+      label: String(Number(key.slice(-2))),
+      value: v.total,
+      count: v.count,
+      items: v.items,
+      color: v.total > 0 ? 'var(--color-success)' : 'var(--border)',
     }));
 
-    const pagamentosMes = pagamentos.filter((p) => isPaymentInsideMonth(p, mesRelatorio, anoRelatorio));
-    const receitaMes = pagamentosMes.reduce((sum, p) => sum + normalizeAmount(p.valor), 0);
-    const previsaoMes = alunosPeriodo.filter((a) => STUDENT_STATUS_HELPERS.isOperational(a.status)).reduce((sum, a) => sum + normalizeAmount(a.plano), 0);
-    const atrasados = resumos.filter(({ resumo }) => resumo.status === 'atrasado' || resumo.status === 'hoje');
-    const pagos = resumos.filter(({ resumo }) => resumo.status === 'pago');
-    const pendentes = resumos.filter(({ resumo }) => ['pendente', 'critico', 'alerta'].includes(resumo.status));
-
-    const receita12Meses = Array.from({ length: 12 }, (_, i) => {
-      const m = (hoje.getMonth() - 11 + i + 12) % 12;
-      const a = hoje.getFullYear() - (hoje.getMonth() - 11 + i < 0 ? 1 : 0);
-      const mesLabel = MONTH_OPTIONS[m];
-      const total = pagamentos.filter((p) => isPaymentInsideMonth(p, mesLabel, a)).reduce((s, p) => s + normalizeAmount(p.valor), 0);
-      return { label: mesLabel, value: total, color: m === hoje.getMonth() ? '#059669' : '#94A3B8' };
+    // 6 meses receita
+    const receita6 = Array.from({ length: 6 }, (_, i) => {
+      const base = new Date(hojeReferencia.getFullYear(), hojeReferencia.getMonth() - 5 + i, 1);
+      const m = MONTH_OPTIONS[base.getMonth()];
+      const y = base.getFullYear();
+      const total = pagamentos
+        .filter((p) => isPaymentInsideMonth(p, m, y))
+        .reduce((s, p) => s + normalizeAmount(p.valor), 0);
+      return {
+        label: m.slice(0, 3),
+        value: total,
+        color: m === mesRelatorio && y === anoRelatorio ? 'var(--color-primary)' : 'var(--color-secondary)',
+        mes: m,
+        ano: y,
+      };
     });
 
-    const statusSegments = [
-      { label: 'Pago', value: pagos.length, color: '#16A34A' },
-      { label: 'Pendente', value: pendentes.length, color: '#D97706' },
-      { label: 'Atrasado', value: atrasados.length, color: '#DC2626' },
-    ];
+    // Cobertura alunos
+    const ref = new Date(anoRelatorio, mesIdx + 1, 0);
+    const alunosPeriodo = alunos.filter((a) => {
+      const entrada = parseFlexibleDate(a.data_matricula);
+      return entrada ? entrada.getTime() <= ref.getTime() : true;
+    });
+    const resumos = alunosPeriodo.map((aluno) => ({
+      aluno,
+      resumo: getStudentStatusForMonth(aluno, pagamentos, anoRelatorio, mesIdx, hojeReferencia),
+    }));
+    const operacionais = resumos.filter((r) => STUDENT_STATUS_HELPERS.isOperational(r.aluno.status));
+    const atrasados = operacionais.filter((r) => r.resumo.status === 'atrasado' || r.resumo.status === 'hoje');
+    const pagos = operacionais.filter((r) => r.resumo.status === 'pago');
+    const inactivos = resumos.filter((r) => {
+      const s = r.aluno.status;
+      return (
+        STUDENT_STATUS_HELPERS.isPaused(s)
+        || STUDENT_STATUS_HELPERS.isQuit(s)
+        || STUDENT_STATUS_HELPERS.isBlocked(s)
+      );
+    });
+    const desistentes = inactivos.filter((r) => STUDENT_STATUS_HELPERS.isQuit(r.aluno.status));
+    const emPausa = inactivos.filter((r) => STUDENT_STATUS_HELPERS.isPaused(r.aluno.status) && !STUDENT_STATUS_HELPERS.isOnLeave(r.aluno.status));
+    const ferias = inactivos.filter((r) => STUDENT_STATUS_HELPERS.isOnLeave(r.aluno.status));
+    const bloqueados = inactivos.filter((r) => STUDENT_STATUS_HELPERS.isBlocked(r.aluno.status));
+
+    const previsao = operacionais.reduce((s, { aluno }) => s + normalizeAmount(aluno.plano), 0);
+
+    const pagamentosFiltrados =
+      filtroMetodo === 'todos'
+        ? pagamentosMes
+        : pagamentosMes.filter((p) => normalizeMethod(p.metodo_pagamento) === filtroMetodo);
 
     return {
-      alunosPeriodo, resumos, pagamentosMes, receitaMes, previsaoMes,
-      pendenteMes: Math.max(0, previsaoMes - receitaMes),
-      atrasados, pagos, pendentes, receita12Meses, statusSegments,
+      pagamentosMes,
+      pagamentosFiltrados,
+      receitaMes,
+      byMethod,
+      dailySeries,
+      receita6,
+      atrasados,
+      pagos,
+      previsao,
+      pendente: Math.max(0, previsao - receitaMes),
+      media: pagamentosMes.length ? Math.round(receitaMes / pagamentosMes.length) : 0,
+      count: pagamentosMes.length,
+      operacionaisCount: operacionais.length,
+      inactivos,
+      desistentes,
+      emPausa,
+      ferias,
+      bloqueados,
     };
-  }, [alunosFiltrados, pagamentos, mesRelatorio, anoRelatorio, mesIdxRel, hojeReferencia, refRelatorio, hoje]);
+  }, [pagamentos, alunos, mesRelatorio, anoRelatorio, mesIdx, hojeReferencia, filtroMetodo]);
 
-  const logsHojeAgrupados = useMemo(() => {
-    if (!daily?.logsHoje) return [];
-    const userMap = new Map<string, typeof daily.logsHoje>();
-    daily.logsHoje.forEach(log => {
-      const userName = log.user_name || 'Sistema';
-      if (filtroUser !== 'todos' && userName !== filtroUser) return;
-      if (!userMap.has(userName)) userMap.set(userName, []);
-      userMap.get(userName)!.push(log);
-    });
-    return Array.from(userMap.entries());
-  }, [daily, filtroUser]);
+  // ── Atividade no período ───────────────────────────────────────────────
+  const activity = useMemo(() => {
+    const logs = adminData.logs || [];
+    const notes = adminData.notes || [];
 
-  const usersDisponiveis = useMemo(() => {
-    if (!daily?.logsHoje) return [];
-    return [...new Set(daily.logsHoje.map(l => l.user_name || 'Sistema'))];
-  }, [daily]);
+    const inPeriod = (value?: string) => {
+      const d = parseAdminDate(value);
+      return Boolean(d && d.getFullYear() === anoRelatorio && d.getMonth() === mesIdx);
+    };
 
+    const logsMes = logs.filter((l) => inPeriod(l.data_hora));
+    const notesMes = notes.filter((n) => inPeriod(n.data_criacao));
+    const pagamentosMes = pagamentos.filter((p) => isPaymentInsideMonth(p, mesRelatorio, anoRelatorio));
+
+    // Timeline unificada (pagamentos + logs + notas)
+    type Event = { id: string; at: Date; type: string; title: string; detail: string; user?: string; amount?: number };
+    const events: Event[] = [];
+
+    for (const p of pagamentosMes) {
+      const at = parseAdminDate(p.data_pagamento);
+      if (!at) continue;
+      events.push({
+        id: `pay-${p.id}`,
+        at,
+        type: 'pagamento',
+        title: 'Pagamento registado',
+        detail: `${(p as any).nome || p.alunoId || p.aluno_id || 'Aluno'} · ${normalizeMethod(p.metodo_pagamento)}`,
+        amount: normalizeAmount(p.valor),
+        user: (p as any).user_name || 'Sistema',
+      });
+    }
+    for (const l of logsMes) {
+      const at = parseAdminDate(l.data_hora);
+      if (!at) continue;
+      events.push({
+        id: `log-${l.id}`,
+        at,
+        type: String(l.acao || 'ação'),
+        title: String(l.acao || 'Ação'),
+        detail: String(l.detalhes || ''),
+        user: l.user_name || 'Sistema',
+      });
+    }
+    for (const n of notesMes) {
+      const at = parseAdminDate(n.data_criacao);
+      if (!at) continue;
+      events.push({
+        id: `note-${n.id}`,
+        at,
+        type: 'nota',
+        title: 'Nota adicionada',
+        detail: `${n.nome || 'Aluno'}: ${String(n.texto || '').slice(0, 80)}`,
+        user: n.user_name || 'Operador',
+      });
+    }
+
+    events.sort((a, b) => b.at.getTime() - a.at.getTime());
+
+    const filtered =
+      filtroUser === 'todos' ? events : events.filter((e) => (e.user || 'Sistema') === filtroUser);
+
+    // Por utilizador
+    const byUser = new Map<string, { pagamentos: number; notas: number; acoes: number; logins: number }>();
+    const bump = (user: string, field: 'pagamentos' | 'notas' | 'acoes' | 'logins') => {
+      const cur = byUser.get(user) || { pagamentos: 0, notas: 0, acoes: 0, logins: 0 };
+      cur[field] += 1;
+      byUser.set(user, cur);
+    };
+    for (const e of events) {
+      const u = e.user || 'Sistema';
+      if (e.type === 'pagamento') bump(u, 'pagamentos');
+      else if (e.type === 'nota') bump(u, 'notas');
+      else if (String(e.type).toLowerCase().includes('login')) bump(u, 'logins');
+      else bump(u, 'acoes');
+    }
+
+    const usersList = Array.from(byUser.entries())
+      .map(([name, stats]) => ({ name, ...stats, total: stats.pagamentos + stats.notas + stats.acoes + stats.logins }))
+      .sort((a, b) => b.total - a.total);
+
+    const userNames = ['todos', ...usersList.map((u) => u.name)];
+
+    return { events: filtered, usersList, userNames, logsMes, notesMes, totalEvents: events.length };
+  }, [adminData, pagamentos, mesRelatorio, anoRelatorio, mesIdx, filtroUser]);
+
+  // Timeline de meses
   const timelineMonths = MONTH_OPTIONS.map((mes, index) => {
     if (isFutureMonth(index, anoRelatorio, hojeReferencia)) return null;
-    const payments = pagamentos.filter((p) => isPaymentInsideMonth(p, mes, anoRelatorio)).length;
-    return { mes, short: mes.slice(0, 3), index, active: mes === mesRelatorio, current: anoRelatorio === hoje.getFullYear() && index === hoje.getMonth(), total: payments };
-  }).filter((m): m is { mes: string; short: string; index: number; active: boolean; current: boolean; total: number } => m !== null);
+    const total = pagamentos
+      .filter((p) => isPaymentInsideMonth(p, mes, anoRelatorio))
+      .reduce((s, p) => s + normalizeAmount(p.valor), 0);
+    const count = pagamentos.filter((p) => isPaymentInsideMonth(p, mes, anoRelatorio)).length;
+    return {
+      mes,
+      short: mes.slice(0, 3),
+      index,
+      active: mes === mesRelatorio,
+      current: anoRelatorio === hojeReferencia.getFullYear() && index === hojeReferencia.getMonth(),
+      total,
+      count,
+    };
+  }).filter(Boolean) as {
+    mes: string;
+    short: string;
+    index: number;
+    active: boolean;
+    current: boolean;
+    total: number;
+    count: number;
+  }[];
+
+  const dayDetail = selectedDay
+    ? finance.dailySeries.find((d) => d.key === selectedDay)
+    : null;
+
+  // Último dia do mês → aviso visual de relatório mensal
+  const isMonthEndWindow = useMemo(() => {
+    const last = new Date(hojeReferencia.getFullYear(), hojeReferencia.getMonth() + 1, 0).getDate();
+    const day = hojeReferencia.getDate();
+    return day >= last - 2;
+  }, [hojeReferencia]);
 
   if (!isAdmin) {
     return (
-      <div className="flex h-full w-full items-center justify-center bg-[#F8FAFC]">
-        <div className="max-w-[420px] rounded-[10px] border border-red-100 bg-white p-8 text-center shadow-[var(--shadow-md)]">
-          <ShieldCheck size={36} className="mx-auto text-red-500" />
-          <h2 className="mt-3 text-[18px] font-black text-slate-800">Acesso reservado ao administrador</h2>
-          <p className="mt-2 text-[13px] font-semibold text-slate-500">Relatórios, logs e dados administrativos só podem ser vistos por uma conta admin.</p>
+      <div className="flex h-full w-full items-center justify-center nl-bg-app">
+        <div className="nl-card max-w-md text-center !p-8">
+          <ShieldCheck size={32} className="mx-auto text-[var(--color-error)]" />
+          <h2 className="mt-3 text-[17px] font-semibold nl-text">Acesso reservado</h2>
+          <p className="mt-2 text-[13px] nl-text-sub">
+            Relatórios financeiros e atividade só estão disponíveis para administradores.
+          </p>
         </div>
       </div>
     );
   }
 
-  const kpis = [
-    { label: 'Receita Hoje', value: formatCve(daily ? daily.pagamentosHoje.reduce((s: number, p: any) => s + normalizeAmount(p.valor), 0) : 0), icon: <TrendingUp size={16} />, color: 'text-emerald-700 bg-emerald-50 border-emerald-200' },
-    { label: 'Pagaram Hoje', value: String(daily?.pagamentosHoje.length || 0), icon: <CheckCircle2 size={16} />, color: 'text-blue-700 bg-blue-50 border-blue-200' },
-    { label: 'Alunos Ativos', value: String(daily?.ativos || 0), icon: <Users size={16} />, color: 'text-violet-700 bg-violet-50 border-violet-200' },
-    { label: 'Ações Hoje', value: String(daily?.logsHoje.length || 0), icon: <Activity size={16} />, color: 'text-slate-700 bg-slate-50 border-slate-200' },
-  ];
+  const rulerMarks = timelineMonths.map((m) => {
+    const max = Math.max(...timelineMonths.map((x) => x.total), 1);
+    return { index: m.index, weight: Math.min(1, m.total / max) };
+  });
 
   return (
-    <div className="animate-slide-up flex h-full w-full flex-col overflow-hidden bg-[#F8FAFC]">
-      <div className="sticky top-0 z-20 shrink-0 border-b border-[#D7DCE3] bg-[#F0F3F7]/95 shadow-[0_7px_22px_rgba(15,23,42,0.08)] supports-[backdrop-filter]:backdrop-blur-md">
-        <div className={`overflow-x-auto transition-all ${timelineFinanceiraMinimizada ? 'py-1' : 'py-2'}`}>
-          <div className="flex min-w-[1120px] items-center gap-4 px-6">
-            <div className="flex shrink-0 items-center gap-3">
-              <span className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-700">Relatórios</span>
-              <button onClick={() => setAnoRelatorio((prev) => prev - 1)} className="flex h-8 w-8 items-center justify-center rounded-[var(--radius-surface)] bg-white/60 text-[var(--text-secondary)] ring-1 ring-slate-200/70 hover:bg-blue-50/80 hover:text-[var(--color-primary)]" title="Ano anterior"><ChevronLeft size={14} /></button>
-              <div className="rounded-[var(--radius-surface)] bg-blue-50/70 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.18em] text-blue-700 ring-1 ring-blue-100/80">{anoRelatorio}</div>
-              <button onClick={() => setAnoRelatorio((prev) => prev + 1)} className="flex h-8 w-8 items-center justify-center rounded-[var(--radius-surface)] bg-white/60 text-[var(--text-secondary)] ring-1 ring-slate-200/70 hover:bg-blue-50/80 hover:text-[var(--color-primary)]" title="Próximo ano"><ChevronRight size={14} /></button>
-            </div>
-
-            <div className="relative min-w-[480px] flex-1">
-              <div className="absolute left-0 right-0 top-1/2 h-px -translate-y-1/2 bg-blue-100/80" />
-              <div className="relative flex items-center justify-between gap-1">
-                {timelineMonths.map((month) => (
-                  <button key={month.mes} onClick={() => setMesRelatorio(month.mes)}
-                    className={`group flex min-w-[64px] flex-col items-center rounded-[5px] px-1 transition-all ${timelineFinanceiraMinimizada ? 'gap-0 py-0.5' : 'gap-0.5 py-1'}`}
-                    title={`${month.mes} ${anoRelatorio}`}>
-                    <span className={`flex h-3.5 w-3.5 items-center justify-center rounded-full border transition-all ${month.active ? 'border-blue-200 bg-blue-300 shadow-[0_0_0_4px_rgba(191,219,254,0.55)]' : month.current ? 'border-sky-200 bg-sky-50' : 'border-slate-200 bg-white/80 group-hover:border-blue-200 group-hover:bg-blue-50'}`} />
-                    <div className={`transition-all ${timelineFinanceiraMinimizada ? 'h-0 overflow-hidden opacity-0' : 'opacity-100'}`}>
-                      <p className={`text-[9px] font-black uppercase tracking-[0.12em] ${month.active ? 'text-blue-700' : 'text-[var(--text-secondary)]'}`}>{month.short}</p>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="flex shrink-0 items-center gap-2">
-              <button onClick={onExportarPdf} className="inline-flex h-9 items-center gap-1.5 rounded-[var(--radius-surface)] bg-blue-50/80 px-3 text-[10px] font-black uppercase tracking-[0.12em] text-blue-700 ring-1 ring-blue-100/80 hover:bg-blue-100/70"><Printer size={12} /> PDF</button>
-              <button onClick={onExportarExcel} className="inline-flex h-9 items-center gap-1.5 rounded-[var(--radius-surface)] bg-emerald-50/80 px-3 text-[10px] font-black uppercase tracking-[0.12em] text-emerald-700 ring-1 ring-emerald-100/80 hover:bg-emerald-100/70"><Download size={12} /> Excel</button>
-              <button type="button" onClick={() => setTimelineFinanceiraMinimizada((prev) => !prev)}
-                className="inline-flex h-9 items-center gap-1.5 rounded-[var(--radius-surface)] bg-white/60 px-3 text-[10px] font-black uppercase tracking-[0.12em] text-[var(--text-secondary)] ring-1 ring-slate-200/70 hover:bg-blue-50/70 hover:text-blue-700">
-                <ChevronDown size={13} className={`transition-transform ${timelineFinanceiraMinimizada ? '-rotate-90' : 'rotate-0'}`} />
-                {timelineFinanceiraMinimizada ? 'Expandir' : 'Minimizar'}
+    <div className="flex h-full w-full flex-col overflow-hidden nl-bg-app animate-fade-in">
+      {/* Barra única: esquerda | régua | direita + sub-abas na mesma linha */}
+      <div className="shrink-0 border-b border-[var(--border)] bg-[var(--bg-header)]">
+        <div className="flex h-11 items-center gap-2 px-3">
+          <div className="flex shrink-0 items-center gap-1">
+            <button type="button" onClick={() => setAnoRelatorio((y) => y - 1)} className="nl-icon-btn nl-icon-btn-sm" title="Ano anterior">
+              <ChevronLeft size={14} />
+            </button>
+            <span className="rounded-[var(--radius-compact)] border border-[var(--border)] bg-[var(--bg-surface)] px-2 py-1 text-[12px] font-semibold tabular-nums nl-text">
+              {anoRelatorio}
+            </span>
+            <button
+              type="button"
+              onClick={() => setAnoRelatorio((y) => Math.min(y + 1, hojeReferencia.getFullYear()))}
+              className="nl-icon-btn nl-icon-btn-sm"
+              title="Próximo ano"
+              disabled={anoRelatorio >= hojeReferencia.getFullYear()}
+            >
+              <ChevronRight size={14} />
+            </button>
+            <div className="ml-1 nl-view-switcher !p-0.5">
+              <button type="button" className={`nl-view-switcher-btn !h-7 !px-2.5 !text-[11px] ${mainTab === 'financeiro' ? 'is-active' : ''}`} onClick={() => setMainTab('financeiro')}>
+                <Wallet size={12} /> Finanças
+              </button>
+              <button type="button" className={`nl-view-switcher-btn !h-7 !px-2.5 !text-[11px] ${mainTab === 'atividade' ? 'is-active' : ''}`} onClick={() => setMainTab('atividade')}>
+                <Activity size={12} /> Atividade
               </button>
             </div>
+          </div>
+
+          <div className="min-w-0 flex-1">
+            <TimeRuler
+              year={anoRelatorio}
+              selectedIndex={mesIdx >= 0 ? mesIdx : 0}
+              referenceDate={hojeReferencia}
+              accent="relatorios"
+              maxWidth={420}
+              marks={rulerMarks}
+              onSelect={(_i, mes) => {
+                setMesRelatorio(mes);
+                setSelectedDay(null);
+              }}
+              onYearChange={setAnoRelatorio}
+              onGoToCurrent={() => {
+                setAnoRelatorio(hojeReferencia.getFullYear());
+                setMesRelatorio(MONTH_OPTIONS[hojeReferencia.getMonth()]);
+                setSelectedDay(null);
+              }}
+            />
+          </div>
+
+          <div className="flex shrink-0 items-center gap-1.5">
+            <span className="hidden text-[11px] font-medium capitalize nl-text-muted xl:inline">
+              {mesRelatorio} {anoRelatorio}
+            </span>
+            <button type="button" onClick={onExportarPdf} className="nl-btn nl-btn-secondary nl-btn-sm !h-8">
+              <Printer size={13} /> PDF
+            </button>
+            <button type="button" onClick={onExportarExcel} className="nl-btn nl-btn-secondary nl-btn-sm !h-8">
+              <Download size={13} /> Excel
+            </button>
           </div>
         </div>
       </div>
 
-      {/* Content: fixed header sections + scrollable bottom */}
-      <div className="flex-1 flex flex-col overflow-hidden px-6 py-4">
-        <div className="mx-auto w-full space-y-4 overflow-y-auto custom-scrollbar" style={{ maxWidth: `${larguraListas}px` }}>
-
-          {/* Search + Header & KPI Cards (shrink-wrapped) */}
-          <div className="flex items-center gap-4 shrink-0">
-            <div className="relative flex-1 max-w-sm">
-              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input type="text" value={pesquisa} onChange={e => setPesquisa(e.target.value)} placeholder="Pesquisar aluno..." className="h-9 w-full rounded-[var(--radius-surface)] border border-slate-200 bg-white pl-9 pr-3 text-[12px] font-semibold text-slate-700 placeholder:text-slate-400 outline-none ring-blue-200/0 transition-all focus:border-blue-300 focus:ring-2 focus:ring-blue-200/60" />
-            </div>
-            <div className="flex items-center gap-2 rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-emerald-700 shrink-0">
-              <ShieldCheck size={13} />
-              Admin: {sessionUser?.name || 'Administrador'}
-            </div>
+      {/* Aviso fim de mês */}
+      {isMonthEndWindow && (
+        <div className="shrink-0 border-b border-[var(--border)] bg-[color-mix(in_srgb,var(--color-warning)_12%,var(--bg-surface))] px-4 py-2">
+          <div className="mx-auto flex items-center gap-2 text-[12px] font-medium" style={{ maxWidth: larguraListas }}>
+            <CalendarDays size={14} className="text-[var(--color-warning)]" />
+            <span className="nl-text">
+              Janela de fecho mensal — reveja o relatório de <strong className="capitalize">{mesRelatorio}</strong> e exporte se necessário.
+            </span>
           </div>
+        </div>
+      )}
 
-          <div className="grid gap-3 md:grid-cols-4 shrink-0">
-            {kpis.map((kpi) => (
-              <div key={kpi.label} className={`rounded-[var(--radius-surface)] border px-4 py-3 ${kpi.color}`}>
-                <div className="mb-2 flex items-center justify-between gap-2">
-                  <span className="text-[9px] font-black uppercase tracking-[0.16em] opacity-70">{kpi.label}</span>
-                  {kpi.icon}
-                </div>
-                <p className="text-[24px] font-black leading-none tabular-nums">{kpi.value}</p>
-              </div>
-            ))}
-          </div>
-
-          {/* Charts Row (shrink-wrapped) */}
-          <div className="grid gap-4 lg:grid-cols-[1.3fr_0.7fr] shrink-0">
-            <div className="rounded-[12px] border border-[var(--border)] bg-white p-4 shadow-[var(--shadow-sm)]">
-              <div className="flex items-center justify-between gap-3 mb-3">
-                <div>
-                  <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">Receita</p>
-                  <h2 className="mt-0.5 text-[15px] font-black text-slate-800">Evolução Mensal</h2>
-                </div>
-                <BarChart2 size={18} className="text-blue-600" />
-              </div>
-              <BarChart data={relatorio.receita12Meses} height={120} />
-            </div>
-
-            <div className="rounded-[12px] border border-[var(--border)] bg-white p-4 shadow-[var(--shadow-sm)]">
-              <div className="flex items-center justify-between gap-3 mb-3">
-                <div>
-                  <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">Situação</p>
-                  <h2 className="mt-0.5 text-[15px] font-black text-slate-800">Pagamentos do Mês</h2>
-                </div>
-                <FileBarChart size={18} className="text-blue-600" />
-              </div>
-              <div className="flex items-center gap-6">
-                <DonutChart segments={relatorio.statusSegments} size={100} />
-                <div className="space-y-1.5">
-                  {relatorio.statusSegments.map((seg) => (
-                    <div key={seg.label} className="flex items-center gap-2">
-                      <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: seg.color }} />
-                      <span className="text-[10px] font-bold text-slate-600">{seg.label}</span>
-                      <span className="text-[10px] font-black text-slate-800 ml-auto tabular-nums">{seg.value}</span>
+      {/* Conteúdo — bento (como a Início) */}
+      <div className="min-h-0 flex-1 overflow-y-auto custom-scrollbar px-4 py-4">
+        <div className="mx-auto flex flex-col gap-3" style={{ maxWidth: larguraListas }}>
+          {mainTab === 'financeiro' ? (
+            <>
+              {/* KPIs fixos — faixa superior */}
+              <section className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
+                {[
+                  { label: 'Receita do mês', value: formatCve(finance.receitaMes), sub: `${finance.count} pagamentos`, accent: 'text-[var(--color-success)]', icon: <TrendingUp size={15} /> },
+                  { label: 'Média / pagamento', value: formatCve(finance.media), sub: 'neste período', accent: 'text-[var(--color-primary)]', icon: <Wallet size={15} /> },
+                  { label: 'Por recuperar', value: formatCve(finance.pendente), sub: `${finance.atrasados.length} em atraso`, accent: finance.pendente > 0 ? 'text-[var(--color-error)]' : 'text-[var(--color-success)]', icon: <Users size={15} /> },
+                  { label: 'Activos no mês', value: String(finance.operacionaisCount), sub: `${finance.inactivos.length} fora da conta`, accent: 'text-[var(--color-primary)]', icon: <CheckCircle2 size={15} /> },
+                ].map((kpi) => (
+                  <div key={kpi.label} className="nl-card !p-3 transition-all hover:-translate-y-0.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[11px] font-medium nl-text-muted">{kpi.label}</span>
+                      <span className={kpi.accent}>{kpi.icon}</span>
                     </div>
-                  ))}
-                  <div className="pt-1.5 border-t border-slate-100 mt-1.5">
-                    <span className="text-[9px] font-semibold text-slate-400">Prev: {formatCve(relatorio.previsaoMes)}</span>
-                    <span className="text-[9px] font-black text-emerald-700 ml-2">Rec: {formatCve(relatorio.receitaMes)}</span>
+                    <p className={`mt-1 text-[19px] font-semibold tabular-nums leading-tight ${kpi.accent}`}>{kpi.value}</p>
+                    <p className="mt-0.5 text-[10px] font-medium nl-text-muted">{kpi.sub}</p>
                   </div>
-                </div>
-              </div>
-            </div>
-          </div>
+                ))}
+              </section>
 
-          {/* Scrollable bottom sections */}
-          <div className="space-y-4 min-h-0">
-            {/* Today's Activity + Payment Columns */}
-            <div className="grid gap-4 lg:grid-cols-[1fr_1fr]">
-              <div className="rounded-[12px] border border-[var(--border)] bg-white p-4 shadow-[var(--shadow-sm)]">
-                <div className="flex items-center justify-between gap-3 mb-2">
-                  <div>
-                    <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">Pagamentos Hoje</p>
-                    <h2 className="mt-0.5 text-[15px] font-black text-slate-800">Quem pagou</h2>
-                  </div>
-                  <span className="rounded-full bg-blue-50 px-3 py-1 text-[10px] font-black text-blue-700">{daily?.pagamentosHoje.length || 0} registos</span>
-                </div>
-                <div className="max-h-[180px] space-y-1 overflow-y-auto custom-scrollbar pr-1">
-                  {dailyLoading ? (
-                    <div className="py-6 text-center text-[12px] font-semibold text-slate-400">A carregar...</div>
-                  ) : daily?.pagamentosHoje.length === 0 ? (
-                    <div className="rounded-[var(--radius-control)] border border-dashed border-[var(--border)] py-6 text-center text-[12px] font-semibold text-slate-400">Nenhum pagamento hoje.</div>
-                  ) : daily?.pagamentosHoje.map((p: any) => (
-                    <div key={p.id} className="flex items-center justify-between gap-3 rounded-[var(--radius-control)] border border-emerald-100 bg-emerald-50/60 px-3 py-2">
-                      <div className="min-w-0 flex items-center gap-2">
-                        <CheckCircle2 size={13} className="text-emerald-600 shrink-0" />
-                        <div>
-                          <p className="truncate text-[12px] font-black text-emerald-900">{p.nome || p.aluno_id}</p>
-                          <p className="text-[9px] font-semibold text-emerald-700/60">{p.metodo_pagamento || '—'}</p>
-                        </div>
+              {/* Grelha bento 12 cols */}
+              <section className="grid grid-cols-12 gap-3 items-start">
+                {/* Métodos — card largo, expande em largura */}
+                <BentoPanel
+                  isOpen={openPanels.metodos}
+                  onToggle={() => togglePanel('metodos')}
+                  tone="green"
+                  expandMode="width"
+                  spanClosed="col-span-12 md:col-span-7 xl:col-span-8"
+                  spanOpen="col-span-12"
+                  heightClosed="h-[240px]"
+                  header={(
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <Wallet size={14} className="text-[var(--color-success)]" />
+                        <h2 className="text-[14px] font-semibold nl-text">Formas de pagamento</h2>
+                        <span className="badge badge-success tabular-nums">{finance.byMethod.length}</span>
                       </div>
-                      <p className="shrink-0 text-[12px] font-black text-emerald-700">{formatCve(p.valor)}</p>
+                      <p className="mt-0.5 truncate text-[11px] font-medium text-[var(--color-success)]">
+                        {formatCve(finance.receitaMes)} · distribuição do mês
+                      </p>
                     </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="rounded-[12px] border border-[var(--border)] bg-white p-4 shadow-[var(--shadow-sm)]">
-                <div className="flex items-center justify-between gap-3 mb-2">
-                  <div>
-                    <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">{mesRelatorio}</p>
-                    <h2 className="mt-0.5 text-[15px] font-black text-slate-800">Situação dos Alunos</h2>
+                  )}
+                  preview={(
+                    <div className="grid h-full grid-cols-1 gap-2 sm:grid-cols-3 content-start">
+                      {finance.byMethod.slice(0, 3).map((m) => {
+                        const pct = finance.receitaMes > 0 ? Math.round((m.total / finance.receitaMes) * 100) : 0;
+                        return (
+                          <div key={m.method} className="rounded-[var(--radius-control)] border border-[var(--border-light)] bg-[var(--bg-surface)]/70 p-2.5" style={{ borderLeftColor: m.meta.color, borderLeftWidth: 3 }}>
+                            <div className="flex items-center gap-1.5" style={{ color: m.meta.color }}>{m.meta.icon}<span className="text-[12px] font-semibold nl-text">{m.method}</span></div>
+                            <p className="mt-1.5 text-[15px] font-semibold tabular-nums nl-text">{formatCve(m.total)}</p>
+                            <p className="text-[10px] nl-text-muted">{m.count} pag. · {pct}%</p>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                >
+                  <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                    {finance.byMethod.map((m) => {
+                      const pct = finance.receitaMes > 0 ? Math.round((m.total / finance.receitaMes) * 100) : 0;
+                      const active = filtroMetodo === m.method;
+                      return (
+                        <button
+                          key={m.method}
+                          type="button"
+                          onClick={() => setFiltroMetodo(active ? 'todos' : m.method)}
+                          className={`rounded-[var(--radius-control)] border p-3 text-left transition-all ${
+                            active ? 'border-[var(--color-primary)] ring-2 ring-[var(--shadow-primary-focus)]' : 'border-[var(--border)]'
+                          }`}
+                          style={{ background: m.meta.soft }}
+                        >
+                          <div className="flex items-center gap-2" style={{ color: m.meta.color }}>
+                            {m.meta.icon}
+                            <span className="text-[13px] font-semibold nl-text">{m.method}</span>
+                          </div>
+                          <p className="mt-2 text-[18px] font-semibold tabular-nums nl-text">{formatCve(m.total)}</p>
+                          <p className="mt-0.5 text-[11px] font-medium nl-text-muted">{m.count} pag. · {pct}%</p>
+                        </button>
+                      );
+                    })}
                   </div>
-                </div>
-                <div className="grid grid-cols-3 gap-2">
-                  <div className="rounded-[var(--radius-control)] border border-red-100 bg-red-50/50 p-2.5">
-                    <div className="flex items-center gap-1 mb-1.5">
-                      <XCircle size={11} className="text-red-600" />
-                      <span className="text-[8px] font-black uppercase tracking-[0.1em] text-red-700">Atrasado</span>
-                    </div>
-                    <p className="text-[18px] font-black text-red-700 tabular-nums">{relatorio.atrasados.length}</p>
-                    <div className="mt-1.5 max-h-[80px] overflow-y-auto space-y-0.5 custom-scrollbar">
-                      {relatorio.atrasados.slice(0, 6).map(({ aluno }) => (
-                        <p key={aluno.id} className="truncate text-[9px] font-bold text-red-800">{aluno.nome}</p>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="rounded-[var(--radius-control)] border border-amber-100 bg-amber-50/50 p-2.5">
-                    <div className="flex items-center gap-1 mb-1.5">
-                      <AlertCircle size={11} className="text-amber-600" />
-                      <span className="text-[8px] font-black uppercase tracking-[0.1em] text-amber-700">Pendente</span>
-                    </div>
-                    <p className="text-[18px] font-black text-amber-700 tabular-nums">{relatorio.pendentes.length}</p>
-                    <div className="mt-1.5 max-h-[80px] overflow-y-auto space-y-0.5 custom-scrollbar">
-                      {relatorio.pendentes.slice(0, 6).map(({ aluno }) => (
-                        <p key={aluno.id} className="truncate text-[9px] font-bold text-amber-800">{aluno.nome}</p>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="rounded-[var(--radius-control)] border border-emerald-100 bg-emerald-50/50 p-2.5">
-                    <div className="flex items-center gap-1 mb-1.5">
-                      <CheckCircle2 size={11} className="text-emerald-600" />
-                      <span className="text-[8px] font-black uppercase tracking-[0.1em] text-emerald-700">Pago</span>
-                    </div>
-                    <p className="text-[18px] font-black text-emerald-700 tabular-nums">{relatorio.pagos.length}</p>
-                    <div className="mt-1.5 max-h-[80px] overflow-y-auto space-y-0.5 custom-scrollbar">
-                      {relatorio.pagos.slice(0, 6).map(({ aluno }) => (
-                        <p key={aluno.id} className="truncate text-[9px] font-bold text-emerald-800">{aluno.nome}</p>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Activity Timeline */}
-            <div className="rounded-[12px] border border-[var(--border)] bg-white shadow-[var(--shadow-sm)]">
-              <div className="flex items-center gap-3 border-b border-[var(--border-light)] bg-[#F8FAFC] px-4 py-2.5">
-                <div className="flex items-center gap-2">
-                  {(['hoje', 'timeline'] as const).map((aba) => (
-                    <button key={aba} onClick={() => setAbaAtividade(aba)}
-                      className={`inline-flex h-7 items-center gap-1.5 rounded-full px-2.5 text-[9px] font-black uppercase tracking-[0.12em] transition-colors ${abaAtividade === aba ? 'bg-blue-600 text-white' : 'text-slate-500 hover:bg-white'}`}>
-                      {aba === 'hoje' ? <Clock size={11} /> : <Activity size={11} />}
-                      {aba === 'hoje' ? 'Atividade Hoje' : 'Lista do Mês'}
+                  {filtroMetodo !== 'todos' && (
+                    <button type="button" className="nl-btn nl-btn-ghost nl-btn-sm mt-2" onClick={() => setFiltroMetodo('todos')}>
+                      Limpar filtro
                     </button>
-                  ))}
-                </div>
-                {abaAtividade === 'hoje' && usersDisponiveis.length > 1 && (
-                  <div className="ml-auto flex items-center gap-2">
-                    <span className="text-[8px] font-bold uppercase text-slate-400">User:</span>
-                    <select value={filtroUser} onChange={e => setFiltroUser(e.target.value)}
-                      className="h-6 rounded-[var(--radius-control)] border border-slate-200 bg-white px-1.5 text-[9px] font-bold text-slate-600 outline-none">
-                      <option value="todos">Todos</option>
-                      {usersDisponiveis.map(u => <option key={u} value={u}>{u}</option>)}
-                    </select>
-                  </div>
-                )}
-                {dailyLoading && <span className="ml-auto text-[9px] font-bold text-slate-400">A carregar...</span>}
-              </div>
+                  )}
+                </BentoPanel>
 
-              {abaAtividade === 'hoje' ? (
-                <div className="p-3 max-h-[220px] overflow-y-auto custom-scrollbar">
-                  {logsHojeAgrupados.length === 0 ? (
-                    <div className="py-6 text-center text-[11px] font-semibold text-slate-400">Nenhuma atividade registada hoje.</div>
-                  ) : (
-                    <div className="space-y-3">
-                      {logsHojeAgrupados.map(([userName, logs]) => (
-                        <div key={userName}>
-                          <div className="flex items-center gap-1.5 mb-1.5">
-                            <div className="h-5 w-5 rounded-full bg-blue-100 flex items-center justify-center text-[8px] font-black text-blue-700">{userName.slice(0, 2).toUpperCase()}</div>
-                            <span className="text-[10px] font-black text-slate-700">{userName}</span>
-                            <span className="text-[8px] font-bold text-slate-400">({logs.length})</span>
+                {/* Mix donut — card estreito, expande em altura */}
+                <BentoPanel
+                  isOpen={openPanels.mix}
+                  onToggle={() => togglePanel('mix')}
+                  tone="blue"
+                  expandMode="height"
+                  spanClosed="col-span-12 md:col-span-5 xl:col-span-4"
+                  spanOpen="col-span-12 md:col-span-5 xl:col-span-4"
+                  heightClosed="h-[240px]"
+                  heightOpen="min-h-[320px] max-h-[420px]"
+                  header={(
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <CreditCard size={14} className="text-[var(--color-primary)]" />
+                        <h2 className="text-[14px] font-semibold nl-text">Mix de métodos</h2>
+                      </div>
+                      <p className="mt-0.5 text-[11px] font-medium nl-text-muted">Proporção visual da receita</p>
+                    </div>
+                  )}
+                  preview={(
+                    <div className="flex h-full flex-col items-center justify-center gap-1">
+                      <Donut
+                        size={108}
+                        segments={finance.byMethod
+                          .filter((m) => m.total > 0)
+                          .map((m) => ({ label: m.method, value: m.total, color: m.meta.color }))}
+                      />
+                    </div>
+                  )}
+                >
+                  <div className="flex flex-col items-center gap-3">
+                    <Donut
+                      size={148}
+                      segments={finance.byMethod
+                        .filter((m) => m.total > 0)
+                        .map((m) => ({ label: m.method, value: m.total, color: m.meta.color }))}
+                    />
+                    <ul className="w-full space-y-1.5">
+                      {finance.byMethod.map((m) => {
+                        const pct = finance.receitaMes > 0 ? Math.round((m.total / finance.receitaMes) * 100) : 0;
+                        return (
+                          <li key={m.method} className="flex items-center justify-between gap-2 text-[12px]">
+                            <span className="flex items-center gap-1.5 font-medium nl-text" style={{ color: m.meta.color }}>
+                              <span className="h-2 w-2 rounded-full" style={{ background: m.meta.color }} />
+                              {m.method}
+                            </span>
+                            <span className="tabular-nums nl-text-muted">{pct}%</span>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                </BentoPanel>
+
+                {/* Evolução — laranja relatórios, expande em largura */}
+                <BentoPanel
+                  isOpen={openPanels.graficos}
+                  onToggle={() => togglePanel('graficos')}
+                  tone="orange"
+                  expandMode="width"
+                  spanClosed="col-span-12 md:col-span-8"
+                  spanOpen="col-span-12"
+                  heightClosed="h-[230px]"
+                  header={(
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <TrendingUp size={14} className="text-[#c64600]" />
+                        <h2 className="text-[14px] font-semibold nl-text">Evolução</h2>
+                      </div>
+                      <p className="mt-0.5 truncate text-[11px] font-medium capitalize text-[#c64600]">
+                        {mesRelatorio} {anoRelatorio} · 6 meses
+                      </p>
+                    </div>
+                  )}
+                  preview={(
+                    <MiniBar
+                      height={140}
+                      data={finance.receita6.map((r) => ({ label: r.label, value: r.value, color: r.color }))}
+                    />
+                  )}
+                >
+                  <div className="grid gap-4 lg:grid-cols-2">
+                    <div>
+                      <p className="mb-2 text-[12px] font-medium nl-text-muted">Entradas diárias</p>
+                      <MiniBar data={finance.dailySeries} height={140} />
+                    </div>
+                    <div>
+                      <p className="mb-2 text-[12px] font-medium nl-text-muted">Últimos 6 meses</p>
+                      <MiniBar
+                        data={finance.receita6.map((r) => ({ label: r.label, value: r.value, color: r.color }))}
+                        height={140}
+                      />
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        {finance.receita6.map((r) => (
+                          <button
+                            key={`${r.mes}-${r.ano}`}
+                            type="button"
+                            onClick={() => {
+                              setMesRelatorio(r.mes);
+                              setAnoRelatorio(r.ano);
+                              setSelectedDay(null);
+                            }}
+                            className="nl-chip"
+                          >
+                            {r.label} {String(r.ano).slice(2)}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </BentoPanel>
+
+                {/* Cobertura — card compacto */}
+                <BentoPanel
+                  isOpen={openPanels.cobertura}
+                  onToggle={() => togglePanel('cobertura')}
+                  tone={finance.atrasados.length > 0 ? 'red' : 'green'}
+                  expandMode="height"
+                  spanClosed="col-span-12 md:col-span-4"
+                  spanOpen="col-span-12 md:col-span-4"
+                  heightClosed="h-[230px]"
+                  heightOpen="min-h-[280px] max-h-[360px]"
+                  header={(
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <CheckCircle2 size={14} className={finance.atrasados.length > 0 ? 'text-[var(--color-error)]' : 'text-[var(--color-success)]'} />
+                        <h2 className="text-[14px] font-semibold nl-text">Cobertura</h2>
+                      </div>
+                      <p className="mt-0.5 text-[11px] font-medium nl-text-muted">Só activos na contabilidade</p>
+                    </div>
+                  )}
+                  preview={(
+                    <div className="flex h-full flex-col justify-center gap-3">
+                      <div>
+                        <p className="text-[11px] nl-text-muted">Em dia</p>
+                        <p className="text-[28px] font-semibold tabular-nums text-[var(--color-success)]">{finance.pagos.length}</p>
+                      </div>
+                      <div>
+                        <p className="text-[11px] nl-text-muted">Em atraso</p>
+                        <p className="text-[22px] font-semibold tabular-nums text-[var(--color-error)]">{finance.atrasados.length}</p>
+                      </div>
+                    </div>
+                  )}
+                >
+                  <div className="grid gap-2">
+                    <div className="rounded-[var(--radius-control)] border border-[var(--border-light)] bg-[var(--bg-surface)]/70 p-3">
+                      <p className="text-[11px] font-medium nl-text-muted">Alunos em dia</p>
+                      <p className="mt-1 text-[24px] font-semibold text-[var(--color-success)]">{finance.pagos.length}</p>
+                    </div>
+                    <div className="rounded-[var(--radius-control)] border border-[var(--border-light)] bg-[var(--bg-surface)]/70 p-3">
+                      <p className="text-[11px] font-medium nl-text-muted">Em atraso / vence hoje</p>
+                      <p className="mt-1 text-[24px] font-semibold text-[var(--color-error)]">{finance.atrasados.length}</p>
+                    </div>
+                    <div className="rounded-[var(--radius-control)] border border-[var(--border-light)] bg-[var(--bg-surface)]/70 p-3">
+                      <p className="text-[11px] font-medium nl-text-muted">Previsão (activos)</p>
+                      <p className="mt-1 text-[20px] font-semibold text-[var(--color-primary)]">{formatCve(finance.previsao)}</p>
+                    </div>
+                  </div>
+                </BentoPanel>
+
+                {/* Movimentos — médio, expande em altura */}
+                <BentoPanel
+                  isOpen={openPanels.movimentos}
+                  onToggle={() => togglePanel('movimentos')}
+                  tone="default"
+                  expandMode="height"
+                  spanClosed="col-span-12 md:col-span-7"
+                  spanOpen="col-span-12 md:col-span-7 xl:col-span-8"
+                  heightClosed="h-[250px]"
+                  heightOpen="min-h-[400px] max-h-[560px]"
+                  header={(
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <CalendarDays size={14} className="text-[var(--color-primary)]" />
+                        <h2 className="text-[14px] font-semibold nl-text">Movimentos</h2>
+                        <span className="badge badge-info tabular-nums">{finance.count}</span>
+                      </div>
+                      <p className="mt-0.5 text-[11px] font-medium nl-text-muted">Dias e pagamentos do mês</p>
+                    </div>
+                  )}
+                  preview={(
+                    <div className="space-y-1">
+                      {finance.dailySeries
+                        .filter((d) => d.count > 0)
+                        .slice()
+                        .reverse()
+                        .slice(0, 5)
+                        .map((d) => (
+                          <div key={d.key} className="flex items-center justify-between rounded-[var(--radius-compact)] px-1.5 py-1.5 hover:bg-[var(--color-secondary-light)]">
+                            <span className="text-[12px] font-medium nl-text">{formatDayLabel(d.key)}</span>
+                            <span className="text-[12px] font-semibold tabular-nums text-[var(--color-success)]">{formatCve(d.value)}</span>
                           </div>
-                          <div className="space-y-0.5 ml-6">
-                            {logs.slice(0, 6).map((log: any) => (
-                              <div key={log.id} className="flex items-start gap-2 rounded-[var(--radius-control)] border border-[var(--border-light)] bg-white px-2.5 py-1.5">
-                                <ActivityIcon acao={log.acao} />
-                                <div className="min-w-0 flex-1">
-                                  <p className="text-[10px] font-bold text-slate-700">{log.acao}</p>
-                                  <p className="text-[9px] text-slate-500 truncate">{log.detalhes || '—'}</p>
+                        ))}
+                      {finance.dailySeries.filter((d) => d.count > 0).length === 0 && (
+                        <p className="py-6 text-center text-[12px] nl-text-muted">Sem movimentos neste mês.</p>
+                      )}
+                    </div>
+                  )}
+                >
+                  <div className="grid gap-3 lg:grid-cols-2">
+                    <div className="overflow-hidden rounded-[var(--radius-control)] border border-[var(--border-light)] bg-[var(--bg-surface)]/60">
+                      <div className="border-b border-[var(--border-light)] px-3 py-2">
+                        <p className="text-[12px] font-semibold nl-text">Dias com entradas</p>
+                      </div>
+                      <div className="max-h-[280px] overflow-y-auto custom-scrollbar">
+                        {finance.dailySeries.filter((d) => d.count > 0).length === 0 ? (
+                          <p className="px-4 py-8 text-center text-[13px] nl-text-muted">Sem pagamentos neste mês.</p>
+                        ) : (
+                          finance.dailySeries
+                            .filter((d) => d.count > 0)
+                            .slice()
+                            .reverse()
+                            .map((d) => (
+                              <button
+                                key={d.key}
+                                type="button"
+                                onClick={() => setSelectedDay(d.key === selectedDay ? null : d.key)}
+                                className={`flex w-full items-center justify-between border-b border-[var(--border-light)] px-3 py-2 text-left transition-colors hover:bg-[var(--color-secondary-light)] ${
+                                  selectedDay === d.key ? 'bg-[var(--color-primary-light)]' : ''
+                                }`}
+                              >
+                                <div>
+                                  <p className="text-[13px] font-semibold nl-text">{formatDayLabel(d.key)}</p>
+                                  <p className="text-[11px] nl-text-muted">{d.count} pagamento(s)</p>
                                 </div>
-                              </div>
-                            ))}
+                                <p className="text-[13px] font-semibold tabular-nums text-[var(--color-success)]">{formatCve(d.value)}</p>
+                              </button>
+                            ))
+                        )}
+                      </div>
+                    </div>
+                    <div className="overflow-hidden rounded-[var(--radius-control)] border border-[var(--border-light)] bg-[var(--bg-surface)]/60">
+                      <div className="border-b border-[var(--border-light)] px-3 py-2">
+                        <p className="text-[12px] font-semibold nl-text">
+                          {dayDetail ? formatDayLabel(dayDetail.key) : 'Pagamentos do período'}
+                        </p>
+                        <p className="text-[11px] nl-text-muted">
+                          {dayDetail
+                            ? `${dayDetail.count} registo(s)`
+                            : filtroMetodo === 'todos'
+                              ? `${finance.pagamentosFiltrados.length} no mês`
+                              : `${finance.pagamentosFiltrados.length} · ${filtroMetodo}`}
+                        </p>
+                      </div>
+                      <div className="max-h-[280px] overflow-y-auto custom-scrollbar">
+                        {(dayDetail ? dayDetail.items : finance.pagamentosFiltrados).length === 0 ? (
+                          <p className="px-4 py-8 text-center text-[13px] nl-text-muted">Sem registos.</p>
+                        ) : (
+                          (dayDetail ? dayDetail.items : finance.pagamentosFiltrados)
+                            .slice()
+                            .sort((a, b) => (b.id || 0) - (a.id || 0))
+                            .map((p) => {
+                              const method = normalizeMethod(p.metodo_pagamento);
+                              const meta = METHOD_META[method] || METHOD_META.Outro;
+                              return (
+                                <div
+                                  key={p.id || `${p.alunoId}-${p.data_pagamento}-${p.valor}`}
+                                  className="flex items-center gap-3 border-b border-[var(--border-light)] px-3 py-2"
+                                >
+                                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full" style={{ background: meta.soft, color: meta.color }}>
+                                    {meta.icon}
+                                  </span>
+                                  <div className="min-w-0 flex-1">
+                                    <p className="truncate text-[13px] font-semibold nl-text">
+                                      {(p as any).nome || p.alunoId || p.aluno_id || 'Aluno'}
+                                    </p>
+                                    <p className="text-[11px] nl-text-muted">
+                                      {p.data_pagamento} · {method}
+                                    </p>
+                                  </div>
+                                  <p className="text-[13px] font-semibold tabular-nums text-[var(--color-success)]">{formatCve(p.valor)}</p>
+                                </div>
+                              );
+                            })
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </BentoPanel>
+
+                {/* Inactivos — violeta/teal, expande em altura */}
+                <BentoPanel
+                  isOpen={openPanels.inactivos}
+                  onToggle={() => togglePanel('inactivos')}
+                  tone="violet"
+                  expandMode="height"
+                  spanClosed="col-span-12 md:col-span-5"
+                  spanOpen="col-span-12 md:col-span-5 xl:col-span-4"
+                  heightClosed="h-[250px]"
+                  heightOpen="min-h-[400px] max-h-[560px]"
+                  header={(
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <UserX size={14} className="text-[#6d28d9]" />
+                        <h2 className="text-[14px] font-semibold nl-text">Fora da contabilidade</h2>
+                        <span className="badge badge-quit tabular-nums">{finance.inactivos.length}</span>
+                      </div>
+                      <p className="mt-0.5 text-[11px] font-medium text-[#6d28d9]">Pausa · férias · desistentes</p>
+                    </div>
+                  )}
+                  preview={(
+                    <div className="grid grid-cols-2 gap-1.5 content-start">
+                      {[
+                        { label: 'Pausa', count: finance.emPausa.length, tone: getManualStatusTone('pausado'), icon: <Pause size={12} /> },
+                        { label: 'Férias', count: finance.ferias.length, tone: getManualStatusTone('ferias'), icon: <Palmtree size={12} /> },
+                        { label: 'Desist.', count: finance.desistentes.length, tone: getManualStatusTone('desistente'), icon: <UserX size={12} /> },
+                        { label: 'Bloq.', count: finance.bloqueados.length, tone: getManualStatusTone('bloqueado'), icon: <ShieldCheck size={12} /> },
+                      ].map((item) => (
+                        <div
+                          key={item.label}
+                          className="rounded-[var(--radius-control)] border px-2 py-2"
+                          style={{ borderColor: item.tone.border, background: item.tone.bg }}
+                        >
+                          <div className="flex items-center gap-1" style={{ color: item.tone.fg }}>
+                            {item.icon}
+                            <span className="text-[10px] font-semibold">{item.label}</span>
                           </div>
+                          <p className="mt-0.5 text-[18px] font-semibold tabular-nums nl-text">{item.count}</p>
                         </div>
                       ))}
                     </div>
                   )}
-                </div>
-              ) : (
-                <div className="max-h-[220px] overflow-y-auto custom-scrollbar">
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left">
-                      <thead className="bg-white text-[9px] font-black uppercase tracking-[0.12em] text-slate-400 sticky top-0">
-                        <tr>
-                          <th className="px-4 py-2.5">Aluno</th>
-                          <th className="px-4 py-2.5">Plano</th>
-                          <th className="px-4 py-2.5">Estado</th>
-                          <th className="px-4 py-2.5">Próx. cobrança</th>
-                          <th className="px-4 py-2.5">Último pagamento</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {relatorio.resumos.map(({ aluno, resumo }, index) => (
-                          <tr key={aluno.id} className={index % 2 === 0 ? 'bg-[#F8FAFC]' : 'bg-white'}>
-                            <td className="px-4 py-2">
-                              <p className="text-[11px] font-black text-slate-800">{aluno.nome}</p>
-                              <p className="text-[9px] font-semibold text-slate-400">{aluno.telefone || 'sem telefone'} · {aluno.categoria || 'Geral'}</p>
-                            </td>
-                            <td className="px-4 py-2 text-[11px] font-black text-slate-700">{formatCve(aluno.plano)}</td>
-                            <td className="px-4 py-2"><span className="rounded-full bg-slate-100 px-2 py-0.5 text-[9px] font-black text-slate-600">{getBillingBadgeLabel(resumo.status)}</span></td>
-                            <td className="px-4 py-2 text-[10px] font-semibold text-slate-500">{resumo.nextChargeDate || '—'}</td>
-                            <td className="px-4 py-2 text-[10px] font-semibold text-slate-500">{resumo.lastPaymentDate || '—'}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Today's Logins & Matriculas Summary */}
-            <div className="grid gap-4 lg:grid-cols-2">
-              <div className="rounded-[12px] border border-[var(--border)] bg-white p-4 shadow-[var(--shadow-sm)]">
-                <div className="flex items-center justify-between gap-3 mb-2">
-                  <div>
-                    <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">Acessos Hoje</p>
-                    <h2 className="mt-0.5 text-[15px] font-black text-slate-800">Utilizadores que acederam</h2>
-                  </div>
-                  <span className="rounded-full bg-slate-50 px-3 py-1 text-[9px] font-black text-slate-600">{daily?.loginsHoje.length || 0}</span>
-                </div>
-                <div className="max-h-[160px] space-y-1 overflow-y-auto custom-scrollbar">
-                  {daily?.loginsHoje.length === 0 ? (
-                    <div className="py-4 text-center text-[11px] font-semibold text-slate-400">Nenhum acesso hoje.</div>
-                  ) : daily?.loginsHoje.map((u: any) => (
-                    <div key={u.id} className="flex items-center gap-2.5 rounded-[var(--radius-control)] border border-[var(--border-light)] bg-white px-3 py-2">
-                      <div className="h-6 w-6 rounded-full bg-blue-100 flex items-center justify-center text-[9px] font-black text-blue-700 shrink-0">{u.name?.slice(0, 2).toUpperCase()}</div>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-[11px] font-black text-slate-800">{u.name}</p>
-                        <p className="text-[8px] font-semibold text-slate-400">{u.role === 'admin' ? 'Admin' : 'Operador'}</p>
+                >
+                  <div className="mb-2 grid grid-cols-2 gap-1.5">
+                    {[
+                      { label: 'Em pausa', count: finance.emPausa.length, icon: <Pause size={14} />, tone: getManualStatusTone('pausado') },
+                      { label: 'Férias', count: finance.ferias.length, icon: <Palmtree size={14} />, tone: getManualStatusTone('ferias') },
+                      { label: 'Desistentes', count: finance.desistentes.length, icon: <UserX size={14} />, tone: getManualStatusTone('desistente') },
+                      { label: 'Bloqueados', count: finance.bloqueados.length, icon: <ShieldCheck size={14} />, tone: getManualStatusTone('bloqueado') },
+                    ].map((item) => (
+                      <div
+                        key={item.label}
+                        className="flex items-center gap-2 rounded-[var(--radius-control)] border px-2.5 py-2"
+                        style={{ borderColor: item.tone.border, background: item.tone.bg }}
+                      >
+                        <span style={{ color: item.tone.fg }}>{item.icon}</span>
+                        <div>
+                          <p className="text-[10px] font-medium" style={{ color: item.tone.fg }}>{item.label}</p>
+                          <p className="text-[15px] font-semibold tabular-nums nl-text">{item.count}</p>
+                        </div>
                       </div>
-                      <span className="text-[8px] font-bold text-slate-400">{u.last_login_at || '—'}</span>
+                    ))}
+                  </div>
+                  {finance.inactivos.length === 0 ? (
+                    <p className="py-4 text-center text-[12px] nl-text-muted">Nenhum aluno fora da contabilidade.</p>
+                  ) : (
+                    <div className="space-y-0.5">
+                      {finance.inactivos.map(({ aluno }) => {
+                        const tone = getManualStatusTone(aluno.status);
+                        return (
+                          <div
+                            key={aluno.id}
+                            className="flex items-center justify-between gap-2 rounded-[var(--radius-control)] px-2 py-1.5 hover:bg-[var(--bg-surface)]/80"
+                            style={{ boxShadow: `inset 3px 0 0 ${tone.fg}` }}
+                          >
+                            <div className="min-w-0">
+                              <p className="truncate text-[12px] font-semibold nl-text">{aluno.nome}</p>
+                              <p className="text-[10px] nl-text-muted">{formatCve(aluno.plano)}</p>
+                            </div>
+                            <span className={`badge ${tone.badge} shrink-0 !text-[9px]`}>
+                              {tone.label || getStudentStatusLabel(aluno.status)}
+                            </span>
+                          </div>
+                        );
+                      })}
                     </div>
-                  ))}
-                </div>
-              </div>
+                  )}
+                </BentoPanel>
+              </section>
+            </>
+          ) : (
+            /* ── ATIVIDADE (bento) ── */
+            <>
+              <section className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
+                {[
+                  { label: 'Eventos no mês', value: String(activity.totalEvents), accent: 'text-[var(--color-primary)]', icon: <Activity size={15} /> },
+                  { label: 'Notas', value: String(activity.notesMes.length), accent: 'text-[var(--color-warning)]', icon: <StickyNote size={15} /> },
+                  { label: 'Logs', value: String(activity.logsMes.length), accent: 'text-[var(--color-primary)]', icon: <BookUser size={15} /> },
+                  { label: 'Utilizadores', value: String(activity.usersList.length), accent: 'text-[var(--color-success)]', icon: <Users size={15} /> },
+                ].map((kpi) => (
+                  <div key={kpi.label} className="nl-card !p-3 transition-all hover:-translate-y-0.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-medium nl-text-muted">{kpi.label}</span>
+                      <span className={kpi.accent}>{kpi.icon}</span>
+                    </div>
+                    <p className={`mt-1 text-[19px] font-semibold tabular-nums ${kpi.accent}`}>{kpi.value}</p>
+                  </div>
+                ))}
+              </section>
 
-              <div className="rounded-[12px] border border-[var(--border)] bg-white p-4 shadow-[var(--shadow-sm)]">
-                <div className="flex items-center justify-between gap-3 mb-2">
-                  <div>
-                    <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">Registos Hoje</p>
-                    <h2 className="mt-0.5 text-[15px] font-black text-slate-800">Novas Matrículas & Notas</h2>
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="rounded-[var(--radius-control)] border border-blue-100 bg-blue-50/60 p-2.5">
-                    <p className="text-[8px] font-black uppercase tracking-[0.1em] text-blue-700">Matrículas</p>
-                    <p className="mt-1 text-[20px] font-black text-blue-700 tabular-nums">{daily?.matriculasHoje.length || 0}</p>
-                    <div className="mt-1.5 space-y-0.5 max-h-[60px] overflow-y-auto custom-scrollbar">
-                      {daily?.matriculasHoje.map((m: any) => (
-                        <p key={m.id} className="truncate text-[9px] font-bold text-blue-800">{m.nome}</p>
-                      ))}
+              <section className="grid grid-cols-12 gap-3 items-start">
+                <BentoPanel
+                  isOpen={openPanels.equipa}
+                  onToggle={() => togglePanel('equipa')}
+                  tone="blue"
+                  expandMode="width"
+                  spanClosed="col-span-12 md:col-span-7 xl:col-span-8"
+                  spanOpen="col-span-12"
+                  heightClosed="h-[260px]"
+                  header={(
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <Users size={14} className="text-[var(--color-primary)]" />
+                        <h2 className="text-[14px] font-semibold nl-text">Equipa</h2>
+                        <span className="badge badge-info tabular-nums">{activity.usersList.length}</span>
+                      </div>
+                      <p className="mt-0.5 text-[11px] font-medium nl-text-muted">Actividade por utilizador no mês</p>
                     </div>
-                  </div>
-                  <div className="rounded-[var(--radius-control)] border border-amber-100 bg-amber-50/60 p-2.5">
-                    <p className="text-[8px] font-black uppercase tracking-[0.1em] text-amber-700">Notas</p>
-                    <p className="mt-1 text-[20px] font-black text-amber-700 tabular-nums">{daily?.notasHoje.length || 0}</p>
-                    <div className="mt-1.5 space-y-0.5 max-h-[60px] overflow-y-auto custom-scrollbar">
-                      {daily?.notasHoje.map((n: any) => (
-                        <p key={n.id} className="truncate text-[9px] font-bold text-amber-800">{n.nome || n.aluno_id}</p>
+                  )}
+                  preview={(
+                    <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2 content-start">
+                      {activity.usersList.slice(0, 4).map((u) => (
+                        <div key={u.name} className="flex items-center gap-2 rounded-[var(--radius-control)] border border-[var(--border-light)] bg-[var(--bg-surface)]/70 px-2 py-2">
+                          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--color-primary)] text-[11px] font-semibold text-white">
+                            {u.name.slice(0, 1).toUpperCase()}
+                          </span>
+                          <div className="min-w-0">
+                            <p className="truncate text-[12px] font-semibold nl-text">{u.name}</p>
+                            <p className="text-[10px] nl-text-muted">{u.total} eventos</p>
+                          </div>
+                        </div>
                       ))}
+                      {activity.usersList.length === 0 && (
+                        <p className="col-span-full py-6 text-center text-[12px] nl-text-muted">Sem actividade neste mês.</p>
+                      )}
                     </div>
+                  )}
+                >
+                  <div className="mb-3">
+                    <select
+                      className="nl-input !h-9 !w-auto min-w-[160px]"
+                      value={filtroUser}
+                      onChange={(e) => setFiltroUser(e.target.value)}
+                    >
+                      {activity.userNames.map((u) => (
+                        <option key={u} value={u}>
+                          {u === 'todos' ? 'Todos os utilizadores' : u}
+                        </option>
+                      ))}
+                    </select>
                   </div>
-                </div>
-              </div>
-            </div>
-          </div>
+                  {adminLoading && <p className="text-[12px] nl-text-muted">A carregar…</p>}
+                  <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                    {activity.usersList.map((u) => (
+                      <button
+                        key={u.name}
+                        type="button"
+                        onClick={() => setFiltroUser(u.name)}
+                        className={`rounded-[var(--radius-control)] border p-3 text-left transition-all ${
+                          filtroUser === u.name
+                            ? 'border-[var(--color-primary)] bg-[var(--color-primary-light)]'
+                            : 'border-[var(--border)] bg-[var(--bg-surface)] hover:bg-[var(--color-secondary-light)]'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--color-primary)] text-[12px] font-semibold text-white">
+                            {u.name.slice(0, 1).toUpperCase()}
+                          </span>
+                          <div className="min-w-0">
+                            <p className="truncate text-[13px] font-semibold nl-text">{u.name}</p>
+                            <p className="text-[11px] nl-text-muted">{u.total} eventos</p>
+                          </div>
+                        </div>
+                        <div className="mt-2 grid grid-cols-3 gap-1 text-center">
+                          <div>
+                            <p className="text-[14px] font-semibold text-[var(--color-success)]">{u.pagamentos}</p>
+                            <p className="text-[9px] nl-text-muted">Pag.</p>
+                          </div>
+                          <div>
+                            <p className="text-[14px] font-semibold text-[var(--color-warning)]">{u.notas}</p>
+                            <p className="text-[9px] nl-text-muted">Notas</p>
+                          </div>
+                          <div>
+                            <p className="text-[14px] font-semibold text-[var(--color-primary)]">{u.acoes + u.logins}</p>
+                            <p className="text-[9px] nl-text-muted">Ações</p>
+                          </div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                  {adminData.users.length > 0 && (
+                    <div className="mt-4 border-t border-[var(--border-light)] pt-3">
+                      <p className="mb-2 text-[12px] font-medium nl-text-muted">Contas no sistema</p>
+                      <div className="flex flex-wrap gap-2">
+                        {adminData.users.map((u) => (
+                          <span
+                            key={u.id}
+                            className={`inline-flex items-center gap-1.5 rounded-[var(--radius-pill)] border px-2.5 py-1 text-[11px] font-medium ${
+                              u.is_active ? 'border-[var(--border)] nl-text' : 'border-[var(--border)] opacity-50'
+                            }`}
+                          >
+                            <LogIn size={11} />
+                            {u.name}
+                            <span className="nl-text-muted">· {u.role}</span>
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </BentoPanel>
 
+                <BentoPanel
+                  isOpen={openPanels.timeline}
+                  onToggle={() => togglePanel('timeline')}
+                  tone="default"
+                  expandMode="height"
+                  spanClosed="col-span-12 md:col-span-5 xl:col-span-4"
+                  spanOpen="col-span-12"
+                  heightClosed="h-[260px]"
+                  heightOpen="min-h-[420px] max-h-[560px]"
+                  header={(
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <Activity size={14} className="nl-text-muted" />
+                        <h2 className="text-[14px] font-semibold nl-text">Linha do tempo</h2>
+                        <span className="badge badge-neutral tabular-nums">{activity.events.length}</span>
+                      </div>
+                      <p className="mt-0.5 truncate text-[11px] font-medium nl-text-muted">
+                        {filtroUser !== 'todos' ? filtroUser : 'Todos os eventos'}
+                      </p>
+                    </div>
+                  )}
+                  preview={(
+                    <div className="space-y-1">
+                      {activity.events.slice(0, 4).map((e) => (
+                        <div key={e.id} className="flex items-start gap-2 rounded-[var(--radius-compact)] px-1 py-1">
+                          <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--color-primary)]" />
+                          <div className="min-w-0">
+                            <p className="truncate text-[12px] font-semibold nl-text">{e.title}</p>
+                            <p className="truncate text-[10px] nl-text-muted">{e.detail}</p>
+                          </div>
+                        </div>
+                      ))}
+                      {activity.events.length === 0 && (
+                        <p className="py-6 text-center text-[12px] nl-text-muted">Sem eventos.</p>
+                      )}
+                    </div>
+                  )}
+                >
+                  <div className="max-h-[480px] overflow-y-auto custom-scrollbar">
+                    {activity.events.length === 0 ? (
+                      <p className="py-8 text-center text-[13px] nl-text-muted">Sem eventos neste filtro.</p>
+                    ) : (
+                      <ul className="relative space-y-0">
+                        {activity.events.slice(0, 120).map((e, idx) => {
+                          const isPay = e.type === 'pagamento';
+                          const isNote = e.type === 'nota';
+                          return (
+                            <li key={e.id} className="relative flex gap-3 py-2.5">
+                              {idx < Math.min(activity.events.length, 120) - 1 && (
+                                <span className="absolute left-[15px] top-10 bottom-0 w-px bg-[var(--border-light)]" />
+                              )}
+                              <span
+                                className={`relative z-[1] flex h-8 w-8 shrink-0 items-center justify-center rounded-full border ${
+                                  isPay
+                                    ? 'border-[var(--color-success)] bg-[color-mix(in_srgb,var(--color-success)_14%,var(--bg-surface))] text-[var(--color-success)]'
+                                    : isNote
+                                      ? 'border-[var(--color-warning)] bg-[color-mix(in_srgb,var(--color-warning)_14%,var(--bg-surface))] text-[var(--color-warning)]'
+                                      : 'border-[var(--border)] bg-[var(--color-secondary-light)] nl-text-sub'
+                                }`}
+                              >
+                                {isPay ? <Wallet size={13} /> : isNote ? <StickyNote size={13} /> : <Activity size={13} />}
+                              </span>
+                              <div className="min-w-0 flex-1">
+                                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                                  <p className="text-[13px] font-semibold nl-text">{e.title}</p>
+                                  <p className="text-[11px] tabular-nums nl-text-muted">
+                                    {e.at.toLocaleString('pt-PT', {
+                                      day: '2-digit',
+                                      month: 'short',
+                                      hour: '2-digit',
+                                      minute: '2-digit',
+                                    })}
+                                  </p>
+                                </div>
+                                <p className="mt-0.5 text-[12px] nl-text-sub">{e.detail}</p>
+                                <div className="mt-1 flex flex-wrap items-center gap-2">
+                                  <span className="badge badge-neutral">{e.user || 'Sistema'}</span>
+                                  {typeof e.amount === 'number' && (
+                                    <span className="text-[12px] font-semibold text-[var(--color-success)]">
+                                      {formatCve(e.amount)}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+                  </div>
+                </BentoPanel>
+              </section>
+            </>
+          )}
         </div>
       </div>
     </div>

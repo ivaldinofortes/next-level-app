@@ -1,289 +1,442 @@
-// @ts-nocheck -- Controller typing is intentionally isolated while the legacy App state is decomposed.
-import { CheckCircle2, History, Phone, Send, StickyNote, Wallet, X } from 'lucide-react';
+// @ts-nocheck -- Payment controller; strict typing follows App decomposition.
+import {
+  AlertCircle,
+  Calendar,
+  CheckCircle2,
+  Clock,
+  CreditCard,
+  Phone,
+  Send,
+  StickyNote,
+  Wallet,
+} from 'lucide-react';
 import type { Pagamento } from '../types/app';
 import { buildCoverageWindow, formatCve, formatPtDate, normalizeAmount, parseFlexibleDate } from '../lib/billing';
-import { APP_ICON_PATH, DEFAULT_PAYMENT_METHOD, MONTH_OPTIONS, PAYMENT_METHOD_OPTIONS } from '../constants';
+import { DEFAULT_PAYMENT_METHOD, MONTH_OPTIONS, PAYMENT_METHOD_OPTIONS } from '../constants';
 import { formatInputDate } from '../utils/formatting';
+import AppModalShell from './AppModalShell';
 
-function ModalFrame({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
-  return <div className="fixed inset-0 bg-black/60 backdrop-blur-[2px] flex items-center justify-center z-[200] p-4 animate-fade-in" onClick={onClose} role="dialog" aria-modal="true"><div className="bg-[var(--bg-surface)] w-full max-w-[560px] shadow-[0_28px_90px_rgba(0,0,0,0.36)] rounded-[var(--radius-control)] border border-[var(--border)] overflow-hidden flex flex-col animate-scale-in" style={{ maxHeight: 'calc(100vh - 32px)' }} onClick={(event) => event.stopPropagation()}>{children}</div></div>;
+function statusTone(status?: string) {
+  if (status === 'atrasado' || status === 'hoje') {
+    return {
+      label: status === 'hoje' ? 'Vence hoje' : 'Em atraso',
+      badge: 'badge-error',
+      bar: 'bg-[var(--color-error)]',
+      soft: 'nl-alert-error',
+    };
+  }
+  if (status === 'critico' || status === 'pendente' || status === 'alerta') {
+    return {
+      label: status === 'critico' ? 'Crítico' : status === 'pendente' ? 'Pendente' : 'Alerta',
+      badge: 'badge-warning',
+      bar: 'bg-[var(--color-warning)]',
+      soft: 'nl-alert-warning',
+    };
+  }
+  if (status === 'pago' || status === 'em_dia') {
+    return {
+      label: 'Em dia',
+      badge: 'badge-success',
+      bar: 'bg-[var(--color-success)]',
+      soft: 'nl-alert-success',
+    };
+  }
+  return {
+    label: 'Regular',
+    badge: 'badge-neutral',
+    bar: 'bg-[var(--color-primary)]',
+    soft: 'nl-alert-info',
+  };
 }
 
 export default function QuickPaymentModal({ model }: { model: any }) {
-  const { alunoParaCobrancaRapida, pagamentoForm, mesAtualNome, cobrancaUltimoPagamentoInfo, anoAtual, electron, nomeAcademia, alunoSelecionado, pagamentos, notasResumo, appLogo, cobrancaPagamentoSucesso, setMostrarCobrancaRapida, setAlunoParaCobrancaRapida, setCobrancaPagamentoSucesso, setCobrancaUltimoPagamentoInfo, setPagamentoForm, showToast, registrarPagamentoAtomico, adicionarNotificacao, notificarSistema, carregarHistorico, carregarConfiguracoes, getAlunoNomeSeguro, getAvatarColorByName, getAlunoIniciais, abrirNotasRapidas, parseDate } = model;
+  const {
+    alunoParaCobrancaRapida,
+    pagamentoForm,
+    mesAtualNome,
+    cobrancaUltimoPagamentoInfo,
+    cobrancaResumo,
+    anoAtual,
+    electron,
+    nomeAcademia,
+    alunoSelecionado,
+    pagamentos,
+    notasResumo,
+    cobrancaPagamentoSucesso,
+    setMostrarCobrancaRapida,
+    setAlunoParaCobrancaRapida,
+    setCobrancaPagamentoSucesso,
+    setCobrancaUltimoPagamentoInfo,
+    setCobrancaResumo,
+    setPagamentoForm,
+    showToast,
+    registrarPagamentoAtomico,
+    adicionarNotificacao,
+    notificarSistema,
+    carregarHistorico,
+    carregarConfiguracoes,
+    getAlunoNomeSeguro,
+    getAvatarColorByName,
+    getAlunoIniciais,
+    abrirNotasRapidas,
+    parseDate,
+  } = model;
 
-        const nomeCobranca = getAlunoNomeSeguro(alunoParaCobrancaRapida);
-        const primeiroNomeCobranca = nomeCobranca.split(' ')[0] || 'Aluno';
-        const valorOriginal = normalizeAmount(alunoParaCobrancaRapida.plano) || 0;
-        const valorCobranca = pagamentoForm.valor || String(valorOriginal);
-        const mesCobranca = pagamentoForm.mesReferencia || mesAtualNome;
-        
-        const whatsappNum = (alunoParaCobrancaRapida.telefone || '').replace(/\D/g, '');
-        const valorWhatsapp = cobrancaUltimoPagamentoInfo?.valor
-          ? formatCve(normalizeAmount(cobrancaUltimoPagamentoInfo.valor))
-          : formatCve(normalizeAmount(valorCobranca));
-        const mesWhatsapp = cobrancaUltimoPagamentoInfo?.mes || '';
-        const whatsappMsg = encodeURIComponent(
-          `Olá ${primeiroNomeCobranca}! 👋\nO seu pagamento de *${valorWhatsapp}*${mesWhatsapp ? ` referente a *${mesWhatsapp}*` : ''} foi registado com sucesso.\n\nObrigado por continuar connosco! 💪`
-        );
-        const whatsappUrl = `https://wa.me/${whatsappNum}?text=${whatsappMsg}`;
+  const aluno = alunoParaCobrancaRapida;
+  const nome = getAlunoNomeSeguro(aluno);
+  const primeiroNome = nome.split(' ')[0] || 'Aluno';
+  const planoValor = normalizeAmount(aluno.plano) || 0;
+  const valorStr = pagamentoForm.valor || String(planoValor);
+  const valorNum = normalizeAmount(valorStr);
+  const resumo = cobrancaResumo || {};
+  const tone = statusTone(resumo.status);
+  const jaPago = resumo.status === 'pago' || resumo.status === 'em_dia';
 
-        const fecharCobrancaRapida = () => {
-          setMostrarCobrancaRapida(false);
-          setAlunoParaCobrancaRapida(null);
-          setCobrancaPagamentoSucesso(false);
-          setCobrancaUltimoPagamentoInfo(null);
-          setPagamentoForm({ valor: '', dataPagamento: formatInputDate(), metodo: DEFAULT_PAYMENT_METHOD });
-        };
+  const whatsappNum = (aluno.telefone || '').replace(/\D/g, '');
+  const valorWhatsapp = cobrancaUltimoPagamentoInfo?.valor
+    ? formatCve(normalizeAmount(cobrancaUltimoPagamentoInfo.valor))
+    : formatCve(valorNum);
+  const mesWhatsapp = cobrancaUltimoPagamentoInfo?.mes || '';
+  const whatsappMsg = encodeURIComponent(
+    `Olá ${primeiroNome}! 👋\nO seu pagamento de *${valorWhatsapp}*${mesWhatsapp ? ` referente a *${mesWhatsapp}*` : ''} foi registado com sucesso.\n\nObrigado por continuar connosco! 💪`,
+  );
+  const whatsappUrl = `https://wa.me/${whatsappNum}?text=${whatsappMsg}`;
 
-        const registrarCobrancaRapida = async () => {
-          if (!valorCobranca || normalizeAmount(valorCobranca) <= 0) {
-            showToast('❌ Valor inválido. Insira um valor maior que zero.');
-            return;
-          }
-          if (!pagamentoForm.dataPagamento) {
-            showToast('❌ Data de pagamento é obrigatória.');
-            return;
-          }
-          try {
-            const selectedMonthName = mesAtualNome;
-            const targetMonthIndex = MONTH_OPTIONS.indexOf(selectedMonthName);
-            const targetYear = anoAtual;
-            const dueDay = (() => {
-              const date = parseFlexibleDate(alunoParaCobrancaRapida.vencimento) || parseFlexibleDate(alunoParaCobrancaRapida.data_matricula) || new Date();
-              return date.getDate();
-            })();
-            const targetDueDate = new Date(targetYear, targetMonthIndex, dueDay);
-            const targetDueDateStr = formatPtDate(targetDueDate);
-            const dataPagamento = formatPtDate(parseDate(pagamentoForm.dataPagamento));
-            const janelaCobranca = buildCoverageWindow(dataPagamento, targetDueDateStr);
-            const valorPagamento = String(normalizeAmount(valorCobranca));
+  const pagamentosAluno = (pagamentos || [])
+    .filter((p) => (p.alunoId || p.aluno_id) === aluno.id)
+    .sort((a, b) => (b.id || 0) - (a.id || 0));
+  const ultimoPagamento = pagamentosAluno[0];
+  const totalNotas = notasResumo?.[aluno.id]?.total || 0;
 
-            const novoPagamento: Pagamento = {
-              alunoId: alunoParaCobrancaRapida.id,
-              valor: valorPagamento,
-              status: 'pago',
-              data_pagamento: dataPagamento,
-              metodo_pagamento: pagamentoForm.metodo,
-              mes_referencia: `${selectedMonthName.charAt(0).toUpperCase() + selectedMonthName.slice(1)} ${targetYear}`,
-              referencia_inicio: janelaCobranca.coverageStart,
-              referencia_fim: janelaCobranca.coverageEnd,
-            };
+  // Pré-visualização da cobertura que será criada
+  const dueDay = (() => {
+    const d = parseFlexibleDate(aluno.vencimento) || parseFlexibleDate(aluno.data_matricula) || new Date();
+    return d.getDate();
+  })();
+  const targetMonthIndex = Math.max(0, MONTH_OPTIONS.indexOf(mesAtualNome));
+  const targetDueDateStr = formatPtDate(new Date(anoAtual, targetMonthIndex, dueDay));
+  const dataPagamentoPreview = pagamentoForm.dataPagamento
+    ? formatPtDate(parseDate(pagamentoForm.dataPagamento) || new Date())
+    : formatPtDate(new Date());
+  const janelaPreview = buildCoverageWindow(dataPagamentoPreview, targetDueDateStr);
 
-            if (electron) {
-              await registrarPagamentoAtomico(novoPagamento, janelaCobranca.nextChargeDate);
-              adicionarNotificacao('Pagamento Registado', `Pagamento de ${nomeCobranca} (${novoPagamento.mes_referencia}) foi registado com sucesso.`, 'sucesso');
-              await notificarSistema(nomeAcademia, `Pagamento de ${nomeCobranca} registado com sucesso.`);
+  const fechar = () => {
+    setMostrarCobrancaRapida(false);
+    setAlunoParaCobrancaRapida(null);
+    setCobrancaPagamentoSucesso(false);
+    setCobrancaUltimoPagamentoInfo(null);
+    setCobrancaResumo?.(null);
+    setPagamentoForm({ valor: '', dataPagamento: formatInputDate(), metodo: DEFAULT_PAYMENT_METHOD });
+  };
 
-              setCobrancaUltimoPagamentoInfo({ valor: valorPagamento, mes: novoPagamento.mes_referencia });
-              setCobrancaPagamentoSucesso(true);
-              if (alunoSelecionado?.id === alunoParaCobrancaRapida.id) {
-                carregarHistorico(alunoParaCobrancaRapida.id);
-              }
-              await carregarConfiguracoes();
-            }
-          } catch (error) {
-            console.error('Erro ao registar pagamento rápido:', error);
-            showToast('❌ Erro ao registar pagamento no sistema.');
-          }
-        };
+  const confirmar = async () => {
+    if (valorNum <= 0) {
+      showToast('❌ Valor inválido. Insira um valor maior que zero.');
+      return;
+    }
+    if (!pagamentoForm.dataPagamento) {
+      showToast('❌ Data de pagamento é obrigatória.');
+      return;
+    }
+    try {
+      const dataPagamento = formatPtDate(parseDate(pagamentoForm.dataPagamento));
+      const janela = buildCoverageWindow(dataPagamento, targetDueDateStr);
+      const valorPagamento = String(valorNum);
+      const mesLabel = `${mesAtualNome.charAt(0).toUpperCase() + mesAtualNome.slice(1)} ${anoAtual}`;
 
-        const avatarBg = getAvatarColorByName(nomeCobranca);
-        const pagamentosAlunoCobranca = pagamentos
-          .filter(p => (p.alunoId || p.aluno_id) === alunoParaCobrancaRapida.id)
-          .sort((a, b) => (b.id || 0) - (a.id || 0));
-        const totalNotasCobranca = notasResumo?.[alunoParaCobrancaRapida.id]?.total || 0;
-        const temNotasCobranca = totalNotasCobranca > 0;
+      const novoPagamento: Pagamento = {
+        alunoId: aluno.id,
+        valor: valorPagamento,
+        status: 'pago',
+        data_pagamento: dataPagamento,
+        metodo_pagamento: pagamentoForm.metodo,
+        mes_referencia: mesLabel,
+        referencia_inicio: janela.coverageStart,
+        referencia_fim: janela.coverageEnd,
+      };
 
-        return (
-          <ModalFrame onClose={fecharCobrancaRapida}>
-              <div className="bg-[#F1F4F9] border-b border-[#DDE2EB] h-14 flex items-center shrink-0">
-                <div className="flex-1 flex items-center gap-2.5 px-4">
-                  <div className="h-8 w-8 rounded-md bg-white/65 backdrop-blur-sm p-1.5 border border-white/50 shadow-sm flex items-center justify-center">
-                    <img src={appLogo || APP_ICON_PATH} alt="Logo" className="w-full h-full object-contain" />
-                  </div>
-                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] leading-none">NextLevel</span>
-                </div>
-                <div className="flex-1 text-center whitespace-nowrap">
-                  <h2 className="text-[13px] font-black text-slate-700 uppercase tracking-wider leading-none">Registar Pagamento</h2>
-                </div>
-                <div className="flex-1 flex justify-end px-3">
-                  <button onClick={fecharCobrancaRapida} className="h-8 w-8 flex items-center justify-center rounded-md text-slate-400 hover:bg-red-50 hover:text-red-500 transition-all" title="Fechar">
-                    <X size={16} />
-                  </button>
-                </div>
-              </div>
+      if (electron) {
+        await registrarPagamentoAtomico(novoPagamento, janela.nextChargeDate);
+        adicionarNotificacao('Pagamento registado', `Pagamento de ${nome} (${mesLabel}) foi registado com sucesso.`, 'sucesso');
+        await notificarSistema(nomeAcademia, `Pagamento de ${nome} registado com sucesso.`);
+        setCobrancaUltimoPagamentoInfo({ valor: valorPagamento, mes: mesLabel });
+        setCobrancaPagamentoSucesso(true);
+        if (alunoSelecionado?.id === aluno.id) carregarHistorico(aluno.id);
+        await carregarConfiguracoes();
+      }
+    } catch (error) {
+      console.error('Erro ao registar pagamento:', error);
+      showToast('❌ Erro ao registar pagamento no sistema.');
+    }
+  };
 
-              {cobrancaPagamentoSucesso ? (
-                <div className="px-5 py-10 text-center space-y-5 bg-gradient-to-b from-emerald-50/50 to-white">
-                  <div className="w-20 h-20 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-600 shadow-lg shadow-emerald-200 flex items-center justify-center mx-auto animate-scale-in">
-                    <CheckCircle2 size={40} className="text-white" />
-                  </div>
-                  <div>
-                    <h3 className="text-[22px] font-black text-emerald-700">Pagamento Registado!</h3>
-                    <p className="text-[14px] text-emerald-600/80 font-semibold mt-1">
-                      {formatCve(normalizeAmount(cobrancaUltimoPagamentoInfo?.valor || valorCobranca))} · {nomeCobranca}
+  const avatarBg = getAvatarColorByName(nome);
+
+  return (
+    <AppModalShell
+      title={nome}
+      subtitle={`${aluno.telefone || 'Sem telefone'} · ${aluno.categoria || 'Geral'}`}
+      onClose={fechar}
+      maxWidth="max-w-[480px]"
+      zIndex={220}
+      hideBrand
+      accent="var(--color-success)"
+      headerExtra={(
+        <button
+          type="button"
+          onClick={() => abrirNotasRapidas?.(aluno)}
+          className="nl-icon-btn relative"
+          title={totalNotas ? `${totalNotas} nota(s)` : 'Notas do aluno'}
+        >
+          <StickyNote size={15} />
+          {totalNotas > 0 && (
+            <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--color-warning)] px-1 text-[9px] font-bold text-white">
+              {totalNotas}
+            </span>
+          )}
+        </button>
+      )}
+      panelStyle={{
+        background: jaPago
+          ? 'color-mix(in srgb, var(--color-success) 6%, var(--bg-surface))'
+          : 'var(--bg-surface)',
+      }}
+    >
+      <div className="flex min-h-0 flex-1 flex-col">
+        {/* Identidade compacta */}
+        <div className="flex items-center gap-3 border-b border-[var(--border-light)] px-4 py-3">
+          <div className={`flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full text-[14px] font-semibold text-white ring-2 ring-[color-mix(in_srgb,var(--color-success)_40%,transparent)] ${avatarBg}`}>
+            {aluno.foto_path
+              ? <img src={`local-resource://${aluno.foto_path}`} className="h-full w-full object-cover" alt="" />
+              : getAlunoIniciais(aluno)}
+          </div>
+          <div className="min-w-0">
+            <p className="text-[11px] font-semibold text-[var(--color-success)]">Cobrança · pagamento</p>
+            <p className="flex items-center gap-1.5 truncate text-[12px] font-medium nl-text-muted">
+              <Phone size={11} className="opacity-70" />
+              {aluno.telefone || 'Sem telefone'}
+            </p>
+          </div>
+        </div>
+
+        {cobrancaPagamentoSucesso ? (
+          /* ── Sucesso ── */
+          <div className="flex flex-1 flex-col items-center justify-center gap-4 px-6 py-10 text-center">
+            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[var(--color-success)] text-white shadow-[var(--shadow-md)]">
+              <CheckCircle2 size={32} />
+            </div>
+            <div>
+              <h3 className="text-[18px] font-semibold text-[var(--color-success)]">Pagamento registado</h3>
+              <p className="mt-1 text-[14px] font-medium nl-text">
+                {formatCve(normalizeAmount(cobrancaUltimoPagamentoInfo?.valor || valorNum))}
+              </p>
+              <p className="mt-0.5 text-[12px] nl-text-muted">
+                {cobrancaUltimoPagamentoInfo?.mes || `${mesAtualNome} ${anoAtual}`} · {nome}
+              </p>
+            </div>
+            <div className="flex w-full max-w-sm flex-col gap-2">
+              {whatsappNum && (
+                <button
+                  type="button"
+                  onClick={() => electron?.ipcRenderer.invoke('open-external', whatsappUrl)}
+                  className="nl-btn nl-btn-primary w-full !bg-[var(--color-success)] !border-[var(--color-success)] hover:!brightness-105"
+                >
+                  <Send size={15} /> Enviar recibo por WhatsApp
+                </button>
+              )}
+              <button type="button" onClick={fechar} className="nl-btn nl-btn-secondary w-full">
+                Concluir
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="min-h-0 flex-1 overflow-y-auto custom-scrollbar">
+              {/* ── 1. Situação atual ── */}
+              <section className={`mx-4 mt-4 rounded-[var(--radius-control)] border px-3.5 py-3 ${tone.soft}`}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <AlertCircle size={14} />
+                      <p className="text-[12px] font-semibold">Situação atual</p>
+                    </div>
+                    <p className="mt-1 text-[13px] font-semibold leading-snug">
+                      {jaPago
+                        ? `Em dia até ${resumo.coverageEnd || resumo.nextChargeDate || aluno.vencimento || '—'}`
+                        : resumo.overdueDays > 0
+                          ? `Atrasado há ${resumo.overdueDays} dia(s)`
+                          : resumo.daysUntilCharge != null
+                            ? `Vence em ${Math.max(resumo.daysUntilCharge, 0)} dia(s)`
+                            : 'Estado de cobrança do aluno'}
+                    </p>
+                    <p className="mt-0.5 text-[11px] font-medium opacity-80">
+                      Próxima cobrança: <strong>{resumo.nextChargeDate || aluno.vencimento || '—'}</strong>
                     </p>
                   </div>
-                  {whatsappNum && (
-                    <button
-                      type="button"
-                      onClick={() => electron?.ipcRenderer.invoke('open-external', whatsappUrl)}
-                      className="inline-flex items-center gap-2 h-10 px-6 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.97] text-white rounded-[var(--radius-control)] text-[12px] font-black shadow-lg shadow-emerald-200 transition-all"
-                    >
-                      <Send size={15} /> Enviar Recibo via WhatsApp
-                    </button>
-                  )}
+                  <span className={`badge ${tone.badge} shrink-0`}>{tone.label}</span>
                 </div>
-              ) : (
-                <>
-                  <div className="overflow-y-auto custom-scrollbar">
-                    <section className="px-6 py-5 border-b border-[var(--border-light)]">
-                      <div className="mb-3 flex items-center justify-between">
-                        <p className="text-[9px] font-black uppercase tracking-[0.22em] text-[var(--text-secondary)]">Aluno</p>
-                        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.14em] text-slate-500">Cobrança rápida</span>
-                      </div>
+                {(resumo.coverageStart || resumo.coverageEnd) && (
+                  <p className="mt-2 text-[11px] font-medium opacity-75">
+                    Cobertura: {resumo.coverageStart || '—'} → {resumo.coverageEnd || '—'}
+                  </p>
+                )}
+              </section>
 
-                      <div className="flex items-center gap-3">
-                      <div className={`w-12 h-12 rounded-full flex items-center justify-center text-[15px] font-black text-white overflow-hidden shadow-sm ring-2 ring-white/70 ${avatarBg} shrink-0`}>
-                        {alunoParaCobrancaRapida.foto_path
-                          ? <img src={`local-resource://${alunoParaCobrancaRapida.foto_path}`} className="w-full h-full object-cover" />
-                          : getAlunoIniciais(alunoParaCobrancaRapida)}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-[16px] font-black nl-text truncate leading-tight">{nomeCobranca}</p>
-                        <p className="text-[11px] nl-text-muted truncate flex items-center gap-1.5 mt-0.5">
-                          <Phone size={10} className="shrink-0 opacity-60" />
-                          {alunoParaCobrancaRapida.telefone || 'Sem contacto'}
-                          <span className="opacity-30">·</span>
-                          {alunoParaCobrancaRapida.categoria || 'Geral'}
-                        </p>
-                      </div>
+              {/* ── 2. Resumo financeiro ── */}
+              <section className="mx-4 mt-3 rounded-[var(--radius-control)] border border-[var(--border)] bg-[var(--color-secondary-light)] p-3">
+                <p className="mb-2 text-[12px] font-semibold nl-text">Resumo</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="rounded-[var(--radius-compact)] border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2">
+                    <p className="text-[11px] font-medium nl-text-muted">Plano / mensalidade</p>
+                    <p className="mt-0.5 text-[15px] font-semibold tabular-nums text-[var(--color-primary)]">{formatCve(planoValor)}</p>
+                  </div>
+                  <div className="rounded-[var(--radius-compact)] border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2">
+                    <p className="text-[11px] font-medium nl-text-muted">A registar agora</p>
+                    <p className="mt-0.5 text-[15px] font-semibold tabular-nums text-[var(--color-success)]">{formatCve(valorNum)}</p>
+                  </div>
+                  <div className="rounded-[var(--radius-compact)] border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2">
+                    <p className="text-[11px] font-medium nl-text-muted">Último pagamento</p>
+                    <p className="mt-0.5 truncate text-[12px] font-semibold nl-text">
+                      {ultimoPagamento
+                        ? `${formatCve(ultimoPagamento.valor)} · ${ultimoPagamento.mes_referencia || ultimoPagamento.data_pagamento || ''}`
+                        : 'Nenhum'}
+                    </p>
+                  </div>
+                  <div className="rounded-[var(--radius-compact)] border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2">
+                    <p className="text-[11px] font-medium nl-text-muted">Nova cobertura</p>
+                    <p className="mt-0.5 truncate text-[12px] font-semibold nl-text">
+                      {janelaPreview.coverageStart} → {janelaPreview.coverageEnd}
+                    </p>
+                  </div>
+                </div>
+              </section>
+
+              {/* ── 3. Valor (apenas dígitos; CVE fora do input) ── */}
+              <section className="px-4 pt-4">
+                <label className="mb-1.5 flex items-center gap-1.5 text-[12px] font-semibold nl-text">
+                  <Wallet size={13} className="text-[var(--color-success)]" />
+                  Valor recebido
+                </label>
+                <div className="flex h-12 overflow-hidden rounded-[var(--radius-control)] border border-[var(--border)] bg-[var(--bg-input)] focus-within:border-[var(--color-primary)] focus-within:shadow-[0_0_0_3px_var(--shadow-primary-focus)]">
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    autoComplete="off"
+                    spellCheck={false}
+                    value={String(pagamentoForm.valor ?? '').replace(/[^\d]/g, '')}
+                    onChange={(e) => {
+                      // Só dígitos — evita espaços unicode / "CVE" / formatação a entrar no campo
+                      const digits = e.target.value.replace(/[^\d]/g, '');
+                      setPagamentoForm((prev) => ({ ...prev, valor: digits }));
+                    }}
+                    className="min-w-0 flex-1 border-0 bg-transparent px-3 text-[22px] font-semibold tabular-nums nl-text outline-none placeholder:text-[var(--text-tertiary)]"
+                    placeholder={planoValor > 0 ? String(planoValor) : '0'}
+                    autoFocus={!jaPago}
+                  />
+                  <span className="flex shrink-0 items-center border-l border-[var(--border)] bg-[var(--color-secondary-light)] px-3 text-[12px] font-semibold nl-text-muted">
+                    CVE
+                  </span>
+                </div>
+                {valorNum !== planoValor && valorNum > 0 && (
+                  <p className="mt-1 text-[11px] font-medium nl-text-muted">
+                    Plano base: {formatCve(planoValor)} | diferenca {formatCve(valorNum - planoValor)}
+                  </p>
+                )}
+              </section>
+
+              {/* ── 4. Data + período ── */}
+              <section className="grid grid-cols-2 gap-3 px-4 pt-4">
+                <div>
+                  <label className="mb-1.5 flex items-center gap-1.5 text-[12px] font-semibold nl-text">
+                    <Calendar size={13} className="nl-text-muted" />
+                    Data do pagamento
+                  </label>
+                  <input
+                    type="date"
+                    value={pagamentoForm.dataPagamento}
+                    onChange={(e) => setPagamentoForm((prev) => ({ ...prev, dataPagamento: e.target.value }))}
+                    className="nl-input h-10 w-full"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1.5 flex items-center gap-1.5 text-[12px] font-semibold nl-text">
+                    <Clock size={13} className="nl-text-muted" />
+                    Período
+                  </label>
+                  <div className="nl-input flex h-10 items-center !bg-[var(--color-secondary-light)] text-[13px] font-semibold capitalize nl-text">
+                    {mesAtualNome} {anoAtual}
+                  </div>
+                </div>
+              </section>
+
+              {/* ── 5. Método ── */}
+              <section className="px-4 py-4">
+                <label className="mb-1.5 flex items-center gap-1.5 text-[12px] font-semibold nl-text">
+                  <CreditCard size={13} className="nl-text-muted" />
+                  Método de pagamento
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  {PAYMENT_METHOD_OPTIONS.map((method) => {
+                    const selected = pagamentoForm.metodo === method.label;
+                    return (
                       <button
+                        key={method.value}
                         type="button"
-                        onClick={() => abrirNotasRapidas(alunoParaCobrancaRapida)}
-                        className={`relative flex h-10 w-10 shrink-0 items-center justify-center rounded-[var(--radius-control)] border transition-all ${
-                          temNotasCobranca
-                            ? 'border-amber-400 bg-amber-300 text-amber-950 shadow-sm hover:bg-amber-200 hover:shadow-md'
-                            : 'border-slate-200 bg-white/70 text-slate-300 hover:border-amber-300 hover:bg-amber-50 hover:text-amber-700'
+                        onClick={() => setPagamentoForm((prev) => ({ ...prev, metodo: method.label }))}
+                        className={`h-11 rounded-[var(--radius-control)] border px-2 text-[12px] font-semibold transition-all ${
+                          selected
+                            ? 'border-[var(--color-success)] bg-[var(--color-success)] text-white'
+                            : 'border-[var(--border)] bg-[var(--bg-surface)] nl-text-sub hover:border-[var(--color-success)] hover:bg-[var(--color-secondary-light)]'
                         }`}
-                        title={temNotasCobranca ? `${totalNotasCobranca} nota(s) deste aluno` : 'Adicionar nota antes de registar pagamento'}
                       >
-                        <StickyNote size={16} />
-                        {temNotasCobranca && (
-                          <span className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-white bg-amber-500 px-1 text-[9px] font-black text-white shadow-sm">
-                            {totalNotasCobranca}
-                          </span>
-                        )}
+                        {method.shortLabel || method.label}
                       </button>
-                      <div className="text-right shrink-0 bg-slate-50 px-3.5 py-2 rounded-[var(--radius-control)] border border-[var(--border-light)]">
-                        <p className="text-[8px] font-black uppercase tracking-[0.15em] text-[var(--text-secondary)]">Plano</p>
-                        <p className="text-[16px] font-black text-[var(--color-primary)] tabular-nums leading-tight">{formatCve(valorOriginal)}</p>
-                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+
+              {/* ── 6. Total sticky visual ── */}
+              <section className="nl-alert nl-alert-success mx-4 mb-4 !items-center">
+                <div className="nl-alert-icon">
+                  <Wallet size={15} />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="nl-alert-title">Total a confirmar</p>
+                      <p className="nl-alert-body">
+                        {pagamentoForm.metodo || DEFAULT_PAYMENT_METHOD} · {mesAtualNome} {anoAtual}
+                      </p>
                     </div>
-                    </section>
-
-                    {pagamentosAlunoCobranca.length > 0 && (
-                      <div className="mx-6 mt-4 rounded-[var(--radius-control)] border border-[#D9E2F2] bg-slate-50 px-3 py-2.5 flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <History size={13} className="text-slate-500" />
-                          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.1em]">Último pagamento</span>
-                        </div>
-                        <span className="text-[11px] font-extrabold text-slate-600 truncate max-w-[210px]">
-                          {pagamentosAlunoCobranca[0].mes_referencia || pagamentosAlunoCobranca[0].data_pagamento || 'Registado'}
-                        </span>
-                      </div>
-                    )}
-
-                    <section className="px-6 py-5 border-b border-[var(--border-light)]">
-                      <p className="mb-3 text-[9px] font-black uppercase tracking-[0.22em] text-[var(--text-secondary)]">Valor recebido</p>
-
-                      <div className="relative">
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[13px] font-black text-slate-400">CVE</span>
-                        <input
-                          type="text"
-                          inputMode="decimal"
-                          value={pagamentoForm.valor}
-                          onChange={e => setPagamentoForm(prev => ({ ...prev, valor: e.target.value }))}
-                          className="nl-input w-full h-14 pl-14 pr-4 text-[26px] font-black tracking-tight !rounded-[var(--radius-control)] !bg-white text-slate-900 focus:!border-emerald-500 focus:!ring-4 focus:!ring-emerald-100"
-                          placeholder={String(valorOriginal)}
-                          style={{ fontVariantNumeric: 'tabular-nums' }}
-                        />
-                      </div>
-                    </section>
-
-                    <section className="grid grid-cols-2 gap-3 px-6 py-5 border-b border-[var(--border-light)]">
-                      <div>
-                        <label className="block text-[10px] font-bold nl-text-muted uppercase tracking-[0.12em] mb-1">Mês atual</label>
-                        <select
-                          value={mesAtualNome}
-                          disabled
-                          className="nl-input w-full h-10 px-3 text-[13px] cursor-not-allowed capitalize !bg-slate-50 !border-slate-200 !text-slate-600 !font-bold"
-                        >
-                          <option value={mesAtualNome}>{mesAtualNome.charAt(0).toUpperCase() + mesAtualNome.slice(1)} {anoAtual}</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-[10px] font-bold nl-text-muted uppercase tracking-[0.12em] mb-1">Data</label>
-                        <input
-                          type="date"
-                          value={pagamentoForm.dataPagamento}
-                          onChange={e => setPagamentoForm(prev => ({ ...prev, dataPagamento: e.target.value }))}
-                          className="nl-input w-full h-10 px-3 text-[13px]"
-                        />
-                      </div>
-                    </section>
-
-                    <section className="px-6 py-5 border-b border-[var(--border-light)]">
-                      <label className="block text-[10px] font-bold nl-text-muted uppercase tracking-[0.12em] mb-1">Método</label>
-                      <div className="grid grid-cols-3 gap-2">
-                        {PAYMENT_METHOD_OPTIONS.map((method, idx) => {
-                          const selected = pagamentoForm.metodo === method.label;
-                          return (
-                            <button
-                              key={idx}
-                              type="button"
-                              onClick={() => setPagamentoForm(prev => ({ ...prev, metodo: method.label }))}
-                              className={`h-11 rounded-[var(--radius-control)] border px-2 text-[11px] font-black transition-all ${
-                                selected
-                                  ? 'border-emerald-600 bg-emerald-600 text-white shadow-sm'
-                                  : 'border-[var(--border-light)] bg-white text-[var(--text-secondary)] hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-700'
-                              }`}
-                            >
-                              {method.label}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </section>
-
-                    <section className="px-6 py-5">
-                    <div className="flex items-center justify-between px-4 py-3 rounded-[10px] bg-emerald-600 shadow-sm">
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-8 h-8 rounded-full bg-white/15 flex items-center justify-center">
-                          <Wallet size={15} className="text-white" />
-                        </div>
-                        <div>
-                          <span className="block text-[10px] font-black text-white/80 uppercase tracking-[0.14em]">Total a registar</span>
-                          <span className="block text-[10px] font-semibold text-white/70">{pagamentoForm.metodo} · {mesAtualNome} {anoAtual}</span>
-                        </div>
-                      </div>
-                      <span className="text-[22px] font-black text-white" style={{ fontVariantNumeric: 'tabular-nums' }}>
-                        {formatCve(normalizeAmount(valorCobranca))}
-                      </span>
-                    </div>
-                    </section>
+                    <p className="text-[20px] font-semibold tabular-nums">{formatCve(valorNum)}</p>
                   </div>
+                  <p className="mt-1 text-[11px] font-medium opacity-80">
+                    Após confirmar, a próxima cobrança passa a <strong>{janelaPreview.nextChargeDate}</strong>
+                  </p>
+                </div>
+              </section>
+            </div>
 
-                  <div className="bg-[#F8F9FC] border-t border-[#DDE2EB] px-6 py-4 flex items-center justify-end gap-3 shrink-0">
-                      <button type="button" onClick={fecharCobrancaRapida} className="nl-btn nl-btn-secondary !h-10 !px-5 !text-[11px] font-bold">Cancelar</button>
-                      <button type="button" onClick={registrarCobrancaRapida} className="nl-btn !h-11 !px-8 !text-[12px] font-black !bg-emerald-600 !text-white !border-none !shadow-sm hover:!bg-emerald-700 active:!scale-[0.98] transition-all">
-                      <CheckCircle2 size={16} /> Confirmar Pagamento
-                      </button>
-                  </div>
-                </>
-              )}
-          </ModalFrame>
-        );
-      
+            {/* ── Footer ações ── */}
+            <div className="flex shrink-0 items-center justify-between gap-2 border-t border-[var(--border-light)] bg-[var(--color-secondary-lighter)]/40 px-4 py-3">
+              <button type="button" onClick={fechar} className="nl-btn nl-btn-secondary">
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={confirmar}
+                disabled={valorNum <= 0}
+                className="nl-btn !h-11 !px-6 !border-[var(--color-success)] !bg-[var(--color-success)] !text-white hover:!brightness-105 disabled:opacity-50 disabled:pointer-events-none"
+              >
+                <CheckCircle2 size={16} />
+                {jaPago ? 'Registar mesmo assim' : 'Confirmar pagamento'}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </AppModalShell>
+  );
 }

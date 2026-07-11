@@ -47,6 +47,8 @@ export interface MonthlyBillingSummary {
     | 'futuro'
     | 'suspenso'
     | 'pausado'
+    | 'ferias'
+    | 'desistente'
     | 'bloqueado'
     | 'importado'
     | 'em_dia'
@@ -138,8 +140,12 @@ export const normalizeAmount = (value?: string | number | null) => {
   return Number.parseInt(digits || '0', 10);
 };
 
-export const formatCve = (value?: string | number | null) =>
-  `${normalizeAmount(value).toLocaleString('pt-PT')} CVE`;
+export const formatCve = (value?: string | number | null) => {
+  // Separador de milhares ASCII (evita NBSP / espaços unicode do locale que “estragam” cópias)
+  const n = normalizeAmount(value);
+  const formatted = n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  return `${formatted} CVE`;
+};
 
 const addMonthsClamped = (date: Date, months: number) => {
   const source = clampToDay(date);
@@ -235,6 +241,12 @@ export const getStudentStatusForMonth = (
   }
   if (manualStatus === 'bloqueado') {
     return { amount, status: 'bloqueado', statusLabel: 'Bloqueado', daysUntilCharge: 0, overdueDays: 0, monthsInDebt: [], rating: 1, dayBalance };
+  }
+  if (manualStatus === 'desistente') {
+    return { amount, status: 'desistente', statusLabel: 'Desistente', daysUntilCharge: 0, overdueDays: 0, monthsInDebt: [], rating: 2, dayBalance };
+  }
+  if (manualStatus === 'ferias') {
+    return { amount, status: 'ferias', statusLabel: 'Férias', daysUntilCharge: 0, overdueDays: 0, monthsInDebt: [], rating: 3, dayBalance };
   }
   if (manualStatus === 'suspenso') {
     return { amount, status: 'suspenso', statusLabel: 'Suspenso', daysUntilCharge: 0, overdueDays: 0, monthsInDebt: [], rating: 3, dayBalance };
@@ -423,6 +435,12 @@ export const summarizeStudentBilling = (
   }
   if (manualStatus === 'bloqueado') {
     return { amount, nextChargeDate: student.vencimento || formatPtDate(today), status: 'bloqueado', statusLabel: 'Bloqueado', daysUntilCharge: 0, overdueDays: 0, monthsInDebt: [], rating: 1 };
+  }
+  if (manualStatus === 'desistente') {
+    return { amount, nextChargeDate: student.vencimento || formatPtDate(today), status: 'bloqueado', statusLabel: 'Desistente', daysUntilCharge: 0, overdueDays: 0, monthsInDebt: [], rating: 2 };
+  }
+  if (manualStatus === 'ferias') {
+    return { amount, nextChargeDate: student.vencimento || formatPtDate(today), status: 'pausado', statusLabel: 'Férias', daysUntilCharge: 0, overdueDays: 0, monthsInDebt: [], rating: 3 };
   }
   if (manualStatus === 'suspenso') {
     return { amount, nextChargeDate: student.vencimento || formatPtDate(today), status: 'suspenso', statusLabel: 'Suspenso', daysUntilCharge: 0, overdueDays: 0, monthsInDebt: [], rating: 3 };

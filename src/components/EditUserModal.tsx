@@ -1,22 +1,19 @@
 // @ts-nocheck -- Legacy controller typing is isolated during App decomposition.
 import { Activity, Archive, Camera, CreditCard, Edit, LogOut, Save, ShieldOff, Trash2, UserPlus, X } from 'lucide-react';
+import { getUserAvatar, persistUserAvatars, removeUserAvatar, setUserAvatar, userInitials } from '../utils/userAvatar';
 
 export default function EditUserModal({ model }: { model: unknown }) {
   const { utilizadorEmEdicao, utilizadorAvatares, utilizadorEdicaoForm, electron, logs, setUtilizadorEmEdicao, setUtilizadorAvatares, setUtilizadorEdicaoForm, showToast, setListaUtilizadores } = model;
+  const avatarSrc = getUserAvatar(utilizadorAvatares, utilizadorEmEdicao);
   return (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[1000] p-4 animate-fade-in" onClick={() => setUtilizadorEmEdicao(null)}>
+        <div className="fixed inset-0 nl-modal-overlay flex items-center justify-center z-[1000] p-4 animate-fade-in" onClick={() => setUtilizadorEmEdicao(null)}>
           <div className="bg-[var(--bg-surface)] w-full max-w-[720px] shadow-[0_20px_70px_rgba(0,0,0,0.3)] rounded-[6px] border border-[var(--border)] overflow-hidden flex flex-col animate-scale-in" style={{ maxHeight: 'calc(100vh - 40px)' }} onClick={e => e.stopPropagation()}>
             <div className="bg-[#F1F4F9] border-b border-[#DDE2EB] h-12 flex items-center shrink-0">
               <div className="flex-1 flex items-center gap-2.5 px-4">
-                {(() => {
-                  const avatar = utilizadorAvatares[String(utilizadorEmEdicao.id)];
-                  return (
-                    <div className="h-6 w-6 rounded-md overflow-hidden flex items-center justify-center font-bold text-[9px] border border-white/40 shadow-sm"
-                         style={{ background: avatar ? 'transparent' : `hsl(${(utilizadorEmEdicao.name.charCodeAt(0) * 37) % 360}, 60%, 88%)`, color: `hsl(${(utilizadorEmEdicao.name.charCodeAt(0) * 37) % 360}, 60%, 35%)` }}>
-                      {avatar ? <img src={avatar} className="w-full h-full object-cover" /> : utilizadorEmEdicao.name.slice(0,2).toUpperCase()}
-                    </div>
-                  );
-                })()}
+                <div className="h-6 w-6 rounded-md overflow-hidden flex items-center justify-center font-bold text-[9px] border border-white/40 shadow-sm"
+                     style={{ background: avatarSrc ? 'transparent' : `hsl(${(utilizadorEmEdicao.name.charCodeAt(0) * 37) % 360}, 60%, 88%)`, color: `hsl(${(utilizadorEmEdicao.name.charCodeAt(0) * 37) % 360}, 60%, 35%)` }}>
+                  {avatarSrc ? <img src={avatarSrc} className="w-full h-full object-cover" alt="" /> : userInitials(utilizadorEmEdicao.name)}
+                </div>
                 <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] leading-none">{utilizadorEmEdicao.name}</span>
               </div>
               <div className="flex-1 text-center whitespace-nowrap">
@@ -36,10 +33,10 @@ export default function EditUserModal({ model }: { model: unknown }) {
                 <div className="flex items-center gap-3">
                   <div className="relative group">
                     <div className="w-14 h-14 rounded-[var(--radius-control)] overflow-hidden flex items-center justify-center font-bold text-[16px] border border-[var(--border)]"
-                         style={{ background: utilizadorAvatares[String(utilizadorEmEdicao.id)] ? 'transparent' : `hsl(${(utilizadorEmEdicao.name.charCodeAt(0) * 37) % 360}, 60%, 88%)`, color: `hsl(${(utilizadorEmEdicao.name.charCodeAt(0) * 37) % 360}, 60%, 35%)` }}>
-                      {utilizadorAvatares[String(utilizadorEmEdicao.id)]
-                        ? <img src={utilizadorAvatares[String(utilizadorEmEdicao.id)]} className="w-full h-full object-cover" />
-                        : utilizadorEmEdicao.name.slice(0,2).toUpperCase()}
+                         style={{ background: avatarSrc ? 'transparent' : `hsl(${(utilizadorEmEdicao.name.charCodeAt(0) * 37) % 360}, 60%, 88%)`, color: `hsl(${(utilizadorEmEdicao.name.charCodeAt(0) * 37) % 360}, 60%, 35%)` }}>
+                      {avatarSrc
+                        ? <img src={avatarSrc} className="w-full h-full object-cover" alt="" />
+                        : userInitials(utilizadorEmEdicao.name)}
                     </div>
                     <label className="absolute inset-0 bg-black/50 rounded-[var(--radius-control)] flex items-center justify-center opacity-0 group-hover:opacity-100 cursor-pointer transition-all">
                       <Camera size={14} className="text-white" />
@@ -49,9 +46,14 @@ export default function EditUserModal({ model }: { model: unknown }) {
                         const reader = new FileReader();
                         reader.onload = (ev) => {
                           const result = ev.target?.result as string;
-                          const updated = { ...utilizadorAvatares, [String(utilizadorEmEdicao.id)]: result };
+                          const userRef = {
+                            id: utilizadorEmEdicao.id,
+                            name: utilizadorEdicaoForm.name || utilizadorEmEdicao.name,
+                            email: utilizadorEmEdicao.email,
+                          };
+                          const updated = setUserAvatar(utilizadorAvatares, userRef, result);
                           setUtilizadorAvatares(updated);
-                          localStorage.setItem('nl_user_avatares', JSON.stringify(updated));
+                          persistUserAvatars(updated);
                         };
                         reader.readAsDataURL(file);
                       }} />
@@ -59,13 +61,17 @@ export default function EditUserModal({ model }: { model: unknown }) {
                   </div>
                   <div className="text-[10px] nl-text-muted leading-relaxed">
                     <p className="font-bold nl-text mb-0.5">Foto de perfil</p>
-                    <p>Passe o rato para alterar</p>
-                    {utilizadorAvatares[String(utilizadorEmEdicao.id)] && (
+                    <p>Passe o rato para alterar · aparece no login e na barra</p>
+                    {avatarSrc && (
                       <button type="button" onClick={() => {
-                        const updated = { ...utilizadorAvatares };
-                        delete updated[String(utilizadorEmEdicao.id)];
+                        const userRef = {
+                          id: utilizadorEmEdicao.id,
+                          name: utilizadorEdicaoForm.name || utilizadorEmEdicao.name,
+                          email: utilizadorEmEdicao.email,
+                        };
+                        const updated = removeUserAvatar(utilizadorAvatares, userRef);
                         setUtilizadorAvatares(updated);
-                        localStorage.setItem('nl_user_avatares', JSON.stringify(updated));
+                        persistUserAvatars(updated);
                       }} className="text-red-500 hover:underline mt-1 block text-[10px]">Remover foto</button>
                     )}
                   </div>

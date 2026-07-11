@@ -23,7 +23,7 @@ export default function ActivePaymentModal({ aluno, resumo = {}, onReview, onClo
   const cobertura = resumo.coverageStart && resumo.coverageEnd ? `${resumo.coverageStart} até ${resumo.coverageEnd}` : 'Cobertura ativa';
 
   return (
-    <div className="fixed inset-0 bg-black/55 backdrop-blur-[2px] flex items-center justify-center z-[210] p-4 animate-fade-in" onClick={onClose} role="dialog" aria-modal="true">
+    <div className="fixed inset-0 nl-modal-overlay flex items-center justify-center z-[210] p-4 animate-fade-in" onClick={onClose} role="dialog" aria-modal="true">
       <div className="w-full max-w-[460px] overflow-hidden rounded-[var(--radius-control)] border border-emerald-200 bg-white shadow-[0_25px_80px_rgba(0,0,0,0.28)] animate-scale-in" onClick={(event) => event.stopPropagation()}>
         <div className="bg-gradient-to-r from-emerald-600 to-emerald-500 px-5 py-4 text-white">
           <div className="flex items-start justify-between gap-4">

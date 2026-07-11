@@ -8,7 +8,7 @@
 
 **Desenvolvido por [NEXT LAB](https://github.com/ivaldinofortes) · Cabo Verde 🇨🇻**
 
-[![Versão](https://img.shields.io/badge/versão-1.0.0--beta.2.2-blue?style=for-the-badge)](https://github.com/ivaldinofortes/next-level-app/releases)
+[![Versão](https://img.shields.io/badge/versão-1.0.0-stable-green?style=for-the-badge)](https://github.com/ivaldinofortes/next-level-app/releases)
 [![Electron](https://img.shields.io/badge/Electron-31.7.7-47848F?style=for-the-badge&logo=electron)](https://electronjs.org)
 [![React](https://img.shields.io/badge/React-19.2.5-61DAFB?style=for-the-badge&logo=react)](https://react.dev)
 [![TypeScript](https://img.shields.io/badge/TypeScript-6.0-3178C6?style=for-the-badge&logo=typescript)](https://typescriptlang.org)
@@ -245,26 +245,27 @@ npm run rebuild
 ### Iniciar em Modo de Desenvolvimento
 
 ```bash
-# Terminal 1 — Iniciar o servidor Vite
+# Terminal 1 — servidor Vite (porta 3000)
 npm run dev
 
-# Terminal 2 — Abrir o Electron apontando para o Dev Server
-VITE_DEV_SERVER_URL=http://localhost:5173 npm run electron
+# Terminal 2 — app desktop nativa
+npm run start:native
 ```
 
-> Em macOS/Linux use `VITE_DEV_SERVER_URL=...`. Em Windows (CMD): `set VITE_DEV_SERVER_URL=http://localhost:5173 && npm run electron`
+> Equivalente: `VITE_DEV_SERVER_URL=http://127.0.0.1:3000 npm run electron`  
+> Windows (CMD): `set VITE_DEV_SERVER_URL=http://127.0.0.1:3000 && npm run electron`
 
-### Build de Produção
+### Build de Produção / Entrega
 
 ```bash
-# Build completo (frontend + instalador nativo)
-npm run dist
+# Qualidade mínima (testes + frontend + artefactos)
+npm run verify
 
-# Apenas build para Windows (ZIP portátil)
-npx electron-builder --win zip --x64
+# Instaladores Windows (NSIS + portable) → pasta release/
+npm run dist:win
 ```
 
-O instalador final será gerado na pasta `dist/`.
+Guia de entrega ao cliente: [`docs/RELEASE_v1.0.0.md`](docs/RELEASE_v1.0.0.md)
 
 ---
 
@@ -288,11 +289,13 @@ Este comando recompila todos os módulos nativos para a versão correta do Elect
 
 | Script | Comando | Descrição |
 |--------|---------|-----------|
-| Desenvolvimento (UI) | `npm run dev` | Servidor Vite com HMR |
-| Electron (dev) | `VITE_DEV_SERVER_URL=http://localhost:5173 npm run electron` | Electron ligado ao dev server |
+| Desenvolvimento (UI) | `npm run dev` | Servidor Vite com HMR (porta 3000) |
+| Electron (dev) | `npm run start:native` | Electron ligado ao Vite em `127.0.0.1:3000` |
+| Verificar release | `npm run verify` | Testes + build frontend + checklist de ficheiros |
 | Build Frontend | `npm run build` | Compila TypeScript + Vite para `dist/` |
-| Distribuição | `npm run dist` | Build + Gera instaladores com `electron-builder` |
-| Reconstrução Nativos | `npm run rebuild` | Recompila módulos nativos para o Electron |
+| Windows | `npm run dist:win` | Instalador NSIS + portable em `release/` |
+| Distribuição | `npm run dist` | Build + instaladores da plataforma atual |
+| Reconstrução Nativos | `npm run rebuild` | Recompila `better-sqlite3` para o Electron |
 | Lint | `npm run lint` | Verificação de código com ESLint |
 
 ---
@@ -385,7 +388,7 @@ next-level-app/
 
 ## 📋 Roadmap
 
-### ✅ Concluído (v1.0.0-beta.1.1)
+### ✅ Concluído (v1.0.0 estável — Windows-first)
 - [x] Sistema de login com autenticação encriptada
 - [x] Gestão completa de alunos (CRUD + Soft Delete)
 - [x] Timeline temporal de matrículas (sem meses futuros)
@@ -399,19 +402,20 @@ next-level-app/
 - [x] Gestão de utilizadores (admin + operacional + acesso rápido)
 - [x] Configurações da academia (nome, logo, banner, morada)
 - [x] Licenciamento interno (chaves de cliente)
-- [x] **Sistema de 3 Temas** (Claro, Escuro, Claude) com CSS Variables
-- [x] **Página de Relatório Detalhado** com gráficos SVG e exportação Excel/PDF
-- [x] **Slideshow de Login** com modo apresentação
-- [x] **Seed database** pré-configurado no instalador Windows
-- [x] Empacotamento para Windows (ZIP portátil x64) e macOS
+- [x] Sistema de 3 Temas (Claro, Escuro, Claude) com CSS Variables
+- [x] Página de Relatório Detalhado com gráficos SVG e exportação Excel/PDF
+- [x] Slideshow de Login com modo apresentação
+- [x] Seed database pré-configurado no instalador Windows
+- [x] Instalador NSIS + portable Windows + auto-updater
+- [x] Importação de alunos via Excel
+- [x] Testes de domínio + `npm run verify` + guia `docs/RELEASE_v1.0.0.md`
 
-### 🔜 Próximas Versões
-- [ ] Refatorização do `App.tsx` em componentes modulares
-- [ ] Instalador NSIS para Windows (com atalhos e desinstalador)
-- [ ] Modal de pagamento com contexto visual completo e resumo financeiro
-- [ ] Mensagem de boas-vindas automática após nova matrícula
+### 🔜 Próximas Versões (v1.0.1 / v1.1)
+- [ ] Continuar a esvaziar `App.tsx` e remover `@ts-nocheck`
+- [ ] Virtualização de listas grandes
+- [ ] Instalador macOS notariado (sob demanda)
 - [ ] Gráfico de evolução de alunos mês a mês
-- [ ] Notificações de vencimento automáticas no arranque
+- [ ] Handlers Electron por domínio
 
 ---
 
