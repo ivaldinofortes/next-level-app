@@ -16,7 +16,8 @@ export function useSetupController({ electron, appLogo, setup, guardarConfigurac
   const { setupStep, setSetupStep, setupData, setupLicenseInfo, setSetupLicenseInfo, setSetupError, configuracoes } = setup;
 
   useEffect(() => {
-    if (configuracoes?.setup_completed === '0') void electron?.ipcRenderer.invoke('window:resize', 600, 500, false);
+    // Wizard um pouco maior — mais legível e com espaço para dicas
+    if (configuracoes?.setup_completed === '0') void electron?.ipcRenderer.invoke('window:resize', 760, 680, false);
   }, [configuracoes?.setup_completed, electron]);
 
   const validarPassoSetup = async () => {

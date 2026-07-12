@@ -3390,7 +3390,26 @@ function App() {
   // ── Splash Screen ────────────────────────────────────────────────
   if (loadingConfig) return <SplashScreen appLogo={appLogo} />;
 
-  if (configuracoes?.setup_completed === '0') return <InitialSetupPage model={{ appLogo, setupStep, setupData, setupLicenseInfo, setupError, electron, setAppLogo, setSetupData, setSetupStep, saltarSetupDesenvolvedor, proximoPassoSetup, finalizarSetupTotal }} />;
+  if (configuracoes?.setup_completed === '0') {
+    return (
+      <InitialSetupPage
+        model={{
+          appLogo,
+          setupStep,
+          setupData,
+          setupLicenseInfo,
+          setupError,
+          electron,
+          setAppLogo,
+          setSetupData,
+          setSetupStep,
+          saltarSetupDesenvolvedor,
+          proximoPassoSetup,
+          finalizarSetupTotal,
+        }}
+      />
+    );
+  }
 
   // ── License Block Screen ──────────────────────────────────────────
   if (!licencaAtiva) return <LicenseBlockedPage model={{ chaveReativacao, erroReativacao, electron, GlobalStyles, setChaveReativacao, setErroReativacao, setLicencaAtiva, carregarConfiguracoes, showToast, gerarBackup }} />;
