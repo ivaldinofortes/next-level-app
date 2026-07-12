@@ -419,7 +419,20 @@ app.whenReady().then(() => {
 
   initConfig('nome_academia', 'Next Level Academia');
   initConfig('logo_path', '');
-  initConfig('categorias', JSON.stringify(['Musculação', 'Cardio', 'Crossfit']));
+  initConfig('categorias', JSON.stringify(['Sem personal trainer', 'Com personal trainer']));
+  // Migrar listas antigas de categorias para as 2 oficiais
+  try {
+    const catRow = db.prepare("SELECT valor FROM configuracoes WHERE chave = 'categorias'").get();
+    const parsed = catRow?.valor ? JSON.parse(catRow.valor) : [];
+    const official = ['Sem personal trainer', 'Com personal trainer'];
+    const isOfficial =
+      Array.isArray(parsed)
+      && parsed.length === 2
+      && official.every((c) => parsed.includes(c));
+    if (!isOfficial) {
+      db.prepare("UPDATE configuracoes SET valor = ? WHERE chave = 'categorias'").run(JSON.stringify(official));
+    }
+  } catch (_) { /* ignore */ }
   initConfig('morada_academia', 'Cidade da Praia, Cabo Verde');
   initConfig('email_academia', 'geral@nextlevel.cv');
   initConfig('require_operational_password', '1');

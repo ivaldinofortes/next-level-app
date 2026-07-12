@@ -1,14 +1,12 @@
 import { useEffect, useRef } from 'react';
-import { Plus, StickyNote, Trash2, X } from 'lucide-react';
+import { Plus, Trash2, X } from 'lucide-react';
 import type { Aluno, Nota } from '../types/app';
-import { getAlunoNomeSeguro } from '../utils/formatting';
+import { getAlunoIniciais, getAlunoNomeSeguro, getAvatarColorByName } from '../utils/formatting';
 
 const POSTIT = '#FFF59D';
 const POSTIT_BORDER = '#E6D36A';
 const POSTIT_INK = '#3D3410';
 const POSTIT_MUTED = '#6B5B24';
-const POSTIT_YELLOW = '#EAB308';
-const POSTIT_FILL = '#FDE047';
 
 interface StudentNotesModalProps {
   aluno: Aluno;
@@ -23,6 +21,7 @@ interface StudentNotesModalProps {
 
 /**
  * Post-it simples e leve — um único cartão amarelo, sem shell pesado.
+ * Cabeçalho com avatar (foto ou iniciais) + nome do aluno.
  */
 export default function StudentNotesModal({
   aluno,
@@ -35,6 +34,13 @@ export default function StudentNotesModal({
 }: StudentNotesModalProps) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const nome = getAlunoNomeSeguro(aluno);
+  const iniciais = getAlunoIniciais(aluno);
+  const avatarBg = getAvatarColorByName(nome);
+  const fotoSrc = aluno.foto_path
+    ? (String(aluno.foto_path).startsWith('data:') || String(aluno.foto_path).startsWith('http')
+        ? aluno.foto_path
+        : `local-resource://${aluno.foto_path}`)
+    : null;
 
   useEffect(() => {
     const t = window.setTimeout(() => inputRef.current?.focus(), 40);
@@ -75,24 +81,27 @@ export default function StudentNotesModal({
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Cabeçalho minimal */}
+        {/* Cabeçalho: avatar (foto/iniciais) + nome */}
         <div
-          className="flex shrink-0 items-start gap-2 border-b px-3.5 py-3"
+          className="flex shrink-0 items-center gap-2.5 border-b px-3.5 py-3"
           style={{ borderColor: POSTIT_BORDER }}
         >
-          <StickyNote
-            size={20}
-            color={POSTIT_YELLOW}
-            fill={POSTIT_FILL}
-            strokeWidth={2}
-            className="mt-0.5 shrink-0"
-          />
+          <div
+            className={`flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full text-[12px] font-bold text-white ring-2 ring-white/80 shadow-sm ${avatarBg}`}
+          >
+            {fotoSrc ? (
+              <img src={fotoSrc} alt="" className="h-full w-full object-cover" />
+            ) : (
+              iniciais
+            )}
+          </div>
           <div className="min-w-0 flex-1">
             <p className="truncate text-[15px] font-semibold leading-tight" style={{ color: POSTIT_INK }}>
               {nome}
             </p>
             <p className="mt-0.5 text-[11px] font-medium" style={{ color: POSTIT_MUTED }}>
               {notas.length === 0 ? 'Sem notas' : `${notas.length} nota${notas.length === 1 ? '' : 's'}`}
+              {aluno.categoria ? ` · ${aluno.categoria}` : ''}
             </p>
           </div>
           <button

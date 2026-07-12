@@ -19,19 +19,31 @@ export const getAvatarColorByName = (nome?: string) => {
 
 /** Paleta de categoria (chips, bordas, destaques no formulário) */
 export const getCategoryTone = (categoria?: string) => {
-  const palette = [
-    { bg: 'color-mix(in srgb, var(--color-primary) 12%, var(--bg-surface))', fg: 'var(--color-primary)', border: 'color-mix(in srgb, var(--color-primary) 35%, var(--border))', solid: '#2563EB' },
-    { bg: 'color-mix(in srgb, var(--color-success) 12%, var(--bg-surface))', fg: 'var(--color-success)', border: 'color-mix(in srgb, var(--color-success) 35%, var(--border))', solid: '#16A34A' },
-    { bg: 'color-mix(in srgb, #8b5cf6 12%, var(--bg-surface))', fg: '#6d28d9', border: 'color-mix(in srgb, #6d28d9 35%, var(--border))', solid: '#7C3AED' },
-    { bg: 'color-mix(in srgb, #14b8a6 12%, var(--bg-surface))', fg: '#0f766e', border: 'color-mix(in srgb, #0f766e 35%, var(--border))', solid: '#0D9488' },
-    { bg: 'color-mix(in srgb, var(--color-warning) 14%, var(--bg-surface))', fg: 'color-mix(in srgb, var(--color-warning) 75%, #000)', border: 'color-mix(in srgb, var(--color-warning) 40%, var(--border))', solid: '#D97706' },
-    { bg: 'color-mix(in srgb, #f43f5e 12%, var(--bg-surface))', fg: '#be123c', border: 'color-mix(in srgb, #be123c 35%, var(--border))', solid: '#E11D48' },
-    { bg: 'color-mix(in srgb, #0891b2 12%, var(--bg-surface))', fg: '#0e7490', border: 'color-mix(in srgb, #0e7490 35%, var(--border))', solid: '#0891B2' },
-  ];
-  const key = String(categoria || 'Geral').trim().toLowerCase();
-  let hash = 0;
-  for (let i = 0; i < key.length; i++) hash = (hash + key.charCodeAt(i) * (i + 1)) % 997;
-  return palette[hash % palette.length];
+  const key = String(categoria || '').trim().toLowerCase();
+  // Sem personal → azul; Com personal → verde
+  if (key.includes('com personal')) {
+    return {
+      bg: 'color-mix(in srgb, var(--color-success) 12%, var(--bg-surface))',
+      fg: 'var(--color-success)',
+      border: 'color-mix(in srgb, var(--color-success) 35%, var(--border))',
+      solid: '#16A34A',
+    };
+  }
+  if (key.includes('sem personal') || !key) {
+    return {
+      bg: 'color-mix(in srgb, var(--color-primary) 12%, var(--bg-surface))',
+      fg: 'var(--color-primary)',
+      border: 'color-mix(in srgb, var(--color-primary) 35%, var(--border))',
+      solid: '#2563EB',
+    };
+  }
+  // Legado / outros
+  return {
+    bg: 'color-mix(in srgb, var(--color-secondary) 18%, var(--bg-surface))',
+    fg: 'var(--text-secondary)',
+    border: 'var(--border)',
+    solid: '#64748B',
+  };
 };
 
 /** Novo aluno: matriculado nos últimos `days` dias (exclui importados) */

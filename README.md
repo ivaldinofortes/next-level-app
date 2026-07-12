@@ -29,48 +29,24 @@ A filosofia de design é baseada em **densidade de informação com clareza visu
 
 ---
 
-## 🆕 Novidades da v1.0.0-beta.1.1
+## 🆕 Versão 1.0.0 (estável)
 
-### 🎨 Sistema de Temas (Novidade)
-- **3 temas completos** aplicados a todo o sistema via variáveis CSS:
-  - **Claro** — Padrão profissional com tons azuis
-  - **Escuro** — Conforto nocturno com fundo cinzento escuro
-  - **Claude** — Paleta quente em terracota/creme, inspirada no Claude.ai
-- Selector visual de temas em **Ajustes → Aparência** com pré-visualização em miniatura
-- Tema persistido localmente e aplicado imediatamente sem reiniciar
-- Regra de design: fundos seguem o tema, listas e superfícies mantêm-se sempre claras
+Canal de produção. Offline-first, Windows-first, UI nativa leve.
 
-### 📊 Página de Relatório Detalhado (Novidade)
-- Acessível na barra de navegação superior (exclusivo para admins)
-- **Design de folha A4** com cabeçalho da academia, rodapé com timestamp de exportação
-- **Gráfico de donut SVG** com distribuição de estados de pagamento (Pagos / Em dia / Atrasados / Inativos)
-- **Gráfico de barras SVG** com receita mensal dos últimos 6 meses
-- **KPIs visuais** em grelha: total de alunos, pagos, em alerta, atrasados
-- **Tabela numerada** de alunos com estado de cobrança codificado por cor
-- **Resumo financeiro** com receita total, percentagem de pagamentos e média por aluno
-- Filtro por mês/ano com timeline de navegação integrada
-- Exportação **Excel** período-específica com `Guardar como...`
-- Exportação **PDF** do relatório como documento imprimível
+### O que a v1.0 inclui
+- **Login rápido** com avatares clicáveis, logo da academia e campos limpos
+- **Matrícula** com 2 categorias oficiais: *Sem personal trainer* (1000 CVE) e *Com personal trainer* (2000 CVE) — valores sempre editáveis
+- **Alunos**: lista densa, régua de meses, notas (post-it) com avatar/iniciais
+- **Relatórios** (admin): resumo mensal em texto, grelha de 3 colunas, botão **Exportar** na barra superior
+- **Exportação unificada**: PDF simples (cabeçalho academia + rodapé NEXT Lab) e Excel, com recorte e ordenação
+- **Ciclo de mês**: mês passado em leitura por defeito (admin pode desbloquear); boas-vindas ao mês novo; indicador de relatório pronto
+- **Ajustes** reorganizados por grupos (Academia, Equipa, Sistema, Sobre)
+- **3 temas** (Claro / Escuro / Claude), backup ZIP, importação Excel, WhatsApp de cobrança
+- Instalador **NSIS + portable** Windows e seed database na 1.ª instalação
 
-### 🔧 Melhorias de Integração de Temas
-- Página de **Ajustes** completamente adaptada aos 3 temas (todas as secções: Geral, Aparência, Utilizadores, Notificações, Operação, Ajuda)
-- Substituição sistemática de classes `bg-white`/`bg-slate-*`/`border-slate-*` por variáveis CSS (`var(--bg-surface)`, `var(--border)`, etc.)
-- Página de **Relatório** usa `var(--bg-app)` para o fundo exterior, mantendo o papel branco imutável
-
-### 🧮 Motor de Cobrança (billing.ts)
-- Retornos antecipados (`bloqueado`, `suspenso`, `pausado`) agora incluem `monthsInDebt` e `rating` obrigatórios
-- Lógica de cor da régua de tempo corrigida:
-  - 🔵 Azul → dentro do período pago
-  - 🟢 Verde → pago
-  - 🔴 Vermelho → em atraso
-- Meses futuros removidos completamente da timeline (não apenas ocultados)
-- Página de Relatórios filtra alunos corretamente pelo período selecionado
-
-### 📦 Distribuição com Seed Database
-- `resources/seed.db` pré-configurado incluído no instalador Windows
-- Na primeira instalação, o sistema copia automaticamente o seed para `userData`
-- Configurações da academia pré-carregadas; wizard de setup cria o admin na primeira abertura
-- Banner e logótipo padrão incluídos como assets estáticos (sem depender de cloud)
+### Documentação de entrega
+- Guia de release: [`docs/RELEASE_v1.0.0.md`](docs/RELEASE_v1.0.0.md)
+- Checklist cliente: [`docs/ENTREGA_CLIENTE.md`](docs/ENTREGA_CLIENTE.md)
 
 ---
 
@@ -389,32 +365,23 @@ next-level-app/
 ## 📋 Roadmap
 
 ### ✅ Concluído (v1.0.0 estável — Windows-first)
-- [x] Sistema de login com autenticação encriptada
-- [x] Gestão completa de alunos (CRUD + Soft Delete)
-- [x] Timeline temporal de matrículas (sem meses futuros)
-- [x] Histórico e registo de pagamentos com rating 1–5
-- [x] Motor de cobrança (`billing.ts`) com cobertura de período e meses em dívida
-- [x] Notas e ocorrências por aluno (CRM)
-- [x] Sistema de backups (ZIP com DB + fotos)
-- [x] Exportação operacional em Excel (período-específica)
-- [x] Integração WhatsApp (wa.me com template editável)
-- [x] Sistema de logs de auditoria
-- [x] Gestão de utilizadores (admin + operacional + acesso rápido)
-- [x] Configurações da academia (nome, logo, banner, morada)
-- [x] Licenciamento interno (chaves de cliente)
-- [x] Sistema de 3 Temas (Claro, Escuro, Claude) com CSS Variables
-- [x] Página de Relatório Detalhado com gráficos SVG e exportação Excel/PDF
-- [x] Slideshow de Login com modo apresentação
-- [x] Seed database pré-configurado no instalador Windows
-- [x] Instalador NSIS + portable Windows + auto-updater
-- [x] Importação de alunos via Excel
-- [x] Testes de domínio + `npm run verify` + guia `docs/RELEASE_v1.0.0.md`
+- [x] Login com avatares + autenticação local
+- [x] Gestão completa de alunos (CRUD + soft delete + fotos)
+- [x] 2 categorias de inscrição (sem/com personal) e planos sugeridos editáveis
+- [x] Timeline de meses (passado em leitura; desbloqueio admin)
+- [x] Motor de cobrança (`billing.ts`) + pagamentos
+- [x] Notas rápidas (post-it) com avatar do aluno
+- [x] Relatórios admin + exportação PDF/Excel unificada
+- [x] Boas-vindas ao mês + indicador de relatório pronto
+- [x] Ajustes por secções, temas, backup ZIP, import Excel
+- [x] WhatsApp de cobrança, logs, utilizadores, licença
+- [x] Instalador NSIS + portable + seed DB + `npm run verify`
 
 ### 🔜 Próximas Versões (v1.0.1 / v1.1)
 - [ ] Continuar a esvaziar `App.tsx` e remover `@ts-nocheck`
-- [ ] Virtualização de listas grandes
+- [ ] Virtualização de listas grandes (1000+ alunos)
 - [ ] Instalador macOS notariado (sob demanda)
-- [ ] Gráfico de evolução de alunos mês a mês
+- [ ] Backup automático agendado com lembrete forte
 - [ ] Handlers Electron por domínio
 
 ---

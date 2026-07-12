@@ -146,7 +146,7 @@ export default function ImportarDadosModal({ onClose, onSuccess, electron, categ
   const [rows, setRows] = useState<RowData[]>([]);
   const [editCell, setEditCell] = useState<{ r: number; f: keyof RowData } | null>(null);
   const [editVal, setEditVal] = useState('');
-  const [defaultCategoria, setDefaultCategoria] = useState(categorias[0] || 'Geral');
+  const [defaultCategoria, setDefaultCategoria] = useState(categorias[0] || 'Sem personal trainer');
   const [defaultStatus, setDefaultStatus] = useState('importado');
 
   // Passo 4 — resultado

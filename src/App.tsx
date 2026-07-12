@@ -44,6 +44,8 @@ import StudentNotesModal from './components/StudentNotesModal';
 import MonthlyReportModal from './components/MonthlyReportModal';
 import NotificationsPanel from './components/NotificationsPanel';
 import WelcomeStudentModal from './components/WelcomeStudentModal';
+import WelcomeMonthModal from './components/WelcomeMonthModal';
+import ExportReportModal, { type ExportFormat, type ExportScope, type ExportSort, type ExportReportOptions } from './components/ExportReportModal';
 import CreateUserModal from './components/CreateUserModal';
 import EditUserModal from './components/EditUserModal';
 import ResolvePendingModal from './components/ResolvePendingModal';
@@ -147,9 +149,6 @@ const themeVars = {
     '--text-tertiary':           '#77767b',
     '--border':                  '#deddda',
     '--border-light':            '#e8e7e5',
-    // Relatórios — canvas cinza frio (contraste com --bg-app quente)
-    '--reports-canvas':          '#cfd3da',
-    '--reports-canvas-deep':     '#c2c7d0',
     // Adwaita favors borders over heavy drop-shadows
     '--shadow-xs':               '0 1px 1px rgba(0,0,0,0.04)',
     '--shadow-sm':               '0 1px 2px rgba(0,0,0,0.06), 0 0 0 1px rgba(0,0,0,0.04)',
@@ -211,9 +210,6 @@ const themeVars = {
     '--text-tertiary':           '#9a9996',
     '--border':                  'rgba(255,255,255,0.12)',
     '--border-light':            'rgba(255,255,255,0.08)',
-    // Relatórios — slate mais frio/profundo (contraste com --bg-app roxo)
-    '--reports-canvas':          '#0c0e13',
-    '--reports-canvas-deep':     '#080a0e',
     '--shadow-xs':               '0 1px 1px rgba(0,0,0,0.28)',
     '--shadow-sm':               '0 1px 3px rgba(0,0,0,0.32), 0 0 0 1px rgba(0,0,0,0.24)',
     '--shadow-md':               '0 3px 10px rgba(0,0,0,0.36), 0 0 0 1px rgba(0,0,0,0.24)',
@@ -276,9 +272,6 @@ const themeVars = {
     '--text-tertiary':           '#9c8a7a',
     '--border':                  '#ddd4c8',
     '--border-light':            '#eae2d9',
-    // Relatórios — cinza quente-neutro (contraste com canvas bege Claude)
-    '--reports-canvas':          '#d0cbc3',
-    '--reports-canvas-deep':     '#c4beb5',
     '--shadow-xs':               '0 1px 1px rgba(60,30,10,0.04)',
     '--shadow-sm':               '0 1px 2px rgba(60,30,10,0.06), 0 0 0 1px rgba(60,30,10,0.04)',
     '--shadow-md':               '0 2px 6px rgba(60,30,10,0.08), 0 0 0 1px rgba(60,30,10,0.05)',
@@ -407,25 +400,17 @@ const GlobalStyles = ({ theme }: { theme: 'light' | 'dark' | 'claude' }) => {
         border-color: color-mix(in srgb, var(--border) 70%, var(--color-secondary));
       }
 
-      /* ── Relatórios: canvas cinza distinto (claro + escuro) ── */
+      /* ── Relatórios: mesmo fundo das outras páginas ── */
       .nl-reports-page {
-        background: var(--reports-canvas, var(--bg-app));
+        background: var(--bg-app);
       }
       .nl-reports-page .nl-reports-scroll {
-        background:
-          linear-gradient(
-            180deg,
-            var(--reports-canvas-deep, var(--reports-canvas)) 0%,
-            var(--reports-canvas) 32%,
-            var(--reports-canvas) 100%
-          );
+        background: transparent;
       }
       .nl-reports-page .nl-reports-toolbar {
-        background: color-mix(in srgb, var(--bg-surface) 92%, var(--reports-canvas-deep));
+        background: var(--bg-surface);
         border-bottom: 1px solid var(--border);
-        box-shadow:
-          inset 0 -1px 0 color-mix(in srgb, #c64600 26%, transparent),
-          0 1px 0 color-mix(in srgb, #000 4%, transparent);
+        box-shadow: var(--shadow-xs);
       }
       .nl-reports-page .nl-reports-kpi {
         background: var(--bg-surface);
@@ -1096,6 +1081,9 @@ function App() {
   const [mesFinanceiro, setMesFinanceiro] = useState(new Date().toLocaleString('pt-PT', { month: 'long' }).toLowerCase());
   const [anoFinanceiro, setAnoFinanceiro] = useState(new Date().getFullYear());
   const [mostrarRelatorioMensal, setMostrarRelatorioMensal] = useState(false);
+  const [mostrarExportRelatorio, setMostrarExportRelatorio] = useState(false);
+  const [mostrarBoasVindasMes, setMostrarBoasVindasMes] = useState(false);
+  const [mesPassadoEditavel, setMesPassadoEditavel] = useState(false);
   const [mesRelatorio, setMesRelatorio] = useState(new Date().toLocaleString('pt-PT', { month: 'long' }).toLowerCase());
   const [anoRelatorio, setAnoRelatorio] = useState(new Date().getFullYear());
   const [mostrarListaMatriculas, setMostrarListaMatriculas] = useState(false);
@@ -1180,6 +1168,8 @@ function App() {
     if (mostrarPerfilModal) { setMostrarPerfilModal(false); setMostrarHistoricoPerfil(false); setAlunoPerfil(null); setPerfilPagamentoSucesso(false); return true; }
     if (mostrarRelatorioMensal) { setMostrarRelatorioMensal(false); return true; }
     if (mostrarModalDuplicados) { setMostrarModalDuplicados(false); return true; }
+    if (mostrarExportRelatorio) { setMostrarExportRelatorio(false); return true; }
+    if (mostrarBoasVindasMes) { setMostrarBoasVindasMes(false); return true; }
     if (mostrarModalExport) { setMostrarModalExport(false); return true; }
     if (mostrarModalPagamento) { setMostrarModalPagamento(false); return true; }
     if (mostrarImportar) { setMostrarImportar(false); return true; }
@@ -1191,6 +1181,7 @@ function App() {
     mostrarFormNovoUtilizador, mostrarBoasVindas, alunoNotasRapidas,
     mostrarCobrancaRapida, mostrarPerfilModal,
     mostrarRelatorioMensal, mostrarModalDuplicados, mostrarModalExport,
+    mostrarExportRelatorio, mostrarBoasVindasMes,
     mostrarModalPagamento, mostrarImportar, fecharConfirmacao,
   ]);
 
@@ -1246,8 +1237,10 @@ function App() {
     nome: '', telefone: '', email: '', sexo: '',
     data_nascimento: '', morada: '', alergias: '',
     objetivos: '', horario_preferido: '',
-    plano: '', vencimento: '', data_matricula: new Date().toISOString().split('T')[0],
-    categoria: '',
+    plano: '1000',
+    vencimento: '',
+    data_matricula: new Date().toISOString().split('T')[0],
+    categoria: 'Sem personal trainer',
     modo_cobranca: 'mensalidade_movel',
     modo_inscricao: 'matricula' as 'matricula' | 'matricula_pago',
     dia_pagamento: 1 as 1 | 'ultimo',
@@ -1301,6 +1294,8 @@ function App() {
   const periodoSelecionadoPassado = !periodoAtualSelecionado && (
     anoFinanceiro < anoAtual || (anoFinanceiro === anoAtual && mesFinanceiroIndex < hojeReferencia.getMonth())
   );
+  /** Meses passados em leitura por defeito; admin pode desbloquear */
+  const periodoBloqueado = periodoSelecionadoPassado && !mesPassadoEditavel;
   const periodoSelecionadoLabel = `${mesFinanceiro.charAt(0).toUpperCase() + mesFinanceiro.slice(1)} ${anoFinanceiro}`;
   const subtituloPeriodoSelecionado = periodoAtualSelecionado
     ? 'Mês atual'
@@ -1521,6 +1516,21 @@ function App() {
   const alunosMigradosNoPeriodo = useMemo(() => resumosHistoricoMensal.filter((item) => !item.entrouNesteMes), [resumosHistoricoMensal]);
   const alunosComCobrancaNoPeriodo = useMemo(() => resumosHistoricoMensal.filter(({ resumo }) => resumo.status === 'atrasado' || resumo.status === 'hoje'), [resumosHistoricoMensal]);
 
+  // Ao mudar de mês, volta a bloquear edição de meses passados
+  useEffect(() => {
+    setMesPassadoEditavel(false);
+  }, [periodoSelecionadoKey]);
+
+  // Boas-vindas ao mês actual (uma vez por mês civil, primeiros 5 dias)
+  useEffect(() => {
+    if (!isLoggedIn || sessionUser?.role === 'operational') return;
+    const now = hojeReferencia;
+    const key = `nl_welcome_month_${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    if (localStorage.getItem(key)) return;
+    if (now.getDate() > 5) return;
+    setMostrarBoasVindasMes(true);
+  }, [isLoggedIn, sessionUser?.role, hojeReferencia]);
+
   useEffect(() => {
     if (!isLoggedIn) return;
     if (timelineAnnouncementRef.current === periodoSelecionadoKey) return;
@@ -1529,6 +1539,13 @@ function App() {
 
     if (periodoSelecionadoFuturo) {
       showToast(`Historico de ${mesFinanceiro} ${anoFinanceiro} pronto para receber novas matriculas quando o mes chegar.`);
+      return;
+    }
+
+    if (periodoSelecionadoPassado) {
+      showToast(
+        `${mesFinanceiro} ${anoFinanceiro} está fechado (leitura). Use Exportar em Relatórios ou desbloqueie a edição se for admin.`,
+      );
       return;
     }
 
@@ -1547,6 +1564,7 @@ function App() {
     isLoggedIn,
     periodoSelecionadoKey,
     periodoSelecionadoFuturo,
+    periodoSelecionadoPassado,
     mesFinanceiro,
     anoFinanceiro,
     resumosHistoricoMensal.length,
@@ -1585,7 +1603,8 @@ function App() {
         if (configs.morada_academia) setMoradaAcademia(configs.morada_academia);
         if (configs.email_academia) setEmailAcademia(configs.email_academia);
         if (configs.telefone_academia) setTelefoneAcademia(configs.telefone_academia);
-        if (configs.categorias) setCategorias(JSON.parse(configs.categorias));
+        // Categorias oficiais fixas (Sem / Com personal trainer) — lista de sistema
+        setCategorias(['Sem personal trainer', 'Com personal trainer'] as any);
         if (configs.theme_color) setThemeColor(configs.theme_color);
         if (configs.app_theme && ['light','dark','claude'].includes(configs.app_theme)) setAppTheme(configs.app_theme as 'light' | 'dark' | 'claude');
         if (configs.banner_academia) setBannerAcademia(configs.banner_academia);
@@ -1634,8 +1653,8 @@ function App() {
       } catch (error) {
         console.error('Erro ao carregar dados:', error);
       } finally {
-        // Splash curto — app deve abrir rápido (v1)
-        setTimeout(() => setLoadingConfig(false), 420);
+        // Splash mínimo — app deve abrir rápido
+        setTimeout(() => setLoadingConfig(false), 160);
       }
     }
   // setCategorias é estável; a função é definida abaixo para depender de guardarConfiguracao.
@@ -2563,6 +2582,10 @@ function App() {
   };
 
   const abrirAcaoPagamentoDaLista = (aluno: Aluno, resumo: any) => {
+    if (periodoBloqueado) {
+      showToast('Mês fechado em leitura. Em Relatórios pode exportar, ou desbloqueie a edição (admin).');
+      return;
+    }
     if (!aluno) return;
     abrirCobrancaUnificada(aluno, resumo);
   };
@@ -2750,263 +2773,383 @@ function App() {
     setMostrarModalExport(false);
   };
 
-  const exportarRelatorioExcel = async () => {
+  const isResumoEmDivida = (status?: string) => status === 'atrasado' || status === 'hoje';
+  const isResumoPago = (status?: string) => status === 'pago';
+
+  const filtrarResumosExport = (
+    resumos: { aluno: Aluno; resumo: ReturnType<typeof getStudentStatusForMonth>; pagamentoPeriodo?: Pagamento }[],
+    scope: ExportScope,
+  ) => {
+    if (scope === 'pagos') return resumos.filter(({ resumo }) => isResumoPago(resumo.status));
+    if (scope === 'dividas') return resumos.filter(({ resumo }) => isResumoEmDivida(resumo.status));
+    if (scope === 'pendentes') {
+      return resumos.filter(({ aluno, resumo }) => {
+        if (!isOperationallyActive(aluno.status)) return false;
+        return !isResumoPago(resumo.status);
+      });
+    }
+    return resumos;
+  };
+
+  const ordenarResumosExport = <T extends { aluno: Aluno; resumo: ReturnType<typeof getStudentStatusForMonth> }>(
+    resumos: T[],
+    sort: ExportSort,
+  ): T[] => {
+    const rank = (status?: string) => {
+      if (isResumoPago(status)) return 0;
+      if (isResumoEmDivida(status)) return 1;
+      return 2;
+    };
+    const byName = (a: T, b: T) => getAlunoNomeSeguro(a.aluno).localeCompare(getAlunoNomeSeguro(b.aluno), 'pt-PT');
+    const list = [...resumos];
+    if (sort === 'pagos') {
+      return list.sort((a, b) => {
+        const d = rank(a.resumo.status) - rank(b.resumo.status);
+        return d !== 0 ? d : byName(a, b);
+      });
+    }
+    if (sort === 'dividas') {
+      return list.sort((a, b) => {
+        // dívidas primeiro (rank invertido parcial)
+        const ra = isResumoEmDivida(a.resumo.status) ? 0 : isResumoPago(a.resumo.status) ? 1 : 2;
+        const rb = isResumoEmDivida(b.resumo.status) ? 0 : isResumoPago(b.resumo.status) ? 1 : 2;
+        return ra !== rb ? ra - rb : byName(a, b);
+      });
+    }
+    return list.sort(byName);
+  };
+
+  const exportarRelatorioExcel = async (scope: ExportScope = 'todos', sort: ExportSort = 'alfabetica') => {
     const XLSX = await loadXLSX();
     const mesIdx = MONTH_OPTIONS.indexOf(mesRelatorio);
     const refRel = new Date(anoRelatorio, mesIdx + 1, 0);
     const alunosRel = [...alunos]
-      .filter(a => { const e = parseFlexibleDate(a.data_matricula); return e ? e.getTime() <= refRel.getTime() : true; })
-      .sort((a, b) => a.nome.localeCompare(b.nome));
+      .filter(a => { const e = parseFlexibleDate(a.data_matricula); return e ? e.getTime() <= refRel.getTime() : true; });
 
-    const rows = alunosRel.map((a, idx) => {
-      const resumo = getStudentStatusForMonth(a, pagamentos, anoRelatorio, mesIdx, hojeReferencia);
+    const resumosBase = alunosRel.map((a) => ({
+      aluno: a,
+      resumo: getStudentStatusForMonth(a, pagamentos, anoRelatorio, mesIdx, hojeReferencia),
+    }));
+    const resumosFiltrados = ordenarResumosExport(filtrarResumosExport(resumosBase, scope), sort);
+
+    const rows = resumosFiltrados.map(({ aluno: a, resumo }, idx) => {
+      const emDivida = isResumoEmDivida(resumo.status);
+      const planoNum = normalizeAmount(a.plano);
       return {
         '#': idx + 1,
         'Nome': a.nome,
         'Telefone': a.telefone || '',
-        'Plano (CVE)': normalizeAmount(a.plano),
-        'Modalidade': a.modalidade || 'Musculação',
+        'Plano (CVE)': emDivida ? -Math.abs(planoNum) : planoNum,
         'Estado': getBillingBadgeLabel(resumo.status),
+        'Situação': emDivida ? 'Devido' : isResumoPago(resumo.status) ? 'Pago' : 'Outro',
         'Próx. Vencimento': resumo.nextChargeDate || '',
-        'Cobertura até': resumo.coverageEnd || '',
         'Último Pagamento': resumo.lastPaymentDate || '',
       };
     });
 
-    const worksheet = XLSX.utils.json_to_sheet(rows);
+    const worksheet = XLSX.utils.json_to_sheet(rows.length ? rows : [{ '#': 0, Nome: '(sem registos neste recorte)' }]);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, `${mesRelatorio}_${anoRelatorio}`);
     const receitaMesExp = pagamentos.filter(p => isPaymentInsideMonth(p, mesRelatorio, anoRelatorio)).reduce((s, p) => s + normalizeAmount(p.valor), 0);
+    const scopeLabel = scope === 'todos' ? 'Todos' : scope === 'pagos' ? 'Pagos' : scope === 'dividas' ? 'Dívidas' : 'Por cobrar';
+    const sortLabel = sort === 'alfabetica' ? 'Alfabética' : sort === 'pagos' ? 'Pagos primeiro' : 'Dívidas primeiro';
     const resumoRows = [
       [],
       ['RESUMO FINANCEIRO', '', `${mesRelatorio.toUpperCase()} ${anoRelatorio}`],
-      ['Total Inscritos', alunosRel.length],
+      ['Recorte', scopeLabel],
+      ['Ordenação', sortLabel],
+      ['Registos exportados', resumosFiltrados.length],
       ['Receita Cobrada (CVE)', receitaMesExp],
+      ['Nota', 'Valores devidos em negativo na coluna Plano'],
       ['Gerado em', new Date().toLocaleString('pt-PT')],
     ];
     XLSX.utils.sheet_add_aoa(worksheet, resumoRows, { origin: -1 });
-    XLSX.writeFile(workbook, `Relatorio_${nomeAcademia.replace(/\s+/g,'_')}_${mesRelatorio}_${anoRelatorio}.xlsx`);
-    showToast(`Relatório ${mesRelatorio} ${anoRelatorio} exportado.`);
+    XLSX.writeFile(workbook, `Relatorio_${nomeAcademia.replace(/\s+/g,'_')}_${mesRelatorio}_${anoRelatorio}_${scope}.xlsx`);
+    showToast(`Excel · ${mesRelatorio} ${anoRelatorio} (${scopeLabel}) exportado.`);
   };
 
-  const exportarRelatorioPdf = async () => {
+  const exportarRelatorioPdf = async (scope: ExportScope = 'todos', sort: ExportSort = 'alfabetica') => {
     const [jsPDF, autoTable] = await Promise.all([loadJsPDF(), loadAutoTable()]);
     const mesIdx = MONTH_OPTIONS.indexOf(mesRelatorio);
-    const periodoLabel = `${mesRelatorio.toUpperCase()} ${anoRelatorio}`;
+    const periodoLabel = `${mesRelatorio.charAt(0).toUpperCase()}${mesRelatorio.slice(1)} ${anoRelatorio}`;
     const dataGeracao = new Date().toLocaleString('pt-PT');
     const refRelatorio = new Date(anoRelatorio, mesIdx + 1, 0);
     const alunosRelatorio = [...alunos]
       .filter((aluno) => {
         const entrada = parseFlexibleDate(aluno.data_matricula);
         return entrada ? entrada.getTime() <= refRelatorio.getTime() : true;
-      })
-      .sort((a, b) => getAlunoNomeSeguro(a).localeCompare(getAlunoNomeSeguro(b)));
+      });
 
-    const resumosRelatorio = alunosRelatorio.map((aluno) => ({
+    const resumosRelatorioAll = alunosRelatorio.map((aluno) => ({
       aluno,
       resumo: getStudentStatusForMonth(aluno, pagamentos, anoRelatorio, mesIdx, hojeReferencia),
       pagamentoPeriodo: pagamentos
         .filter((pagamento) => (pagamento.aluno_id || pagamento.alunoId) === aluno.id && isPaymentInsideMonth(pagamento, mesRelatorio, anoRelatorio))
         .sort((left, right) => (right.id || 0) - (left.id || 0))[0],
     }));
+    const resumosRelatorio = ordenarResumosExport(filtrarResumosExport(resumosRelatorioAll, scope), sort);
 
     const pagamentosPeriodo = pagamentos.filter((pagamento) => isPaymentInsideMonth(pagamento, mesRelatorio, anoRelatorio));
     const receitaRecebida = pagamentosPeriodo.reduce((sum, pagamento) => sum + normalizeAmount(pagamento.valor), 0);
     const alunosOperacionais = alunosRelatorio.filter((aluno) => isOperationallyActive(aluno.status));
     const receitaPrevistaPeriodo = alunosOperacionais.reduce((sum, aluno) => sum + normalizeAmount(aluno.plano), 0);
-    const alunosAtrasados = resumosRelatorio.filter(({ resumo }) => resumo.status === 'atrasado' || resumo.status === 'hoje');
-    const alunosPagos = resumosRelatorio.filter(({ resumo }) => resumo.status === 'pago');
-    const alunosComPagamentoPeriodo = resumosRelatorio.filter(({ pagamentoPeriodo }) => Boolean(pagamentoPeriodo));
-    const coberturaPercentual = alunosOperacionais.length > 0 ? Math.round((alunosPagos.length / alunosOperacionais.length) * 100) : 100;
+    const alunosAtrasados = resumosRelatorioAll.filter(({ resumo }) => isResumoEmDivida(resumo.status));
+    const alunosPagos = resumosRelatorioAll.filter(({ resumo }) => isResumoPago(resumo.status));
     const porCobrar = Math.max(0, receitaPrevistaPeriodo - receitaRecebida);
-
-    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-    const pageWidth = doc.internal.pageSize.getWidth();
-    const pageHeight = doc.internal.pageSize.getHeight();
-    const marginX = 12;
+    const scopeLabelPdf = scope === 'todos' ? 'Todos' : scope === 'pagos' ? 'Pagos' : scope === 'dividas' ? 'Dívidas' : 'Por cobrar';
+    const sortLabelPdf = sort === 'alfabetica' ? 'A–Z' : sort === 'pagos' ? 'Pagos primeiro' : 'Dívidas primeiro';
 
     const sanitizeFilePart = (value: string) => String(value || 'Relatorio').replace(/[\\/:*?"<>|]/g, '_').replace(/\s+/g, '_');
     const textOrDash = (value?: string | number | null) => {
       const text = String(value ?? '').trim();
-      return text || '-';
+      return text || '—';
     };
-    const truncate = (value: string, max = 28) => {
-      const text = textOrDash(value);
-      return text.length > max ? `${text.slice(0, max - 1)}...` : text;
-    };
-    const statusTone = (status?: string) => {
-      if (status === 'pago') return { fill: [220, 252, 231], text: [22, 101, 52] };
-      if (status === 'atrasado' || status === 'hoje') return { fill: [254, 226, 226], text: [153, 27, 27] };
-      if (status === 'critico') return { fill: [255, 237, 213], text: [154, 52, 18] };
-      return { fill: [219, 234, 254], text: [30, 64, 175] };
+    const formatValorPdf = (amount: number, negativo: boolean) => {
+      const abs = formatCve(Math.abs(amount));
+      return negativo ? `-${abs}` : abs;
     };
 
-    // Header
-    doc.setFillColor(15, 23, 42);
-    doc.rect(0, 0, pageWidth, 48, 'F');
-    doc.setFillColor(37, 99, 235);
-    doc.roundedRect(marginX, 10, 15, 15, 2, 2, 'F');
-    doc.setFillColor(34, 197, 94);
-    doc.roundedRect(marginX + 3.2, 13.2, 8.6, 1.8, 0.8, 0.8, 'F');
-    doc.setFillColor(59, 130, 246);
-    doc.roundedRect(marginX + 3.2, 17, 8.6, 1.8, 0.8, 0.8, 'F');
-    doc.setFillColor(248, 113, 113);
-    doc.roundedRect(marginX + 3.2, 20.8, 8.6, 1.8, 0.8, 0.8, 'F');
+    // Colunas só se tiverem dados úteis no recorte
+    const hasTelefone = resumosRelatorio.some(({ aluno }) => Boolean(String(aluno.telefone || '').trim()));
+    const hasCategoria = resumosRelatorio.some(({ aluno }) => {
+      const c = String(aluno.categoria || '').trim();
+      return c && c.toLowerCase() !== 'geral';
+    });
+    const hasProxCobranca = resumosRelatorio.some(({ resumo }) => Boolean(String(resumo.nextChargeDate || '').trim()));
+    const hasPagoPeriodo = resumosRelatorio.some(({ pagamentoPeriodo }) => Boolean(pagamentoPeriodo));
 
-    doc.setTextColor(255, 255, 255);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(15);
-    doc.text(nomeAcademia || 'Academia', marginX + 20, 14);
-    doc.setFontSize(7.5);
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(203, 213, 225);
-    doc.text(textOrDash(subtituloAcademia), marginX + 20, 20);
-    doc.text(truncate([moradaAcademia, telefoneAcademia, emailAcademia].filter(Boolean).join('  |  '), 56), marginX + 20, 26);
-    doc.text(`Next Level Academia by ${COMPANY_NAME}`, marginX + 20, 32);
-
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(7.5);
-    doc.setTextColor(226, 232, 240);
-    doc.text('RELATORIO', pageWidth - marginX, 14, { align: 'right' });
-    doc.setFontSize(12);
-    doc.setTextColor(255, 255, 255);
-    doc.text(periodoLabel, pageWidth - marginX, 21, { align: 'right' });
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(6.8);
-    doc.setTextColor(148, 163, 184);
-    doc.text(`Gerado em ${dataGeracao}`, pageWidth - marginX, 28, { align: 'right' });
-    doc.text(truncate(sessionUser?.name || 'Administrador', 24), pageWidth - marginX, 34, { align: 'right' });
-
-    // Summary strip
-    doc.setFillColor(248, 250, 252);
-    doc.rect(0, 48, pageWidth, 52, 'F');
-    const stats: [string, string, [number, number, number]][] = [
-      ['Alunos no periodo', String(alunosRelatorio.length), [30, 64, 175]],
-      ['Operacionais', String(alunosOperacionais.length), [15, 118, 110]],
-      ['Pagos', String(alunosPagos.length), [22, 101, 52]],
-      ['Em atraso', String(alunosAtrasados.length), [153, 27, 27]],
-      ['Cobertura', `${coberturaPercentual}%`, [37, 99, 235]],
-      ['Previsto', formatCve(receitaPrevistaPeriodo), [30, 64, 175]],
-      ['Recebido', formatCve(receitaRecebida), [22, 101, 52]],
-      ['Por cobrar', formatCve(porCobrar), porCobrar > 0 ? [153, 27, 27] : [22, 101, 52]],
+    type ColDef = { key: string; head: string; width?: number; align?: 'left' | 'center' | 'right'; value: (row: typeof resumosRelatorio[0], i: number) => string };
+    const columns: ColDef[] = [
+      { key: '#', head: '#', width: 7, align: 'center', value: (_r, i) => String(i + 1) },
+      {
+        key: 'estado',
+        head: 'Sit.',
+        width: 10,
+        align: 'center',
+        value: ({ resumo }) => {
+          if (isResumoPago(resumo.status)) return '●';
+          if (isResumoEmDivida(resumo.status)) return '●';
+          return '○';
+        },
+      },
+      { key: 'nome', head: 'Aluno', width: 42, value: ({ aluno }) => getAlunoNomeSeguro(aluno) },
     ];
+    if (hasTelefone) {
+      columns.push({ key: 'tel', head: 'Telefone', width: 24, value: ({ aluno }) => textOrDash(aluno.telefone) });
+    }
+    if (hasCategoria) {
+      columns.push({ key: 'cat', head: 'Categoria', width: 20, value: ({ aluno }) => textOrDash(aluno.categoria) });
+    }
+    columns.push(
+      {
+        key: 'valor',
+        head: 'Valor (CVE)',
+        width: 26,
+        align: 'right',
+        value: ({ aluno, resumo, pagamentoPeriodo }) => {
+          if (isResumoPago(resumo.status)) {
+            const pago = pagamentoPeriodo ? normalizeAmount(pagamentoPeriodo.valor) : normalizeAmount(aluno.plano);
+            return formatValorPdf(pago, false);
+          }
+          if (isResumoEmDivida(resumo.status) || !isResumoPago(resumo.status)) {
+            return formatValorPdf(normalizeAmount(aluno.plano), true);
+          }
+          return formatValorPdf(normalizeAmount(aluno.plano), false);
+        },
+      },
+      {
+        key: 'label',
+        head: 'Estado',
+        width: 26,
+        value: ({ resumo }) => getBillingBadgeLabel(resumo.status),
+      },
+    );
+    if (hasProxCobranca) {
+      columns.push({ key: 'prox', head: 'Próx. cobrança', width: 24, align: 'center', value: ({ resumo }) => textOrDash(resumo.nextChargeDate) });
+    }
+    if (hasPagoPeriodo) {
+      columns.push({
+        key: 'pago',
+        head: 'Pago no mês',
+        width: 22,
+        align: 'right',
+        value: ({ pagamentoPeriodo }) => (pagamentoPeriodo ? formatValorPdf(normalizeAmount(pagamentoPeriodo.valor), false) : '—'),
+      });
+    }
 
-    const cardGap = 3;
-    const cardsPerRow = 4;
-    const cardWidth = (pageWidth - marginX * 2 - cardGap * (cardsPerRow - 1)) / cardsPerRow;
-    stats.forEach(([label, value, tone], index) => {
-      const row = Math.floor(index / cardsPerRow);
-      const col = index % cardsPerRow;
-      const x = marginX + col * (cardWidth + cardGap);
-      const y = 55 + row * 21;
-      doc.setFillColor(255, 255, 255);
-      doc.setDrawColor(226, 232, 240);
-      doc.roundedRect(x, y, cardWidth, 17, 2, 2, 'FD');
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(5.8);
-      doc.setTextColor(100, 116, 139);
-      doc.text(String(label).toUpperCase(), x + 3, y + 5.2);
-      doc.setFontSize(String(value).length > 12 ? 8.2 : 10);
-      doc.setTextColor(tone[0], tone[1], tone[2]);
-      doc.text(String(value), x + 3, y + 12.4);
+    const tableHead = [columns.map((c) => c.head)];
+    const tableBody = resumosRelatorio.length
+      ? resumosRelatorio.map((row, i) => columns.map((c) => c.value(row, i)))
+      : [columns.map((c, i) => (i === 2 ? '(sem registos neste recorte)' : '—'))];
+    const estadoColIndex = columns.findIndex((c) => c.key === 'estado');
+    const valorColIndex = columns.findIndex((c) => c.key === 'valor');
+
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const marginX = 14;
+    const ink: [number, number, number] = [30, 30, 30];
+    const muted: [number, number, number] = [100, 100, 100];
+    const line: [number, number, number] = [200, 200, 200];
+
+    // ── Cabeçalho simples: logo + academia + contactos + período ──
+    let cursorY = 14;
+    const logoSrc = appLogo && String(appLogo).startsWith('data:image') ? appLogo : null;
+    if (logoSrc) {
+      try {
+        const fmt = logoSrc.includes('image/png') ? 'PNG' : logoSrc.includes('image/jpeg') || logoSrc.includes('image/jpg') ? 'JPEG' : 'PNG';
+        doc.addImage(logoSrc, fmt, marginX, cursorY - 2, 12, 12);
+      } catch {
+        /* logo opcional */
+      }
+    }
+
+    const textStartX = logoSrc ? marginX + 16 : marginX;
+    doc.setTextColor(...ink);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(14);
+    doc.text(nomeAcademia || 'Academia', textStartX, cursorY + 3);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(...muted);
+    const contactParts = [telefoneAcademia, emailAcademia, moradaAcademia].filter((v) => String(v || '').trim());
+    if (contactParts.length) {
+      doc.text(contactParts.join('  ·  '), textStartX, cursorY + 9);
+    }
+
+    // Período à direita
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.setTextColor(...ink);
+    doc.text('Relatório mensal', pageWidth - marginX, cursorY + 2, { align: 'right' });
+    doc.setFontSize(11);
+    doc.text(periodoLabel, pageWidth - marginX, cursorY + 8, { align: 'right' });
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
+    doc.setTextColor(...muted);
+    doc.text(`Recorte: ${scopeLabelPdf}  ·  Ordem: ${sortLabelPdf}`, pageWidth - marginX, cursorY + 13, { align: 'right' });
+
+    cursorY = 30;
+    doc.setDrawColor(...line);
+    doc.setLineWidth(0.3);
+    doc.line(marginX, cursorY, pageWidth - marginX, cursorY);
+
+    // Resumo mínimo em texto
+    cursorY += 7;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8.5);
+    doc.setTextColor(...ink);
+    const resumoLinha = [
+      `${resumosRelatorio.length} registo(s)`,
+      `${alunosPagos.length} pagos`,
+      `${alunosAtrasados.length} em dívida`,
+      `Recebido ${formatCve(receitaRecebida)}`,
+      porCobrar > 0 ? `Por cobrar ${formatCve(porCobrar)}` : null,
+    ].filter(Boolean).join('   ·   ');
+    doc.text(resumoLinha, marginX, cursorY);
+    cursorY += 5;
+    doc.setFontSize(7);
+    doc.setTextColor(...muted);
+    doc.text('Legenda:  ● pago (verde)    ● em dívida (vermelho, valor negativo)', marginX, cursorY);
+
+    cursorY += 3;
+    doc.setDrawColor(...line);
+    doc.line(marginX, cursorY, pageWidth - marginX, cursorY);
+
+    const green: [number, number, number] = [22, 101, 52];
+    const red: [number, number, number] = [153, 27, 27];
+
+    const columnStyles: Record<number, { cellWidth?: number; halign?: 'left' | 'center' | 'right'; fontStyle?: string }> = {};
+    columns.forEach((col, idx) => {
+      columnStyles[idx] = {
+        cellWidth: col.width,
+        halign: col.align || 'left',
+        ...(col.key === 'nome' || col.key === 'valor' ? { fontStyle: 'bold' } : {}),
+      };
     });
 
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(10);
-    doc.setTextColor(15, 23, 42);
-    doc.text('Lista detalhada de alunos', marginX, 110);
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7);
-    doc.setTextColor(100, 116, 139);
-    doc.text(`${alunosComPagamentoPeriodo.length} aluno(s) com pagamento registado neste periodo. Valores em CVE.`, marginX, 115);
-
-    const tableRows = resumosRelatorio.map(({ aluno, resumo, pagamentoPeriodo }, index) => [
-      String(index + 1).padStart(2, '0'),
-      truncate(getAlunoNomeSeguro(aluno), 24),
-      truncate(textOrDash(aluno.telefone), 16),
-      truncate(aluno.categoria || 'Geral', 12),
-      formatCve(aluno.plano),
-      getBillingBadgeLabel(resumo.status),
-      textOrDash(resumo.nextChargeDate),
-      truncate(resumo.coverageStart && resumo.coverageEnd ? `${resumo.coverageStart} - ${resumo.coverageEnd}` : textOrDash(resumo.coverageEnd), 20),
-      textOrDash(resumo.lastPaymentDate),
-      pagamentoPeriodo ? formatCve(pagamentoPeriodo.valor) : '-',
-    ]);
-
     autoTable(doc, {
-      startY: 120,
-      margin: { left: marginX, right: marginX, bottom: 16 },
-      head: [[
-        '#',
-        'Aluno',
-        'Contacto',
-        'Categoria',
-        'Plano',
-        'Estado',
-        'Prox. cobranca',
-        'Cobertura',
-        'Ult. pagamento',
-        'Pago periodo',
-      ]],
-      body: tableRows,
-      theme: 'grid',
-      tableLineColor: [226, 232, 240],
-      tableLineWidth: 0.1,
-      headStyles: {
-        fillColor: [15, 23, 42],
-        textColor: [255, 255, 255],
-        fontStyle: 'bold',
-        fontSize: 5.6,
-        cellPadding: { top: 1.8, right: 1, bottom: 1.8, left: 1 },
-      },
+      startY: cursorY + 5,
+      margin: { left: marginX, right: marginX, bottom: 18 },
+      head: tableHead,
+      body: tableBody,
+      theme: 'plain',
       styles: {
         font: 'helvetica',
-        fontSize: 5.3,
-        cellPadding: { top: 1.45, right: 1, bottom: 1.45, left: 1 },
-        textColor: [51, 65, 85],
-        overflow: 'linebreak',
+        fontSize: 8,
+        textColor: ink,
+        cellPadding: { top: 2.2, right: 1.5, bottom: 2.2, left: 1.5 },
+        lineColor: line,
+        lineWidth: 0.15,
         valign: 'middle',
-        lineColor: [226, 232, 240],
-        lineWidth: 0.1,
+        overflow: 'linebreak',
       },
-      alternateRowStyles: { fillColor: [248, 250, 252] },
-      columnStyles: {
-        0: { cellWidth: 6, halign: 'center', textColor: [100, 116, 139] },
-        1: { cellWidth: 32, fontStyle: 'bold', textColor: [15, 23, 42] },
-        2: { cellWidth: 20 },
-        3: { cellWidth: 17 },
-        4: { cellWidth: 16, halign: 'right', fontStyle: 'bold' },
-        5: { cellWidth: 18, halign: 'center', fontStyle: 'bold' },
-        6: { cellWidth: 20, halign: 'center' },
-        7: { cellWidth: 22 },
-        8: { cellWidth: 19, halign: 'center' },
-        9: { cellWidth: 16, halign: 'right', fontStyle: 'bold' },
+      headStyles: {
+        fontStyle: 'bold',
+        fontSize: 7.5,
+        textColor: ink,
+        fillColor: [245, 245, 245],
+        lineColor: line,
+        lineWidth: 0.2,
       },
+      bodyStyles: {
+        fillColor: [255, 255, 255],
+      },
+      alternateRowStyles: {
+        fillColor: [252, 252, 252],
+      },
+      columnStyles,
+      tableLineColor: line,
+      tableLineWidth: 0.15,
       didParseCell: (data: any) => {
-        if (data.section === 'body' && data.column.index === 5) {
-          const rowData = resumosRelatorio[data.row.index];
-          const tone = statusTone(rowData?.resumo?.status);
-          data.cell.styles.fillColor = tone.fill as any;
-          data.cell.styles.textColor = tone.text as any;
+        if (data.section !== 'body' || !resumosRelatorio.length) return;
+        const row = resumosRelatorio[data.row.index];
+        if (!row) return;
+        const status = row.resumo?.status;
+        const pago = isResumoPago(status);
+        const divida = isResumoEmDivida(status);
+
+        if (data.column.index === estadoColIndex) {
+          data.cell.styles.fontStyle = 'bold';
+          data.cell.styles.fontSize = 11;
+          if (pago) data.cell.styles.textColor = green;
+          else if (divida) data.cell.styles.textColor = red;
+          else data.cell.styles.textColor = muted;
+        }
+        if (data.column.index === valorColIndex) {
+          data.cell.styles.fontStyle = 'bold';
+          if (pago) data.cell.styles.textColor = green;
+          else if (divida) data.cell.styles.textColor = red;
         }
       },
     });
 
+    // Rodapé técnico em todas as páginas
     const totalPages = (doc as any).internal.getNumberOfPages();
     for (let page = 1; page <= totalPages; page++) {
       doc.setPage(page);
-      doc.setFillColor(248, 250, 252);
-      doc.rect(0, pageHeight - 12, pageWidth, 12, 'F');
-      doc.setDrawColor(226, 232, 240);
-      doc.line(0, pageHeight - 12, pageWidth, pageHeight - 12);
+      const footerY = pageHeight - 10;
+      doc.setDrawColor(...line);
+      doc.setLineWidth(0.25);
+      doc.line(marginX, footerY - 4, pageWidth - marginX, footerY - 4);
       doc.setFont('helvetica', 'normal');
-      doc.setFontSize(7);
-      doc.setTextColor(100, 116, 139);
-      doc.text(`${nomeAcademia} | ${periodoLabel} | Next Level Academia`, marginX, pageHeight - 5);
-      doc.text(`Pagina ${page} de ${totalPages}`, pageWidth - marginX, pageHeight - 5, { align: 'right' });
+      doc.setFontSize(6.5);
+      doc.setTextColor(...muted);
+      doc.text(
+        `Next Level Academia  ·  ${COMPANY_NAME}  ·  ${COMPANY_AUTHOR}  ·  v1.0`,
+        marginX,
+        footerY,
+      );
+      doc.text(
+        `${periodoLabel}  ·  Gerado ${dataGeracao}  ·  Pág. ${page}/${totalPages}`,
+        pageWidth - marginX,
+        footerY,
+        { align: 'right' },
+      );
     }
 
-    const fileName = `Relatorio_${sanitizeFilePart(nomeAcademia)}_${mesRelatorio}_${anoRelatorio}.pdf`;
+    const fileName = `Relatorio_${sanitizeFilePart(nomeAcademia)}_${mesRelatorio}_${anoRelatorio}_${scope}.pdf`;
     const pdfBase64 = doc.output('datauristring').split(',')[1];
 
     if (electron) {
@@ -3016,7 +3159,7 @@ function App() {
       });
 
       if (res?.success) {
-        showToast(`Relatório PDF guardado: ${res.path}`);
+        showToast(`PDF · ${scopeLabelPdf} guardado: ${res.path}`);
         return;
       }
 
@@ -3027,7 +3170,46 @@ function App() {
     }
 
     doc.save(fileName);
+    showToast(`PDF · ${scopeLabelPdf} gerado.`);
   };
+
+  const executarExportacaoRelatorio = async ({ format, scope, sort }: ExportReportOptions) => {
+    if (format === 'excel') await exportarRelatorioExcel(scope, sort);
+    else await exportarRelatorioPdf(scope, sort);
+  };
+
+  // Stats leves só quando o modal de export está aberto (evita trabalho em cada render)
+  const exportReportStats = useMemo(() => {
+    if (!mostrarExportRelatorio) {
+      return { alunos: 0, pagos: 0, dividas: 0, pendentes: 0, receita: 0, dividaValor: 0 };
+    }
+    const mesIdx = MONTH_OPTIONS.indexOf(mesRelatorio);
+    const refRel = new Date(anoRelatorio, mesIdx + 1, 0);
+    let alunosCount = 0;
+    let pagos = 0;
+    let dividas = 0;
+    let pendentes = 0;
+    let dividaValor = 0;
+    for (const a of alunos) {
+      const e = parseFlexibleDate(a.data_matricula);
+      if (e && e.getTime() > refRel.getTime()) continue;
+      alunosCount += 1;
+      const resumo = getStudentStatusForMonth(a, pagamentos, anoRelatorio, mesIdx, hojeReferencia);
+      if (!isOperationallyActive(a.status)) continue;
+      if (resumo.status === 'pago') pagos += 1;
+      else {
+        pendentes += 1;
+        if (resumo.status === 'atrasado' || resumo.status === 'hoje') {
+          dividas += 1;
+          dividaValor += normalizeAmount(a.plano);
+        }
+      }
+    }
+    const receita = pagamentos
+      .filter((p) => isPaymentInsideMonth(p, mesRelatorio, anoRelatorio))
+      .reduce((s, p) => s + normalizeAmount(p.valor), 0);
+    return { alunos: alunosCount, pagos, dividas, pendentes, receita, dividaValor };
+  }, [mostrarExportRelatorio, mesRelatorio, anoRelatorio, alunos, pagamentos, hojeReferencia]);
 
   const exportarPDFPersonalizado = async () => {
     const [jsPDF, autoTable] = await Promise.all([loadJsPDF(), loadAutoTable()]);
@@ -3103,9 +3285,6 @@ function App() {
       setCarregandoLogin(false);
       return;
     }
-
-    // Pequeno delay para feedback visual de loading
-    await new Promise(resolve => setTimeout(resolve, 800));
 
     try {
       const res = await electron.ipcRenderer.invoke('check-auth', { 
@@ -3262,6 +3441,7 @@ function App() {
         setMostrarUserMenu={setMostrarUserMenu}
         setMostrarSobreDoc={setMostrarSobreDoc}
         onMatricular={onMatricular}
+        onExportarRelatorio={() => setMostrarExportRelatorio(true)}
         setMostrarRelatorioMensal={setMostrarRelatorioMensal}
         mostrarDailyReport={mostrarDailyReport}
         setMostrarDailyReport={setMostrarDailyReport}
@@ -3350,8 +3530,19 @@ function App() {
             appLogo={appLogo}
             nomeAcademia={nomeAcademia}
             sessionUser={sessionUser}
-            onExportarExcel={exportarRelatorioExcel}
-            onExportarPdf={exportarRelatorioPdf}
+            periodoBloqueado={
+              (anoRelatorio < anoAtual
+                || (anoRelatorio === anoAtual && MONTH_OPTIONS.indexOf(mesRelatorio) < hojeReferencia.getMonth()))
+              && !mesPassadoEditavel
+            }
+            onPermitirEdicaoMes={
+              sessionUser?.role === 'admin'
+                ? () => {
+                    setMesPassadoEditavel(true);
+                    showToast('Edição de mês passado desbloqueada para esta sessão.');
+                  }
+                : undefined
+            }
           />
         )}
 
@@ -3401,6 +3592,21 @@ function App() {
             onNotasClick={abrirNotasRapidas}
             finalizarTodosImportados={finalizarTodosImportados}
             setAba={setAba}
+            periodoBloqueado={periodoBloqueado}
+            onPermitirEdicaoMes={
+              sessionUser?.role === 'admin'
+                ? () => {
+                    setMesPassadoEditavel(true);
+                    showToast('Edição de mês passado desbloqueada para esta sessão.');
+                  }
+                : undefined
+            }
+            onExportarRelatorio={() => {
+              setMesRelatorio(mesFinanceiro);
+              setAnoRelatorio(anoFinanceiro);
+              setAba('relatorios_detalhado');
+              setMostrarExportRelatorio(true);
+            }}
           />
         )}
 
@@ -3592,6 +3798,46 @@ function App() {
 
       {/* Modal: Boas-Vindas Nova Matrícula */}
       {mostrarBoasVindas && alunoBoasVindas && <WelcomeStudentModal model={{ alunoBoasVindas, msgBoasVindas, appLogo, nomeAcademia, electron, setMostrarBoasVindas, setAlunoBoasVindas, setMsgBoasVindas }} />}
+
+      {mostrarBoasVindasMes && (() => {
+        const prevMonthIdx = hojeReferencia.getMonth() === 0 ? 11 : hojeReferencia.getMonth() - 1;
+        const prevYear = hojeReferencia.getMonth() === 0 ? hojeReferencia.getFullYear() - 1 : hojeReferencia.getFullYear();
+        const prevLabel = `${MONTH_OPTIONS[prevMonthIdx]} ${prevYear}`;
+        const mesAtual = MONTH_OPTIONS[hojeReferencia.getMonth()];
+        return (
+          <WelcomeMonthModal
+            mes={mesAtual}
+            ano={hojeReferencia.getFullYear()}
+            mesAnteriorLabel={prevLabel}
+            appLogo={appLogo}
+            nomeAcademia={nomeAcademia}
+            onClose={() => {
+              const key = `nl_welcome_month_${hojeReferencia.getFullYear()}-${String(hojeReferencia.getMonth() + 1).padStart(2, '0')}`;
+              localStorage.setItem(key, '1');
+              setMostrarBoasVindasMes(false);
+            }}
+            onOpenReports={() => {
+              const key = `nl_welcome_month_${hojeReferencia.getFullYear()}-${String(hojeReferencia.getMonth() + 1).padStart(2, '0')}`;
+              localStorage.setItem(key, '1');
+              setMostrarBoasVindasMes(false);
+              setMesRelatorio(MONTH_OPTIONS[prevMonthIdx]);
+              setAnoRelatorio(prevYear);
+              setAba('relatorios_detalhado');
+              setMostrarExportRelatorio(true);
+            }}
+          />
+        );
+      })()}
+
+      {mostrarExportRelatorio && (
+        <ExportReportModal
+          mes={mesRelatorio}
+          ano={anoRelatorio}
+          stats={exportReportStats}
+          onClose={() => setMostrarExportRelatorio(false)}
+          onExport={executarExportacaoRelatorio}
+        />
+      )}
 
       {/* Modal: Sobre o App (Página Estilo Word) */}
       {mostrarSobreDoc && <AboutAppModal model={{ appLogo, licencaDados, electron, setMostrarSobreDoc }} />}

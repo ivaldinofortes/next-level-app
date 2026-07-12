@@ -15,6 +15,122 @@ import {
 } from '../constants';
 import { getUserAvatar, userInitials } from '../utils/userAvatar';
 
+/** Cabeçalho de página de ajustes — mesmo tom visual, hierarquia clara */
+function SettingsHeader({
+  title,
+  subtitle,
+  action,
+}: {
+  title: string;
+  subtitle: string;
+  action?: React.ReactNode;
+}) {
+  return (
+    <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[var(--border-light)] pb-5">
+      <div className="min-w-0">
+        <h3 className="text-[22px] font-black tracking-tight nl-text">{title}</h3>
+        <p className="mt-1 text-[13px] font-medium nl-text-muted">{subtitle}</p>
+      </div>
+      {action ? <div className="shrink-0">{action}</div> : null}
+    </div>
+  );
+}
+
+/** Bloco temático com título + descrição + conteúdo */
+function SettingsSection({
+  title,
+  description,
+  children,
+  danger = false,
+}: {
+  title: string;
+  description?: string;
+  children: React.ReactNode;
+  danger?: boolean;
+}) {
+  return (
+    <section
+      className={`rounded-[6px] border p-5 ${
+        danger
+          ? 'border-red-200 bg-red-50/50'
+          : 'border-[var(--border)] bg-[var(--color-secondary-lighter)]/25'
+      }`}
+    >
+      <div className="mb-4">
+        <h4 className={`text-[13px] font-bold ${danger ? 'text-red-900' : 'nl-text'}`}>{title}</h4>
+        {description ? (
+          <p className={`mt-0.5 text-[12px] font-medium ${danger ? 'text-red-700/80' : 'nl-text-muted'}`}>
+            {description}
+          </p>
+        ) : null}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+/** Linha de acção compacta (backup, importar, etc.) */
+function SettingsActionRow({
+  icon,
+  title,
+  description,
+  action,
+  tone = 'default',
+}: {
+  icon: React.ReactNode;
+  title: string;
+  description: string;
+  action: React.ReactNode;
+  tone?: 'default' | 'danger' | 'muted';
+}) {
+  const tones = {
+    default: 'border-[var(--border)] bg-[var(--bg-surface)]',
+    danger: 'border-red-200 bg-white',
+    muted: 'border-[var(--border)] bg-[var(--bg-surface)] opacity-55',
+  };
+  return (
+    <div className={`flex flex-col gap-3 rounded-[6px] border p-4 sm:flex-row sm:items-center sm:justify-between ${tones[tone]}`}>
+      <div className="flex min-w-0 items-start gap-3">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[6px] border border-[var(--border-light)] bg-[var(--color-secondary-lighter)]/50">
+          {icon}
+        </div>
+        <div className="min-w-0">
+          <p className="text-[13px] font-bold nl-text">{title}</p>
+          <p className="mt-0.5 text-[11px] font-medium leading-snug nl-text-muted">{description}</p>
+        </div>
+      </div>
+      <div className="flex shrink-0 flex-wrap items-center gap-2 sm:justify-end">{action}</div>
+    </div>
+  );
+}
+
+/** Toggle reutilizável no estilo actual */
+function SettingsToggle({
+  on,
+  onToggle,
+}: {
+  on: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none ${
+        on ? 'bg-[var(--color-primary)]' : 'bg-slate-300'
+      }`}
+      role="switch"
+      aria-checked={on}
+    >
+      <span
+        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition-transform ${
+          on ? 'translate-x-5' : 'translate-x-0'
+        }`}
+      />
+    </button>
+  );
+}
+
 export interface ConfiguracoesPageProps {
   aba: string;
   configAba: 'geral' | 'operacao' | 'notificacoes' | 'tema' | 'utilizadores' | 'lixeira' | 'ajuda' | 'sobre';
@@ -176,181 +292,179 @@ function ConfiguracoesPage({
   setAba,
   setMostrarModalExport,
 }: ConfiguracoesPageProps) {
+  const navGroups = [
+    {
+      label: 'Instituição',
+      items: [
+        { id: 'geral' as const, label: 'Academia', hint: 'Dados e login', icon: <Landmark size={15} />, color: 'text-blue-600' },
+        { id: 'tema' as const, label: 'Aparência', hint: 'Tema e banner', icon: <Palette size={15} />, color: 'text-purple-600' },
+      ],
+    },
+    {
+      label: 'Equipa',
+      items: [
+        { id: 'utilizadores' as const, label: 'Utilizadores', hint: 'Contas e acessos', icon: <Users size={15} />, color: 'text-emerald-600' },
+      ],
+    },
+    {
+      label: 'Sistema',
+      items: [
+        { id: 'notificacoes' as const, label: 'Notificações', hint: 'Alertas e avisos', icon: <Bell size={15} />, color: 'text-rose-600' },
+        { id: 'operacao' as const, label: 'Dados & Backup', hint: 'Importar e segurança', icon: <Shield size={15} />, color: 'text-orange-600' },
+      ],
+    },
+    {
+      label: 'Sobre',
+      items: [
+        { id: 'ajuda' as const, label: 'Suporte', hint: 'Contactos', icon: <Info size={15} />, color: 'text-sky-600' },
+        { id: 'sobre' as const, label: 'Licença', hint: 'Termos e versão', icon: <Sparkles size={15} />, color: 'text-amber-600' },
+      ],
+    },
+  ];
+
   return (
-    <div className="flex-1 overflow-hidden flex bg-[var(--bg-app)] animate-fade-in custom-scrollbar overflow-y-auto p-8">
-      <div className="mx-auto flex w-full h-fit min-h-[600px] border border-[var(--border)] shadow-sm rounded-[4px]" style={{ maxWidth: `${larguraListas}px` }}>
-        {/* Sidebar de Configurações */}
-        <div className="w-[240px] border-r border-[var(--border-light)] bg-[var(--color-secondary-lighter)]/40 p-6 flex flex-col gap-1 shrink-0">
-          <div className="mb-4 px-2">
-            <p className="text-[10px] font-black nl-text-muted uppercase tracking-[0.2em] mb-1">Painel de Controlo</p>
-            <h2 className="text-[16px] font-black nl-text tracking-tight uppercase">Ajustes</h2>
+    <div className="flex h-full min-h-0 flex-1 overflow-hidden bg-[var(--bg-app)] animate-fade-in p-5 lg:p-6">
+      <div
+        className="mx-auto flex h-full min-h-0 w-full overflow-hidden rounded-[4px] border border-[var(--border)] shadow-sm"
+        style={{ maxWidth: `${larguraListas}px` }}
+      >
+        <aside className="flex w-[232px] shrink-0 flex-col border-r border-[var(--border-light)] bg-[var(--color-secondary-lighter)]/40">
+          <div className="border-b border-[var(--border-light)] px-5 py-4">
+            <p className="text-[10px] font-black uppercase tracking-[0.18em] nl-text-muted">Painel de controlo</p>
+            <h2 className="mt-0.5 text-[15px] font-black tracking-tight nl-text">Ajustes</h2>
           </div>
-
-          {([
-            { id: 'geral',          label: 'Academia',      icon: <Landmark size={16} />,    color: 'text-blue-600' },
-            { id: 'utilizadores',   label: 'Utilizadores',  icon: <Users size={16} />,       color: 'text-emerald-600' },
-            { id: 'tema',           label: 'Aparência',     icon: <Palette size={16} />,     color: 'text-purple-600' },
-            { id: 'notificacoes',   label: 'Notificações',  icon: <Bell size={16} />,        color: 'text-rose-600' },
-            { id: 'operacao',       label: 'Operação',      icon: <Shield size={16} />,      color: 'text-orange-600' },
-            { id: 'ajuda',          label: 'Suporte',       icon: <Info size={16} />,        color: 'text-sky-600' },
-            { id: 'sobre',          label: 'Licença',       icon: <Sparkles size={16} />,    color: 'text-amber-600' },
-          ] as const).map(item => (
-            <button
-              key={item.id}
-              onClick={() => setConfigAba(item.id as any)}
-              className={`w-full text-left px-4 py-3 rounded-[3px] flex items-center gap-3 transition-all ${
-                configAba === item.id
-                  ? 'bg-[var(--bg-surface)] shadow-sm ring-1 ring-black/5 text-[var(--color-primary)] font-bold'
-                  : 'nl-text-muted hover:bg-[var(--bg-surface)]/60 hover:text-[var(--text-primary)]'
-              }`}
-            >
-              <div className={`shrink-0 ${configAba === item.id ? '' : item.color}`}>
-                {item.icon}
+          <nav className="flex-1 space-y-4 overflow-y-auto custom-scrollbar px-3 py-4">
+            {navGroups.map((group) => (
+              <div key={group.label}>
+                <p className="mb-1.5 px-2 text-[9px] font-black uppercase tracking-[0.16em] nl-text-muted">{group.label}</p>
+                <div className="flex flex-col gap-0.5">
+                  {group.items.map((item) => {
+                    const active = configAba === item.id;
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => setConfigAba(item.id)}
+                        className={`flex w-full items-center gap-2.5 rounded-[3px] px-2.5 py-2 text-left transition-all ${
+                          active
+                            ? 'bg-[var(--bg-surface)] font-bold text-[var(--color-primary)] shadow-sm ring-1 ring-black/5'
+                            : 'nl-text-muted hover:bg-[var(--bg-surface)]/60 hover:text-[var(--text-primary)]'
+                        }`}
+                      >
+                        <span className={`shrink-0 ${active ? '' : item.color}`}>{item.icon}</span>
+                        <span className="min-w-0">
+                          <span className="block text-[12px] leading-tight">{item.label}</span>
+                          <span className={`block text-[10px] font-medium leading-tight ${active ? 'text-[var(--color-primary)]/70' : 'opacity-70'}`}>
+                            {item.hint}
+                          </span>
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
-              <div className="min-w-0">
-                <p className="text-[13px] leading-tight">{item.label}</p>
-              </div>
-            </button>
-          ))}
-        </div>
+            ))}
+          </nav>
+        </aside>
 
-        {/* Conteúdo Dinâmico */}
-        <div className="flex-1 bg-[var(--bg-surface)] p-10 lg:p-14 overflow-y-auto custom-scrollbar">
+        <div className="min-h-0 flex-1 overflow-y-auto custom-scrollbar bg-[var(--bg-surface)]">
+          <div className="mx-auto max-w-[820px] space-y-5 p-6 lg:p-8">
           {configAba === 'geral' && (
-            <div className="animate-slide-up space-y-10">
-              <div>
-                <h3 className="text-[28px] font-black nl-text tracking-tighter uppercase">Instituição</h3>
-                <p className="nl-text-muted font-medium mt-1">Gira as informações públicas e de contacto da sua academia.</p>
-              </div>
+            <div className="animate-slide-up space-y-5">
+              <SettingsHeader
+                title="Academia"
+                subtitle="Identidade, contactos e comportamento do ecrã de login."
+                action={(
+                  <button type="button" onClick={salvarDefinicoesGerais} className="nl-btn nl-btn-primary h-10 px-5 text-[12px] font-bold">
+                    Guardar
+                  </button>
+                )}
+              />
 
-              {/* Logo da academia */}
-              <div className="space-y-3">
-                <label className="text-[11px] font-bold nl-text-muted uppercase tracking-wider block">Logótipo da Academia</label>
-                <div className="flex items-center gap-6 p-5 rounded-[6px] bg-[var(--color-secondary-lighter)]/40 border border-[var(--border)]">
-                  <div className="w-20 h-20 rounded-[8px] bg-[var(--bg-surface)] border border-[var(--border)] shadow-sm flex items-center justify-center overflow-hidden shrink-0">
-                    <img src={appLogo || APP_ICON_PATH} className="w-14 h-14 object-contain" alt="Logo" />
+              <SettingsSection title="Identidade" description="Logótipo e nome usados no sistema, PDFs e cabeçalhos.">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+                  <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-[8px] border border-[var(--border)] bg-[var(--bg-surface)] shadow-sm">
+                    <img src={appLogo || APP_ICON_PATH} className="h-11 w-11 object-contain" alt="Logo" />
+                  </div>
+                  <div className="min-w-0 flex-1 space-y-2">
+                    <div className="space-y-1.5">
+                      <label className="text-[11px] font-bold uppercase tracking-wider nl-text-muted">Nome comercial</label>
+                      <input type="text" value={nomeAcademia} onChange={(e) => setNomeAcademia(e.target.value)} className="nl-input h-10 w-full px-3" />
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <input type="file" id="logo-upload-geral" className="hidden" accept="image/svg+xml,image/png,image/jpeg" onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          const reader = new FileReader();
+                          reader.onload = (ev) => {
+                            const result = ev.target?.result as string;
+                            setAppLogo(result);
+                            localStorage.setItem('nl_app_logo', result);
+                            guardarConfiguracao('app_logo', result);
+                          };
+                          reader.readAsDataURL(file);
+                        }
+                      }} />
+                      <button type="button" onClick={() => document.getElementById('logo-upload-geral')?.click()} className="nl-btn nl-btn-secondary h-8 px-3 text-[11px]">Alterar logo</button>
+                      <button type="button" onClick={() => { setAppLogo(APP_ICON_PATH); localStorage.removeItem('nl_app_logo'); guardarConfiguracao('app_logo', ''); }} className="text-[11px] font-semibold nl-text-muted transition-colors hover:text-red-500">Repor padrão</button>
+                      <span className="text-[10px] nl-text-muted">PNG, JPEG ou SVG</span>
+                    </div>
+                  </div>
+                </div>
+              </SettingsSection>
+
+              <SettingsSection title="Contactos" description="Dados de suporte e localização da academia.">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-bold uppercase tracking-wider nl-text-muted">Telemóvel</label>
+                    <input type="text" value={telefoneAcademia} onChange={(e) => setTelefoneAcademia(e.target.value)} className="nl-input h-10 w-full px-3" />
                   </div>
                   <div className="space-y-1.5">
-                    <p className="text-[13px] font-semibold nl-text">Imagem usada no sistema, PDFs e cabeçalhos</p>
-                    <p className="text-[11px] nl-text-muted">Formatos: PNG, JPEG, SVG · Recomendado: fundo transparente</p>
-                    <div className="flex items-center gap-3 mt-2">
-                      <input
-                        type="file"
-                        id="logo-upload-geral"
-                        className="hidden"
-                        accept="image/svg+xml,image/png,image/jpeg"
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (file) {
-                            const reader = new FileReader();
-                            reader.onload = (ev) => {
-                              const result = ev.target?.result as string;
-                              setAppLogo(result);
-                              localStorage.setItem('nl_app_logo', result);
-                              guardarConfiguracao('app_logo', result);
-                            };
-                            reader.readAsDataURL(file);
-                          }
-                        }}
-                      />
-                      <button onClick={() => document.getElementById('logo-upload-geral')?.click()} className="nl-btn nl-btn-secondary h-9 px-4 text-[12px]">
-                        Alterar Logo
-                      </button>
-                      <button onClick={() => { setAppLogo(APP_ICON_PATH); localStorage.removeItem('nl_app_logo'); guardarConfiguracao('app_logo', ''); }} className="text-[11px] font-semibold nl-text-muted hover:text-red-500 transition-colors">
-                        Repor padrão
-                      </button>
-                    </div>
+                    <label className="text-[11px] font-bold uppercase tracking-wider nl-text-muted">Email</label>
+                    <input type="email" value={emailAcademia} onChange={(e) => setEmailAcademia(e.target.value)} className="nl-input h-10 w-full px-3" />
+                  </div>
+                  <div className="space-y-1.5 sm:col-span-2">
+                    <label className="text-[11px] font-bold uppercase tracking-wider nl-text-muted">Morada</label>
+                    <input type="text" value={moradaAcademia} onChange={(e) => setMoradaAcademia(e.target.value)} className="nl-input h-10 w-full px-3" />
                   </div>
                 </div>
-              </div>
+              </SettingsSection>
 
-              <div className="grid grid-cols-1 gap-8">
-                <div className="space-y-2">
-                  <label className="text-[11px] font-bold nl-text-muted uppercase tracking-wider">Nome Comercial</label>
-                  <input type="text" value={nomeAcademia} onChange={(e) => setNomeAcademia(e.target.value)} className="nl-input w-full h-12 px-4" />
-                </div>
-
-                <div className="grid grid-cols-2 gap-6">
-                  <div className="space-y-2">
-                    <label className="text-[11px] font-bold nl-text-muted uppercase tracking-wider">Telemóvel Suporte</label>
-                    <input type="text" value={telefoneAcademia} onChange={(e) => setTelefoneAcademia(e.target.value)} className="nl-input w-full h-12 px-4" />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[11px] font-bold nl-text-muted uppercase tracking-wider">Email de Contacto</label>
-                    <input type="email" value={emailAcademia} onChange={(e) => setEmailAcademia(e.target.value)} className="nl-input w-full h-12 px-4" />
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-[11px] font-bold nl-text-muted uppercase tracking-wider">Localização / Morada</label>
-                  <input type="text" value={moradaAcademia} onChange={(e) => setMoradaAcademia(e.target.value)} className="nl-input w-full h-12 px-4" />
-                </div>
-              </div>
-
-              {/* ── Segurança de Acesso ── */}
-              <div className="space-y-4 pt-8 border-t border-[var(--border)]">
-                <div>
-                  <h3 className="text-[14px] font-bold nl-text">Segurança & Autenticação</h3>
-                  <p className="text-[12px] nl-text-muted mt-0.5">Defina as políticas de privacidade e persistência de sessão para o ecrã de login.</p>
-                </div>
-
-                <div className="flex flex-col gap-3">
-                  {/* Lembrar utilizadores */}
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <div className={`w-9 h-5 rounded-full transition-colors relative ${lembrarUtilizadores ? 'bg-[var(--color-primary)]' : 'bg-slate-200'}`}
-                         onClick={() => setLembrarUtilizadores(!lembrarUtilizadores)}>
-                      <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-all ${lembrarUtilizadores ? 'left-4' : 'left-0.5'}`} />
+              <SettingsSection title="Acesso e sessão" description="Políticas do ecrã de login e autenticação.">
+                <div className="space-y-2.5">
+                  {[
+                    { label: 'Lembrar utilizadores anteriores', sub: 'Mostra a lista de emails no login', val: lembrarUtilizadores, set: () => setLembrarUtilizadores(!lembrarUtilizadores) },
+                    { label: 'Permitir guardar sessão', sub: 'Exibe a opção “Manter sessão iniciada”', val: permitirGuardarSessao, set: () => setPermitirGuardarSessao(!permitirGuardarSessao) },
+                    { label: 'Exigir palavra-passe a operacionais', sub: 'Operadores precisam de senha para entrar', val: requireOperationalPassword, set: () => setRequireOperationalPassword(!requireOperationalPassword) },
+                  ].map((row) => (
+                    <div key={row.label} className="flex items-center justify-between gap-3 rounded-[5px] border border-[var(--border-light)] bg-[var(--bg-surface)] px-3 py-2.5">
+                      <div className="min-w-0">
+                        <p className="text-[12px] font-semibold nl-text">{row.label}</p>
+                        <p className="text-[11px] nl-text-muted">{row.sub}</p>
+                      </div>
+                      <SettingsToggle on={row.val} onToggle={row.set} />
                     </div>
-                    <span className="text-[12px] nl-text-muted">Lembrar utilizadores anteriores (mostra lista no email do login)</span>
-                  </label>
-
-                  {/* Guardar sessão */}
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <div className={`w-9 h-5 rounded-full transition-colors relative ${permitirGuardarSessao ? 'bg-[var(--color-primary)]' : 'bg-slate-200'}`}
-                         onClick={() => setPermitirGuardarSessao(!permitirGuardarSessao)}>
-                      <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-all ${permitirGuardarSessao ? 'left-4' : 'left-0.5'}`} />
-                    </div>
-                    <span className="text-[12px] nl-text-muted">Permitir guardar sessão (exibe a caixa "Manter sessão iniciada")</span>
-                  </label>
-
-                  {/* Exigir Senha para Operacionais */}
-                  <label className="flex items-center gap-2 cursor-pointer mt-1">
-                    <div className={`w-9 h-5 rounded-full transition-colors relative ${requireOperationalPassword ? 'bg-[var(--color-primary)]' : 'bg-slate-200'}`}
-                         onClick={() => setRequireOperationalPassword(!requireOperationalPassword)}>
-                      <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-all ${requireOperationalPassword ? 'left-4' : 'left-0.5'}`} />
-                    </div>
-                    <span className="text-[12px] nl-text-muted">Exigir palavra-passe para utilizadores operacionais</span>
-                  </label>
+                  ))}
                 </div>
-              </div>
+              </SettingsSection>
 
-              {/* ── Slideshow de Login ── */}
-              <div className="space-y-4 pt-8 border-t border-[var(--border)]">
-                <div>
-                  <h3 className="text-[14px] font-bold nl-text">Slideshow na Tela de Login</h3>
-                  <p className="text-[12px] nl-text-muted mt-0.5">Até 5 imagens que passam automaticamente no painel direito do login. Quando o app estiver inativo, entra em modo apresentação.</p>
-                </div>
-
-                {/* Imagens do slideshow */}
+              <SettingsSection title="Slideshow do login" description="Até 5 imagens no painel direito do login (modo apresentação quando inactivo).">
                 <div className="grid grid-cols-5 gap-2">
                   {Array.from({ length: 5 }).map((_, i) => {
                     const img = slideshowImages[i];
                     return (
-                      <div key={i} className="relative aspect-video rounded-[5px] overflow-hidden border border-[var(--border)] bg-[var(--color-secondary-lighter)] group">
+                      <div key={i} className="group relative aspect-video overflow-hidden rounded-[5px] border border-[var(--border)] bg-[var(--bg-surface)]">
                         {img ? (
                           <>
-                            <img src={img} className="w-full h-full object-cover" alt={`Slide ${i + 1}`} />
-                            <button
-                              onClick={() => {
-                                const next = slideshowImages.filter((_, idx) => idx !== i);
-                                setSlideshowImages(next);
-                                localStorage.setItem('nl_slideshow_images', JSON.stringify(next));
-                              }}
-                              className="absolute top-1 right-1 w-5 h-5 bg-red-500 text-white rounded-full text-[10px] font-bold flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                            >×</button>
+                            <img src={img} className="h-full w-full object-cover" alt={`Slide ${i + 1}`} />
+                            <button type="button" onClick={() => {
+                              const next = slideshowImages.filter((_, idx) => idx !== i);
+                              setSlideshowImages(next);
+                              localStorage.setItem('nl_slideshow_images', JSON.stringify(next));
+                            }} className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white opacity-0 transition-opacity group-hover:opacity-100">×</button>
                           </>
                         ) : (
-                          <label className="w-full h-full flex flex-col items-center justify-center cursor-pointer nl-text-muted opacity-60 hover:opacity-100 hover:bg-[var(--color-secondary-lighter)] transition-colors gap-1">
+                          <label className="flex h-full w-full cursor-pointer flex-col items-center justify-center gap-0.5 nl-text-muted opacity-60 transition-colors hover:bg-[var(--color-secondary-lighter)] hover:opacity-100">
                             <Plus size={14} />
                             <span className="text-[9px] font-bold uppercase tracking-wider">{i + 1}</span>
                             <input type="file" accept="image/*" className="hidden" onChange={(e) => {
@@ -371,51 +485,46 @@ function ConfiguracoesPage({
                     );
                   })}
                 </div>
-
-                <div className="flex items-center gap-6">
-                  {/* Timer */}
+                <div className="mt-3 flex flex-wrap items-center gap-4">
                   <div className="flex items-center gap-2">
-                    <label className="text-[11px] font-bold nl-text-muted uppercase tracking-wider whitespace-nowrap">Intervalo (seg)</label>
+                    <label className="whitespace-nowrap text-[11px] font-bold uppercase tracking-wider nl-text-muted">Intervalo (seg)</label>
                     <input type="number" min={3} max={30} value={slideshowTimer}
-                      onChange={e => { const v = Number(e.target.value); setSlideshowTimer(v); localStorage.setItem('nl_slideshow_timer', String(v)); }}
-                      className="nl-input w-16 h-8 text-center text-[13px]" />
+                      onChange={(e) => { const v = Number(e.target.value); setSlideshowTimer(v); localStorage.setItem('nl_slideshow_timer', String(v)); }}
+                      className="nl-input h-8 w-16 text-center text-[13px]" />
                   </div>
-                  {/* Texto overlay */}
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <div className={`w-9 h-5 rounded-full transition-colors relative ${slideshowTextEnabled ? 'bg-[var(--color-primary)]' : 'bg-slate-200'}`}
-                         onClick={() => { const v = !slideshowTextEnabled; setSlideshowTextEnabled(v); localStorage.setItem('nl_slideshow_text', v ? '1' : '0'); }}>
-                      <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-all ${slideshowTextEnabled ? 'left-4' : 'left-0.5'}`} />
-                    </div>
-                    <span className="text-[12px] nl-text-muted">Mostrar texto sobre as imagens</span>
-                  </label>
-                  {/* Limpar tudo */}
+                  <div className="flex items-center gap-2">
+                    <SettingsToggle on={slideshowTextEnabled} onToggle={() => {
+                      const v = !slideshowTextEnabled;
+                      setSlideshowTextEnabled(v);
+                      localStorage.setItem('nl_slideshow_text', v ? '1' : '0');
+                    }} />
+                    <span className="text-[12px] nl-text-muted">Texto sobre as imagens</span>
+                  </div>
                   {slideshowImages.length > 0 && (
-                    <button onClick={() => { setSlideshowImages([]); localStorage.removeItem('nl_slideshow_images'); }}
-                      className="text-[11px] font-bold text-red-500 hover:underline">
-                      Limpar Slideshow
-                    </button>
+                    <button type="button" onClick={() => { setSlideshowImages([]); localStorage.removeItem('nl_slideshow_images'); }} className="text-[11px] font-bold text-red-500 hover:underline">Limpar slideshow</button>
                   )}
                 </div>
-              </div>
+              </SettingsSection>
 
-              <div className="pt-6 border-t flex justify-end">
-                <button onClick={salvarDefinicoesGerais} className="nl-btn nl-btn-primary px-10 h-11 font-bold rounded-[3px]">Guardar Alterações</button>
+              <div className="flex justify-end border-t border-[var(--border-light)] pt-4">
+                <button type="button" onClick={salvarDefinicoesGerais} className="nl-btn nl-btn-primary h-10 px-8 text-[12px] font-bold">Guardar alterações</button>
               </div>
             </div>
           )}
 
           {configAba === 'tema' && (
-            <div className="animate-slide-up space-y-10">
-              <div>
-                <h3 className="text-[28px] font-black nl-text tracking-tighter uppercase">Aparência & Branding</h3>
-                <p className="nl-text-muted font-medium mt-1">Personalize o tema e a identidade visual do sistema NEXTLevel.</p>
-              </div>
+            <div className="animate-slide-up space-y-5">
+              <SettingsHeader
+                title="Aparência"
+                subtitle="Tema da interface e imagens de branding do login."
+                action={(
+                  <button type="button" onClick={salvarAparencia} className="nl-btn nl-btn-primary h-10 px-5 text-[12px] font-bold">Guardar</button>
+                )}
+              />
 
-              <div className="space-y-8">
-
-                {/* ── Selector de Tema ── */}
+              <SettingsSection title="Tema da interface" description="Aplica-se de imediato em todo o sistema.">
                 <div className="space-y-4">
-                  <label className="text-[11px] font-bold nl-text-muted uppercase tracking-wider block">Tema da Interface</label>
+                  <label className="sr-only">Tema da Interface</label>
                   <div className="grid grid-cols-3 gap-4">
                     {([
                       {
@@ -480,12 +589,12 @@ function ConfiguracoesPage({
                   </div>
                   <p className="text-[11px] nl-text-muted">O tema aplica-se imediatamente em todo o sistema sem necessidade de reiniciar.</p>
                 </div>
+              </SettingsSection>
 
-                <div className="border-t border-[var(--border)]" />
-
-                <div className="grid grid-cols-2 gap-10">
-                  <div className="space-y-4">
-                    <label className="text-[11px] font-bold nl-text-muted uppercase tracking-wider block">Logotipo da Academia</label>
+              <SettingsSection title="Branding visual" description="Logótipo no sistema e banner do ecrã de login.">
+                <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+                  <div className="space-y-3">
+                    <label className="text-[11px] font-bold uppercase tracking-wider nl-text-muted block">Logotipo</label>
                     <div className="flex items-center gap-5">
                       <div className="w-24 h-24 rounded-[6px] bg-[var(--color-secondary-lighter)] border border-[var(--border)] flex items-center justify-center overflow-hidden">
                         <img src={appLogo || APP_ICON_PATH} className="w-16 h-16 object-contain" alt="Logo" />
@@ -499,8 +608,8 @@ function ConfiguracoesPage({
                       </div>
                     </div>
                   </div>
-                  <div className="space-y-4">
-                    <label className="text-[11px] font-bold nl-text-muted uppercase tracking-wider block">Banner de Login (50%)</label>
+                  <div className="space-y-3">
+                    <label className="text-[11px] font-bold uppercase tracking-wider nl-text-muted block">Banner de login</label>
                     <div className="flex items-center gap-5">
                       <div className="w-32 h-20 rounded-[6px] bg-[var(--color-secondary-lighter)] border border-[var(--border)] flex items-center justify-center overflow-hidden">
                         <img src={bannerAcademia || DEFAULT_ACADEMY_BANNER} className="w-full h-full object-cover" alt="Banner" />
@@ -516,29 +625,26 @@ function ConfiguracoesPage({
                   </div>
                 </div>
 
-                <div className="p-5 bg-[var(--color-primary-light)] border border-[var(--color-primary)]/20 rounded-[6px]">
-                  <p className="text-[12px] font-bold nl-text mb-0.5">Dica de Design</p>
-                  <p className="text-[11px] nl-text-muted leading-relaxed">Para o banner de login, recomenda-se imagens horizontais Full HD para garantir impacto visual premium na tela de entrada.</p>
-                </div>
+                <p className="mt-3 text-[11px] nl-text-muted">Dica: use imagens horizontais Full HD no banner para melhor impacto no login.</p>
+              </SettingsSection>
 
-                <div className="pt-4 border-t border-[var(--border)] flex justify-end">
-                  <button onClick={salvarAparencia} className="nl-btn nl-btn-primary px-10 h-11 font-bold rounded-[3px]">Guardar Alterações</button>
-                </div>
+              <div className="flex justify-end border-t border-[var(--border-light)] pt-4">
+                <button type="button" onClick={salvarAparencia} className="nl-btn nl-btn-primary h-10 px-8 text-[12px] font-bold">Guardar alterações</button>
               </div>
             </div>
           )}
 
           {configAba === 'utilizadores' && (
-            <div className="animate-slide-up space-y-8">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-[28px] font-black nl-text tracking-tighter uppercase">Utilizadores</h3>
-                  <p className="nl-text-muted font-medium mt-1">{listaUtilizadores.length} conta(s) · clique para editar ou ver actividade</p>
-                </div>
-                <button onClick={() => setMostrarFormNovoUtilizador(true)} className="nl-btn nl-btn-primary px-6 h-11 flex items-center gap-2">
-                  <Plus size={16} /> Novo Utilizador
-                </button>
-              </div>
+            <div className="animate-slide-up space-y-5">
+              <SettingsHeader
+                title="Utilizadores"
+                subtitle={`${listaUtilizadores.length} conta(s) · clique para editar ou ver actividade`}
+                action={(
+                  <button type="button" onClick={() => setMostrarFormNovoUtilizador(true)} className="nl-btn nl-btn-primary h-10 px-4 text-[12px] font-bold flex items-center gap-1.5">
+                    <Plus size={14} /> Novo
+                  </button>
+                )}
+              />
 
               <div className="border border-[var(--border)] rounded-[6px] overflow-hidden bg-[var(--bg-surface)] shadow-sm divide-y divide-[var(--border-light)]">
                 {listaUtilizadores.length === 0 && (
@@ -623,16 +729,17 @@ function ConfiguracoesPage({
           )}
 
           {configAba === 'notificacoes' && (
-            <div className="animate-slide-up space-y-10">
-              <div>
-                <h3 className="text-[28px] font-black nl-text tracking-tighter uppercase">Notificações</h3>
-                <p className="nl-text-muted font-medium mt-1">Controle quais alertas e avisos recebe no sistema.</p>
-              </div>
+            <div className="animate-slide-up space-y-5">
+              <SettingsHeader
+                title="Notificações"
+                subtitle="Controle alertas do sistema, categorias e histórico."
+                action={(
+                  <button type="button" onClick={salvarPreferenciasNotificacoes} className="nl-btn nl-btn-primary h-10 px-5 text-[12px] font-bold">Guardar</button>
+                )}
+              />
 
-              {/* Notificações Desktop */}
-              <div className="space-y-4">
-                <p className="text-[11px] font-bold nl-text-muted uppercase tracking-wider border-b border-[var(--border-light)] pb-2">Sistema</p>
-                <div className="space-y-3">
+              <SettingsSection title="Sistema" description="Canais de alerta gerais do aplicativo.">
+                <div className="space-y-2.5">
                   {([
                     { label: 'Notificações de sistema (desktop)', sub: 'Alertas via notificação nativa do sistema operativo', val: desktopNotificationsEnabled, set: setDesktopNotificationsEnabled },
                     { label: 'Alertas do sistema', sub: 'Avisos de backup, actualizações e manutenção', val: notifSistema, set: setNotifSistema },
@@ -652,12 +759,10 @@ function ConfiguracoesPage({
                     </div>
                   ))}
                 </div>
-              </div>
+              </SettingsSection>
 
-              {/* Categorias de notificação */}
-              <div className="space-y-4">
-                <p className="text-[11px] font-bold nl-text-muted uppercase tracking-wider border-b border-[var(--border-light)] pb-2">Categorias</p>
-                <div className="space-y-3">
+              <SettingsSection title="Categorias" description="Escolha que tipos de eventos geram avisos.">
+                <div className="space-y-2.5">
                   {([
                     { label: 'Pagamentos', sub: 'Confirmação de pagamentos registados e cobranças pendentes', icon: <CreditCard size={16} className="text-emerald-600" />, val: notifPagamentos, set: setNotifPagamentos },
                     { label: 'Matrículas', sub: 'Novos alunos inscritos e alterações de estado', icon: <UserPlus size={16} className="text-blue-600" />, val: notifMatriculas, set: setNotifMatriculas },
@@ -683,9 +788,8 @@ function ConfiguracoesPage({
                     </div>
                   ))}
                 </div>
-              </div>
+              </SettingsSection>
 
-              {/* Relatório mensal disponível */}
               {relatorioMensalDisponivel && (
                 <div className="nl-alert nl-alert-info">
                   <div className="nl-alert-icon"><FileBarChart size={15} /></div>
@@ -700,15 +804,14 @@ function ConfiguracoesPage({
                 </div>
               )}
 
-              {/* Notificação de relatório diário */}
-              <DailyReportSchedule />
+              <SettingsSection title="Relatório diário" description="Resumo automático no horário definido.">
+                <DailyReportSchedule />
+              </SettingsSection>
 
-              {/* Histórico de notificações */}
-              <div className="space-y-4">
-                <div className="flex items-center justify-between border-b border-[var(--border-light)] pb-2">
-                  <p className="text-[11px] font-bold nl-text-muted uppercase tracking-wider">Histórico</p>
+              <SettingsSection title="Histórico" description="Notificações recentes do sistema.">
+                <div className="mb-2 flex items-center justify-end">
                   {notificacoes.length > 0 && (
-                    <button type="button" onClick={() => setNotificacoes([])} className="text-[11px] text-red-500 font-semibold hover:underline">Limpar tudo</button>
+                    <button type="button" onClick={() => setNotificacoes([])} className="text-[11px] font-semibold text-red-500 hover:underline">Limpar tudo</button>
                   )}
                 </div>
                 {notificacoes.length === 0 ? (
@@ -728,173 +831,125 @@ function ConfiguracoesPage({
                     ))}
                   </div>
                 )}
-              </div>
+              </SettingsSection>
 
-              <div className="pt-6 border-t flex justify-end">
-                <button onClick={salvarPreferenciasNotificacoes} className="nl-btn nl-btn-primary px-10 h-11 font-bold rounded-[3px]">Guardar Preferências</button>
+              <div className="flex justify-end border-t border-[var(--border-light)] pt-4">
+                <button type="button" onClick={salvarPreferenciasNotificacoes} className="nl-btn nl-btn-primary h-10 px-8 text-[12px] font-bold">Guardar preferências</button>
               </div>
             </div>
           )}
 
           {configAba === 'operacao' && (
-            <div className=" animate-slide-up space-y-10">
-              <div>
-                <h3 className="text-[28px] font-black nl-text tracking-tighter uppercase">Operação & Segurança</h3>
-                <p className="nl-text-muted font-medium mt-1">Ferramentas de manutenção e cópias de segurança.</p>
-              </div>
+            <div className="animate-slide-up space-y-5">
+              <SettingsHeader
+                title="Dados & Backup"
+                subtitle="Cópias de segurança, importação e manutenção da base de dados."
+              />
 
-              <div className="grid grid-cols-1 gap-6">
-                <div className="p-8 rounded-[6px] bg-[var(--color-secondary-lighter)]/40 border border-[var(--border)] flex flex-col gap-6">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-5">
-                      <div className="w-14 h-14 bg-[var(--bg-surface)] rounded-[6px] shadow-sm flex items-center justify-center text-blue-600 shrink-0">
-                        <Archive size={24} />
-                      </div>
-                      <div>
-                        <p className="text-[16px] font-black nl-text">Backup Integral (ZIP)</p>
-                        <p className="text-[12px] nl-text-muted">Exportar base de dados e ficheiros locais.</p>
-                      </div>
-                    </div>
-                    <button onClick={gerarBackup} className="nl-btn nl-btn-primary px-8 h-12 shadow-blue-500/10 whitespace-nowrap">Exportar Agora</button>
-                  </div>
+              <SettingsSection title="Cópia de segurança" description="Exportar base de dados e ficheiros locais para um ZIP.">
+                <SettingsActionRow
+                  icon={<Archive size={18} className="text-blue-600" />}
+                  title="Backup integral (ZIP)"
+                  description={diretorioBackup ? `Pasta: ${diretorioBackup}` : 'O sistema pergunta onde guardar em cada exportação.'}
+                  action={(
+                    <>
+                      <button type="button" onClick={selecionarDiretorioBackup} className="nl-btn nl-btn-secondary h-9 px-3 text-[11px]">Pasta</button>
+                      {diretorioBackup && (
+                        <button type="button" onClick={async () => {
+                          const electron = (window as any).electron || null;
+                          setDiretorioBackup('');
+                          await electron?.ipcRenderer.invoke('update-configuracao', 'diretorio_backup', '');
+                        }} className="text-[11px] font-bold text-red-500 hover:underline">Limpar</button>
+                      )}
+                      <button type="button" onClick={gerarBackup} className="nl-btn nl-btn-primary h-9 px-4 text-[11px]">Exportar agora</button>
+                    </>
+                  )}
+                />
+              </SettingsSection>
 
-                  <div className="flex items-center gap-4 bg-[var(--bg-surface)] p-4 rounded-md border border-[var(--border)] mt-2">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-[10px] font-bold uppercase tracking-widest nl-text-muted mb-1">Pasta de Backups (Opcional)</p>
-                      <p className="text-[13px] font-medium nl-text truncate" title={diretorioBackup || 'Guardar e escolher na hora'}>
-                        {diretorioBackup || 'O sistema perguntará onde guardar cada vez'}
-                      </p>
-                    </div>
-                    <button onClick={selecionarDiretorioBackup} className="px-4 py-2 text-[11px] font-black uppercase tracking-widest nl-text-muted bg-[var(--color-secondary-lighter)] border border-[var(--border)] hover:bg-[var(--color-secondary-lighter)]/80 rounded-md transition-colors whitespace-nowrap">
-                      Escolher Pasta
-                    </button>
-                    {diretorioBackup && (
-                      <button onClick={async () => {
-                        const electron = (window as any).electron || null;
-                        setDiretorioBackup('');
-                        await electron?.ipcRenderer.invoke('update-configuracao', 'diretorio_backup', '');
-                      }} className="px-4 py-2 text-[11px] font-black uppercase tracking-widest text-red-500 hover:bg-red-50 rounded-md transition-colors whitespace-nowrap">
-                        Limpar
+              <SettingsSection title="Dados" description="Importar alunos e rever registos duplicados.">
+                <div className="space-y-2.5">
+                  <SettingsActionRow
+                    icon={<FileSpreadsheet size={18} className="text-emerald-600" />}
+                    title="Importar Excel"
+                    description="Importação com validação e prevenção de duplicados. Ideal para migração."
+                    action={<button type="button" onClick={() => setMostrarImportar(true)} className="nl-btn nl-btn-primary h-9 px-4 text-[11px]">Importar</button>}
+                  />
+                  <SettingsActionRow
+                    icon={<Sparkles size={18} className="text-amber-600" />}
+                    title="Gestor de duplicados"
+                    description="Deteta alunos repetidos por nome ou telefone. Recomendado após importações."
+                    action={(
+                      <button type="button" onClick={buscarDuplicados} disabled={carregandoDuplicados} className="nl-btn nl-btn-secondary h-9 px-4 text-[11px]">
+                        {carregandoDuplicados ? 'A verificar…' : 'Verificar'}
                       </button>
                     )}
-                  </div>
+                  />
+                  <SettingsActionRow
+                    icon={<Database size={18} className="nl-text-muted" />}
+                    title="Limpeza de cache"
+                    description="Otimização da base de dados interna (em breve)."
+                    tone="muted"
+                    action={<button type="button" className="nl-btn nl-btn-secondary h-9 px-4 text-[11px]" disabled>Otimizar</button>}
+                  />
                 </div>
+              </SettingsSection>
 
-                <div className="p-8 rounded-[6px] bg-[var(--color-secondary-lighter)]/40 border border-[var(--border)] flex flex-col gap-6">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-5">
-                      <div className="w-14 h-14 bg-[var(--bg-surface)] rounded-[6px] shadow-sm flex items-center justify-center text-emerald-600 shrink-0">
-                        <FileSpreadsheet size={24} />
-                      </div>
-                      <div>
-                        <p className="text-[16px] font-black nl-text">Importação de Dados</p>
-                        <p className="text-[12px] nl-text-muted">Importar alunos a partir de Excel com validação e prevenção de duplicados.</p>
-                      </div>
-                    </div>
-                    <button onClick={() => setMostrarImportar(true)} className="nl-btn nl-btn-primary px-8 h-12 whitespace-nowrap">
-                      Importar Excel
-                    </button>
-                  </div>
-                  <div className="bg-[var(--bg-surface)] p-4 rounded-md border border-[var(--border)]">
-                    <p className="text-[11px] nl-text-muted leading-relaxed">
-                      Use esta opção apenas em operações de manutenção ou migração. Depois de importar, execute o gestor de duplicados para rever possíveis repetições.
-                    </p>
-                  </div>
+              <SettingsSection
+                title="Zona de risco"
+                description="Remove alunos, pagamentos e notas. Mantém utilizadores, licença e configurações."
+                danger
+              >
+                <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
+                  <input
+                    type="password"
+                    value={resetSeguroForm.password}
+                    onChange={(e) => setResetSeguroForm((form: any) => ({ ...form, password: e.target.value }))}
+                    placeholder="Senha do administrador"
+                    className="nl-input h-10"
+                  />
+                  <input
+                    type="text"
+                    value={resetSeguroForm.confirmation}
+                    onChange={(e) => setResetSeguroForm((form: any) => ({ ...form, confirmation: e.target.value }))}
+                    placeholder="Escreva RESETAR"
+                    className="nl-input h-10"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => abrirConfirmacao({
+                      title: 'Resetar dados operacionais',
+                      message: 'Esta ação remove alunos, pagamentos e notas da base de dados. Utilizadores e licença serão mantidos. Confirmas?',
+                      confirmLabel: 'Resetar Dados',
+                      tone: 'danger',
+                      onConfirm: resetarBancoDeDados,
+                    })}
+                    disabled={resetSeguroLoading || sessionUser?.role !== 'admin'}
+                    className="nl-btn h-10 bg-red-600 px-4 text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {resetSeguroLoading ? 'A resetar…' : 'Resetar dados'}
+                  </button>
                 </div>
-
-                <div className="p-8 rounded-[6px] bg-[var(--color-secondary-lighter)]/40 border border-[var(--border)] flex flex-col gap-6">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-5">
-                      <div className="w-14 h-14 bg-[var(--bg-surface)] rounded-[6px] shadow-sm flex items-center justify-center text-amber-600 shrink-0">
-                        <Sparkles size={24} />
-                      </div>
-                      <div>
-                        <p className="text-[16px] font-black nl-text">Gestor de Duplicados</p>
-                        <p className="text-[12px] nl-text-muted">Ver alunos repetidos por nome ou telefone e mover duplicados para a lixeira.</p>
-                      </div>
-                    </div>
-                    <button onClick={buscarDuplicados} disabled={carregandoDuplicados} className="nl-btn nl-btn-secondary px-8 h-12 whitespace-nowrap">
-                      {carregandoDuplicados ? 'A verificar...' : 'Verificar Duplicados'}
-                    </button>
-                  </div>
-                  <div className="bg-[var(--bg-surface)] p-4 rounded-md border border-[var(--border)]">
-                    <p className="text-[11px] nl-text-muted leading-relaxed">
-                      Recomendado após importações em massa. A remoção é segura: o registo é enviado para a lixeira e pode ser auditado.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="p-8 rounded-[6px] bg-red-50 border border-red-200 flex flex-col gap-6">
-                  <div className="flex items-center gap-5">
-                    <div className="w-14 h-14 bg-white rounded-[6px] shadow-sm flex items-center justify-center text-red-600 shrink-0">
-                      <AlertTriangle size={24} />
-                    </div>
-                    <div>
-                      <p className="text-[16px] font-black text-red-900">Zona de Risco: Reset Operacional</p>
-                      <p className="text-[12px] text-red-700">Remove alunos, pagamentos e notas. Mantém utilizadores, licença e configurações.</p>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                    <input
-                      type="password"
-                      value={resetSeguroForm.password}
-                      onChange={(e) => setResetSeguroForm((form: any) => ({ ...form, password: e.target.value }))}
-                      placeholder="Senha do administrador"
-                      className="nl-input h-11 md:col-span-1"
-                    />
-                    <input
-                      type="text"
-                      value={resetSeguroForm.confirmation}
-                      onChange={(e) => setResetSeguroForm((form: any) => ({ ...form, confirmation: e.target.value }))}
-                      placeholder="Escreva RESETAR"
-                      className="nl-input h-11 md:col-span-1"
-                    />
-                    <button
-                      onClick={() => abrirConfirmacao({
-                        title: 'Resetar dados operacionais',
-                        message: 'Esta ação remove alunos, pagamentos e notas da base de dados. Utilizadores e licença serão mantidos. Confirmas?',
-                        confirmLabel: 'Resetar Dados',
-                        tone: 'danger',
-                        onConfirm: resetarBancoDeDados,
-                      })}
-                      disabled={resetSeguroLoading || sessionUser?.role !== 'admin'}
-                      className="nl-btn h-11 px-6 bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {resetSeguroLoading ? 'A resetar...' : 'Resetar Dados'}
-                    </button>
-                  </div>
-                  {sessionUser?.role !== 'admin' && (
-                    <p className="text-[11px] font-semibold text-red-700">Apenas administradores podem executar esta operação.</p>
-                  )}
-                </div>
-
-                <div className="p-8 rounded-[6px] bg-[var(--color-secondary-lighter)]/40 border border-[var(--border)] flex items-center justify-between opacity-50 cursor-not-allowed">
-                  <div className="flex items-center gap-5">
-                    <div className="w-14 h-14 bg-[var(--bg-surface)] rounded-[6px] shadow-sm flex items-center justify-center nl-text-muted">
-                      <Database size={24} />
-                    </div>
-                    <div>
-                      <p className="text-[16px] font-black nl-text">Limpeza de Cache</p>
-                      <p className="text-[12px] nl-text-muted">Otimizar base de dados interna.</p>
-                    </div>
-                  </div>
-                  <button className="nl-btn nl-btn-secondary px-8 h-12" disabled>Otimizar</button>
-                </div>
-              </div>
+                {sessionUser?.role !== 'admin' && (
+                  <p className="mt-2 text-[11px] font-semibold text-red-700">Apenas administradores podem executar esta operação.</p>
+                )}
+              </SettingsSection>
             </div>
           )}
 
           {configAba === 'ajuda' && (
-            <div className="animate-slide-up space-y-12">
-              <div className="text-center space-y-5">
-                <div className="w-24 h-24 rounded-2xl flex items-center justify-center mx-auto text-white shadow-2xl relative group transition-transform hover:scale-105" style={{ background: 'linear-gradient(135deg, #3B82F6 0%, #2563EB 100%)' }}>
-                  <div className="absolute inset-0 bg-white/20 rounded-2xl blur-xl opacity-50 group-hover:opacity-100 transition-opacity" />
-                  <HelpCircle size={48} className="relative z-10" />
+            <div className="animate-slide-up space-y-5">
+              <SettingsHeader
+                title="Suporte"
+                subtitle="Assistência técnica e contactos da NEXT Lab para o NEXTLevel."
+              />
+              <div className="flex items-center gap-4 rounded-[6px] border border-[var(--border)] bg-[var(--color-secondary-lighter)]/30 p-4">
+                <div className="flex h-12 w-12 items-center justify-center rounded-[8px] text-white" style={{ background: 'linear-gradient(135deg, #3B82F6 0%, #2563EB 100%)' }}>
+                  <HelpCircle size={24} />
                 </div>
                 <div>
-                  <h3 className="text-[36px] font-black nl-text tracking-tighter uppercase leading-none">Centro de Ajuda</h3>
-                  <p className="nl-text-muted font-medium max-w-sm mx-auto mt-4 leading-relaxed">Assistência técnica dedicada e esclarecimento de dúvidas sobre o ecossistema <span className="font-black nl-text">NEXTLevel</span>.</p>
+                  <p className="text-[14px] font-bold nl-text">Centro de ajuda</p>
+                  <p className="text-[12px] nl-text-muted">Esclareça dúvidas e peça suporte ao ecossistema NEXTLevel.</p>
                 </div>
               </div>
 
@@ -944,8 +999,12 @@ function ConfiguracoesPage({
           )}
 
           {configAba === 'sobre' && (
-            <div className="animate-slide-up">
-              <div className="mx-auto max-w-[640px] bg-white py-14 px-16" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
+            <div className="animate-slide-up space-y-5">
+              <SettingsHeader
+                title="Licença"
+                subtitle="Acordo de utilização, propriedade e dados da instalação."
+              />
+              <div className="mx-auto max-w-[640px] rounded-[6px] border border-[var(--border)] bg-white py-10 px-8 sm:px-12 shadow-sm" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
 
                 {/* Logos */}
                 <div className="flex items-center justify-between mb-14">
@@ -1034,11 +1093,12 @@ function ConfiguracoesPage({
                 {/* Rodapé da página */}
                 <div className="mt-14 pt-6 border-t border-slate-100 flex items-center justify-between">
                   <p className="text-[11px] text-slate-300">© {new Date().getFullYear()} NEXT Lab. Todos os direitos reservados.</p>
-                  <p className="text-[11px] text-slate-300">NEXTLevel · versão 1.0 Beta</p>
+                  <p className="text-[11px] text-slate-300">NEXTLevel · versão 1.0.0</p>
                 </div>
               </div>
             </div>
           )}
+          </div>
         </div>
       </div>
     </div>
@@ -1058,9 +1118,7 @@ function DailyReportSchedule() {
   }, [hora]);
 
   return (
-    <div className="space-y-4">
-      <p className="text-[11px] font-bold nl-text-muted uppercase tracking-wider border-b border-[var(--border-light)] pb-2">Relatório Diário</p>
-      <div className="rounded-[8px] border border-blue-100 bg-blue-50/60 p-4">
+    <div className="rounded-[6px] border border-blue-100 bg-blue-50/60 p-3.5">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-[5px] bg-blue-100 border border-blue-200 flex items-center justify-center shrink-0">
@@ -1084,7 +1142,6 @@ function DailyReportSchedule() {
             <span className="text-[10px] text-blue-600/70 font-semibold">O sistema mostrará uma notificação neste horário com o resumo diário.</span>
           </div>
         )}
-      </div>
     </div>
   );
 }

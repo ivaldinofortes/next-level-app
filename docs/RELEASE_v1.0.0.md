@@ -10,12 +10,14 @@
 
 ## O que se entrega
 
-Sistema desktop **offline-first** para gestão de academias:
+Sistema desktop **offline-first** para gestão de academias — **versão 1.0.0 estável**:
 
-- Matrícula e CRM de alunos (soft delete, fotos, notas)
+- Matrícula e CRM de alunos (soft delete, fotos, notas com avatar)
+- **2 categorias oficiais:** Sem personal trainer (1000 CVE) · Com personal trainer (2000 CVE) — valores editáveis
 - Cobrança por ciclo real (motor `billing.ts`)
 - Pagamentos, contactos, WhatsApp de cobrança
-- Relatórios (ecrã A4, PDF, Excel)
+- Relatórios admin + **Exportar** unificado (PDF simples / Excel, recorte e ordenação)
+- Ciclo de mês: passado em leitura (admin pode desbloquear), boas-vindas ao mês novo
 - Utilizadores, roles, setup inicial, licença
 - 3 temas (Claro / Escuro / Claude)
 - Backup / restore / importação Excel

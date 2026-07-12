@@ -17,6 +17,24 @@ export const MONTH_OPTIONS = [
 
 export const DEFAULT_PAYMENT_METHOD = 'Dinheiro';
 
+/** Categorias de inscrição (apenas estas duas no sistema) */
+export const ENROLLMENT_CATEGORY_WITHOUT_PT = 'Sem personal trainer';
+export const ENROLLMENT_CATEGORY_WITH_PT = 'Com personal trainer';
+export const ENROLLMENT_CATEGORIES = [
+  ENROLLMENT_CATEGORY_WITHOUT_PT,
+  ENROLLMENT_CATEGORY_WITH_PT,
+] as const;
+
+/** Valor de mensalidade sugerido por categoria (sempre editável no formulário) */
+export const DEFAULT_PLAN_BY_CATEGORY: Record<string, string> = {
+  [ENROLLMENT_CATEGORY_WITHOUT_PT]: '1000',
+  [ENROLLMENT_CATEGORY_WITH_PT]: '2000',
+};
+
+export const getDefaultPlanForCategory = (categoria?: string) =>
+  DEFAULT_PLAN_BY_CATEGORY[String(categoria || '').trim()] || DEFAULT_PLAN_BY_CATEGORY[ENROLLMENT_CATEGORY_WITHOUT_PT];
+
+
 export const PAYMENT_METHOD_OPTIONS = [
   {
     value: 'Dinheiro',

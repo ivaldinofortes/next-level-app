@@ -3,7 +3,7 @@ import {
   Layout, Users, FileBarChart, BookUser, Settings,
   RotateCw, Bell, Info, LogOut, Wallet,
   Activity, X, TrendingUp, CheckCircle2, Sun, Moon, Sparkles, Camera,
-  ChevronLeft, ChevronRight, Dumbbell,
+  ChevronLeft, ChevronRight, Dumbbell, Download,
 } from 'lucide-react';
 import { formatCve } from '../lib/billing';
 import {
@@ -36,6 +36,8 @@ interface HeaderProps {
   setMostrarUserMenu: (v: boolean) => void;
   setMostrarSobreDoc: (v: boolean) => void;
   onMatricular: () => void;
+  /** Acção principal contextual (ex.: Exportar em Relatórios) */
+  onExportarRelatorio?: () => void;
   setMostrarRelatorioMensal: (v: boolean) => void;
   mostrarDailyReport: boolean;
   setMostrarDailyReport: (v: boolean) => void;
@@ -109,6 +111,7 @@ const Header: React.FC<HeaderProps> = React.memo(({
   setMostrarUserMenu,
   setMostrarSobreDoc,
   onMatricular,
+  onExportarRelatorio,
   mostrarDailyReport,
   setMostrarDailyReport,
   appTheme = 'light',
@@ -299,15 +302,30 @@ const Header: React.FC<HeaderProps> = React.memo(({
               <Icon size={15} strokeWidth={2.2} />
               <span className="hidden sm:inline">{tab.label}</span>
               {tab.id === 'relatorios_detalhado' && relatorioMensalDisponivel && (
-                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white/90" title="Relatório mensal disponível" />
+                <span
+                  className={`h-1.5 w-1.5 animate-pulse rounded-full ${active && !softActive ? 'bg-white/90' : 'bg-[#c64600]'}`}
+                  title={`Relatório de ${relatorioMensalDisponivel} pronto`}
+                />
               )}
             </button>
           );
         })}
       </nav>
 
-      {/* ── Direita: acções ── */}
+      {/* ── Direita: acções contextuais por página ── */}
       <div className="ml-auto flex min-w-0 shrink-0 items-center justify-end gap-2">
+        {relatorioMensalDisponivel && aba !== 'relatorios_detalhado' && isAdmin && (
+          <button
+            type="button"
+            onClick={() => setAba('relatorios_detalhado')}
+            className="hidden items-center gap-1.5 rounded-full border border-[color-mix(in_srgb,#c64600_35%,var(--border))] bg-[color-mix(in_srgb,#c64600_10%,var(--bg-surface))] px-2.5 py-1 text-[11px] font-semibold text-[#c64600] transition-colors hover:bg-[color-mix(in_srgb,#c64600_16%,var(--bg-surface))] lg:inline-flex"
+            title={`Relatório de ${relatorioMensalDisponivel} disponível`}
+          >
+            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#c64600]" />
+            Relatório pronto
+          </button>
+        )}
+
         {aba === 'gestao' && (
           <>
             <button type="button" onClick={() => setAba('contactos')} className="nl-icon-btn" title="Contactos">
@@ -344,6 +362,21 @@ const Header: React.FC<HeaderProps> = React.memo(({
           >
             <Dumbbell size={15} strokeWidth={2.2} />
             <span className="hidden md:inline">Matricular</span>
+          </button>
+        )}
+        {aba === 'relatorios_detalhado' && isAdmin && onExportarRelatorio && (
+          <button
+            type="button"
+            onClick={onExportarRelatorio}
+            className="inline-flex h-9 items-center gap-2 rounded-full px-4 text-[13px] font-semibold text-white transition-all hover:brightness-110 active:scale-[0.98]"
+            style={{
+              background: 'linear-gradient(135deg, #e36b2c 0%, #c64600 55%, #a33a00 100%)',
+              boxShadow: '0 4px 14px rgba(198, 70, 0, 0.35)',
+            }}
+            title="Gerar / exportar relatório"
+          >
+            <Download size={15} strokeWidth={2.2} />
+            <span className="hidden md:inline">Exportar</span>
           </button>
         )}
 

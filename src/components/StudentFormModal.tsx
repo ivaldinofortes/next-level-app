@@ -4,7 +4,11 @@ import {
   Calendar, Camera, CheckCircle2, ExternalLink, FileText, ImagePlus,
   Save, Sparkles, UserPlus, X,
 } from 'lucide-react';
-import { APP_ICON_PATH } from '../constants';
+import {
+  APP_ICON_PATH,
+  ENROLLMENT_CATEGORIES,
+  getDefaultPlanForCategory,
+} from '../constants';
 import { isImportedStatus, STUDENT_STATUS_OPTIONS } from '../lib/studentStatus';
 import { getCategoryTone, getAlunoIniciais } from '../utils/formatting';
 
@@ -54,9 +58,28 @@ export default function StudentFormModal({ mode, model }: { mode: 'create' | 'ed
   const [fotoPreview, setFotoPreview] = useState<string | null>(null);
 
   const catTone = useMemo(
-    () => getCategoryTone(novoAluno.categoria || 'Geral'),
+    () => getCategoryTone(novoAluno.categoria || ENROLLMENT_CATEGORIES[0]),
     [novoAluno.categoria],
   );
+
+  /** Lista fixa: Sem / Com personal trainer */
+  const catList = useMemo(() => {
+    const base = [...ENROLLMENT_CATEGORIES];
+    // Se o aluno já tem categoria legada, mostrar também para não perder o valor ao editar
+    const current = String(novoAluno.categoria || '').trim();
+    if (current && !base.includes(current as typeof base[number])) base.push(current as any);
+    return base;
+  }, [novoAluno.categoria]);
+
+  const applyCategoria = (cat: string) => {
+    const defaultPlan = getDefaultPlanForCategory(cat);
+    setNovoAluno({
+      ...novoAluno,
+      categoria: cat,
+      // Aplica valor sugerido; o utilizador pode alterar o campo de mensalidade a seguir
+      plano: defaultPlan,
+    });
+  };
 
   const handleFotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -79,7 +102,6 @@ export default function StudentFormModal({ mode, model }: { mode: 'create' | 'ed
 
   if (mode === 'create') {
     const iniciais = getAlunoIniciais({ nome: novoAluno.nome || 'NA' });
-    const catList = Array.from(new Set([...(categorias || []), 'Geral'].filter(Boolean)));
 
     return (
       <ModalFrame onClose={() => setMostrarForm(false)} accentColor={catTone.solid}>
@@ -241,20 +263,21 @@ export default function StudentFormModal({ mode, model }: { mode: 'create' | 'ed
               </div>
             </div>
 
-            {/* Categoria — chips coloridos */}
+            {/* Categoria — apenas Sem / Com personal trainer */}
             <div>
               <label className="mb-2 block text-[10px] font-bold uppercase tracking-[0.12em] nl-text-muted">
-                Modalidade / categoria
+                Tipo de inscrição
               </label>
               <div className="flex flex-wrap gap-1.5">
                 {catList.map((cat) => {
                   const tone = getCategoryTone(cat);
-                  const active = (novoAluno.categoria || 'Geral') === cat || (!novoAluno.categoria && cat === 'Geral');
+                  const active = (novoAluno.categoria || ENROLLMENT_CATEGORIES[0]) === cat;
+                  const suggested = getDefaultPlanForCategory(cat);
                   return (
                     <button
                       key={cat}
                       type="button"
-                      onClick={() => setNovoAluno({ ...novoAluno, categoria: cat })}
+                      onClick={() => applyCategoria(cat)}
                       className="rounded-[var(--radius-pill)] border px-3 py-1.5 text-[12px] font-semibold transition-all"
                       style={{
                         background: active ? tone.solid : tone.bg,
@@ -262,8 +285,12 @@ export default function StudentFormModal({ mode, model }: { mode: 'create' | 'ed
                         borderColor: active ? tone.solid : tone.border,
                         boxShadow: active ? `0 4px 12px color-mix(in srgb, ${tone.solid} 35%, transparent)` : undefined,
                       }}
+                      title={`Valor sugerido: ${suggested} CVE (editável)`}
                     >
                       {cat}
+                      <span className={`ml-1.5 text-[10px] font-bold ${active ? 'text-white/85' : 'opacity-70'}`}>
+                        {suggested} CVE
+                      </span>
                     </button>
                   );
                 })}
@@ -272,7 +299,7 @@ export default function StudentFormModal({ mode, model }: { mode: 'create' | 'ed
 
             <div className="h-px bg-[var(--border-light)]" />
 
-            {/* Plano */}
+            {/* Plano — valor sugerido pela categoria, sempre editável */}
             <div>
               <p className="mb-3 text-[10px] font-black uppercase tracking-[0.16em] nl-text-muted">Plano & pagamento</p>
               <div className="grid grid-cols-2 gap-3">
@@ -280,6 +307,9 @@ export default function StudentFormModal({ mode, model }: { mode: 'create' | 'ed
                   <label className="mb-1 block text-[10px] font-bold uppercase tracking-[0.12em] nl-text-muted">
                     Mensalidade (CVE) <span className="text-red-500">*</span>
                   </label>
+                  <p className="mb-1 text-[10px] font-medium nl-text-muted">
+                    Sugerido {getDefaultPlanForCategory(novoAluno.categoria)} CVE — pode editar
+                  </p>
                   <input
                     type="text"
                     placeholder="3 500"
@@ -438,16 +468,31 @@ export default function StudentFormModal({ mode, model }: { mode: 'create' | 'ed
                 <input type="tel" value={novoAluno.telefone} onChange={(e) => setNovoAluno({ ...novoAluno, telefone: e.target.value })} className="nl-input h-12 w-full px-4" required />
               </div>
               <div className="space-y-2">
-                <label className="block px-1 text-[12px] font-bold uppercase tracking-wider nl-text-muted">Modalidade</label>
-                <select value={novoAluno.categoria} onChange={(e) => setNovoAluno({ ...novoAluno, categoria: e.target.value })} className="nl-input h-12 w-full cursor-pointer px-4" required>
-                  {Array.from(new Set([...categorias, novoAluno.categoria || 'Geral'])).map((cat) => (
-                    <option key={cat} value={cat}>{cat}</option>
+                <label className="block px-1 text-[12px] font-bold uppercase tracking-wider nl-text-muted">Tipo de inscrição</label>
+                <select
+                  value={novoAluno.categoria || ENROLLMENT_CATEGORIES[0]}
+                  onChange={(e) => applyCategoria(e.target.value)}
+                  className="nl-input h-12 w-full cursor-pointer px-4"
+                  required
+                >
+                  {catList.map((cat) => (
+                    <option key={cat} value={cat}>{cat} ({getDefaultPlanForCategory(cat)} CVE)</option>
                   ))}
                 </select>
               </div>
               <div className="space-y-2">
                 <label className="block px-1 text-[12px] font-bold uppercase tracking-wider nl-text-muted">Mensalidade (CVE)</label>
-                <input type="text" value={novoAluno.plano} onChange={(e) => setNovoAluno({ ...novoAluno, plano: e.target.value })} className="nl-input h-12 w-full px-4 font-bold" required />
+                <input
+                  type="text"
+                  value={novoAluno.plano}
+                  onChange={(e) => setNovoAluno({ ...novoAluno, plano: e.target.value })}
+                  className="nl-input h-12 w-full px-4 font-bold"
+                  required
+                  title="Valor editável — o sugerido depende da categoria"
+                />
+                <p className="px-1 text-[10px] nl-text-muted">
+                  Sugerido: {getDefaultPlanForCategory(novoAluno.categoria)} CVE · pode alterar
+                </p>
               </div>
               <div className="space-y-2">
                 <label className="block px-1 text-[12px] font-bold uppercase tracking-wider nl-text-muted">Próximo Vencimento</label>

@@ -364,9 +364,33 @@ const HomePage: React.FC<HomePageProps> = React.memo(({
   }, []);
 
   return (
-    <div className="h-full w-full overflow-y-auto custom-scrollbar nl-bg-app" style={estiloHome}>
+    <div className="relative h-full w-full overflow-y-auto custom-scrollbar nl-bg-app" style={estiloHome}>
+      {/* Bolinhas de cor no fundo — mesmo espírito do login / matrícula */}
+      <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden>
+        <div
+          className="absolute -right-20 top-[18%] h-72 w-72 rounded-full opacity-40 blur-[1px]"
+          style={{ background: 'color-mix(in srgb, var(--color-primary) 26%, transparent)' }}
+        />
+        <div
+          className="absolute -left-24 top-[42%] h-80 w-80 rounded-full opacity-35 blur-[1px]"
+          style={{ background: 'color-mix(in srgb, var(--color-success) 20%, transparent)' }}
+        />
+        <div
+          className="absolute right-[18%] bottom-[8%] h-48 w-48 rounded-full opacity-30"
+          style={{ background: 'color-mix(in srgb, #D97706 18%, transparent)' }}
+        />
+        <div
+          className="absolute left-[28%] top-[58%] h-28 w-28 rounded-full opacity-28"
+          style={{ background: 'color-mix(in srgb, #7C3AED 16%, transparent)' }}
+        />
+        <div
+          className="absolute right-[40%] top-[32%] h-20 w-20 rounded-full opacity-25"
+          style={{ background: 'color-mix(in srgb, #0D9488 18%, transparent)' }}
+        />
+      </div>
+
       {/* Banner com mais respiro (altura + padding) */}
-      <section className="relative min-h-[240px] w-full overflow-hidden border-b border-[var(--border)] sm:min-h-[260px]">
+      <section className="relative z-[1] min-h-[240px] w-full overflow-hidden border-b border-[var(--border)] sm:min-h-[260px]">
         <input
           id="home-banner-upload"
           type="file"
@@ -414,7 +438,7 @@ const HomePage: React.FC<HomePageProps> = React.memo(({
 
       {/* Conteúdo afastado do banner — zoom da barra de estado */}
       <div
-        className="mx-auto flex w-full flex-col transition-[max-width,gap,padding] duration-200"
+        className="relative z-[1] mx-auto flex w-full flex-col transition-[max-width,gap,padding] duration-200"
         style={{
           maxWidth: 'var(--home-max, 1120px)',
           gap: 'var(--home-gap, 16px)',

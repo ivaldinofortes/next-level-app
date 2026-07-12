@@ -2,7 +2,7 @@ import { memo, useEffect, useState, type CSSProperties, type Dispatch, type SetS
 import {
   Calendar, ChevronLeft, ChevronRight, LayoutList, AlertCircle,
   CheckCircle2, FileSpreadsheet, ChevronDown, ArrowUpDown, Zap,
-  Clock, Search, X, BookUser, Shield, Users, StickyNote, BarChart3, Wallet,
+  Clock, Search, X, BookUser, Shield, Users, StickyNote, BarChart3, Wallet, Lock,
 } from 'lucide-react';
 import { formatCve } from '../lib/billing';
 import type { MonthlyBillingSummary } from '../lib/billing';
@@ -78,6 +78,10 @@ export interface GestaoPageProps {
   onNotasClick: (aluno: Student) => void;
   finalizarTodosImportados: () => void;
   setAba: (v: string) => void;
+  /** Mês passado em modo leitura */
+  periodoBloqueado?: boolean;
+  onPermitirEdicaoMes?: () => void;
+  onExportarRelatorio?: () => void;
 }
 
 function GestaoPage({
@@ -122,6 +126,9 @@ function GestaoPage({
   notasResumo,
   onNotasClick,
   finalizarTodosImportados,
+  periodoBloqueado = false,
+  onPermitirEdicaoMes,
+  onExportarRelatorio,
 }: GestaoPageProps) {
 
   const [pesquisaAberta, setPesquisaAberta] = useState(Boolean(pesquisa));
@@ -405,6 +412,28 @@ function GestaoPage({
           </div>
         </div>
       </div>
+
+      {periodoBloqueado && (
+        <div className="shrink-0 border-b border-[var(--border)] bg-[color-mix(in_srgb,var(--color-warning)_10%,var(--bg-surface))] px-4 py-2">
+          <div className="mx-auto flex flex-wrap items-center gap-2 text-[12px] font-medium" style={{ maxWidth: `${larguraListas}px` }}>
+            <Lock size={14} className="text-[var(--color-warning)]" />
+            <span className="nl-text">
+              <strong className="capitalize">{periodoSelecionadoLabel}</strong> está fechado — cobranças e edições bloqueadas.
+              A régua preserva o histórico; pode avançar para o mês actual a qualquer momento.
+            </span>
+            {onExportarRelatorio && (
+              <button type="button" onClick={onExportarRelatorio} className="nl-btn nl-btn-sm !h-7 !border-[#c64600] !bg-[#c64600] !text-white !text-[11px]">
+                Exportar relatório
+              </button>
+            )}
+            {onPermitirEdicaoMes && (
+              <button type="button" onClick={onPermitirEdicaoMes} className="nl-btn nl-btn-secondary nl-btn-sm !h-7 !text-[11px]">
+                Permitir edição (admin)
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       <div className="flex-1 overflow-hidden px-4 py-4">
         <div className="mx-auto h-full w-full" style={{ maxWidth: `${larguraListas}px` }}>

@@ -9,14 +9,13 @@ import {
   ChevronLeft,
   ChevronRight,
   CreditCard,
-  Download,
   Landmark,
   LogIn,
   Maximize2,
   Minimize2,
   Palmtree,
   Pause,
-  Printer,
+  Lock,
   ShieldCheck,
   StickyNote,
   TrendingUp,
@@ -241,8 +240,9 @@ export interface RelatoriosPageProps {
   appLogo: string;
   nomeAcademia: string;
   sessionUser: { role?: string; name?: string } | null;
-  onExportarExcel: () => void;
-  onExportarPdf: () => void;
+  /** Mês seleccionado é passado e está bloqueado a edições */
+  periodoBloqueado?: boolean;
+  onPermitirEdicaoMes?: () => void;
 }
 
 type MainTab = 'financeiro' | 'atividade';
@@ -262,8 +262,8 @@ const RelatoriosPage = memo(function RelatoriosPage({
   larguraListas,
   nomeAcademia,
   sessionUser,
-  onExportarExcel,
-  onExportarPdf,
+  periodoBloqueado = false,
+  onPermitirEdicaoMes,
 }: RelatoriosPageProps) {
   const isAdmin = sessionUser?.role === 'admin' || sessionUser?.role === 'root';
   const mesIdx = MONTH_OPTIONS.indexOf(mesRelatorio);
@@ -293,12 +293,13 @@ const RelatoriosPage = memo(function RelatoriosPage({
     setOpenPanels((prev) => ({ ...prev, [id]: !prev[id] }));
   };
 
-  // Carregar atividade (logs, notas, users) — ligado ao backend
+  // Carregar actividade (logs, notas, users) — 1ª vez com loading; refresh silencioso
   useEffect(() => {
     if (!isAdmin) return;
     let mounted = true;
+    let first = true;
     const load = async () => {
-      setAdminLoading(true);
+      if (first) setAdminLoading(true);
       try {
         const electron = (window as any).electron;
         if (!electron) return;
@@ -313,11 +314,15 @@ const RelatoriosPage = memo(function RelatoriosPage({
       } catch (e) {
         console.error('Erro reports:admin-data', e);
       } finally {
-        if (mounted) setAdminLoading(false);
+        if (mounted && first) {
+          setAdminLoading(false);
+          first = false;
+        }
       }
     };
     load();
-    const t = setInterval(load, 90000);
+    // Refresh discreto a cada 2 min (menos trabalho em background)
+    const t = setInterval(load, 120_000);
     return () => {
       mounted = false;
       clearInterval(t);
@@ -643,23 +648,40 @@ const RelatoriosPage = memo(function RelatoriosPage({
             <span className="hidden text-[11px] font-medium capitalize nl-text-muted xl:inline">
               {mesRelatorio} {anoRelatorio}
             </span>
-            <button type="button" onClick={onExportarPdf} className="nl-btn nl-btn-secondary nl-btn-sm !h-8">
-              <Printer size={13} /> PDF
-            </button>
-            <button type="button" onClick={onExportarExcel} className="nl-btn nl-btn-secondary nl-btn-sm !h-8">
-              <Download size={13} /> Excel
-            </button>
           </div>
         </div>
       </div>
 
+      {/* Mês passado — leitura por defeito */}
+      {periodoBloqueado && (
+        <div className="shrink-0 border-b border-[var(--border)] bg-[color-mix(in_srgb,var(--color-warning)_10%,var(--bg-surface))] px-4 py-2">
+          <div className="mx-auto flex flex-wrap items-center gap-2 text-[12px] font-medium" style={{ maxWidth: larguraListas }}>
+            <Lock size={14} className="text-[var(--color-warning)]" />
+            <span className="nl-text">
+              Mês fechado em <strong className="capitalize">{mesRelatorio} {anoRelatorio}</strong> — dados em leitura.
+              Pode exportar o relatório; a edição está bloqueada por segurança.
+            </span>
+            {onPermitirEdicaoMes && (
+              <button
+                type="button"
+                onClick={onPermitirEdicaoMes}
+                className="ml-auto nl-btn nl-btn-secondary nl-btn-sm !h-7 !text-[11px]"
+              >
+                Permitir edição (admin)
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Aviso fim de mês */}
-      {isMonthEndWindow && (
+      {isMonthEndWindow && !periodoBloqueado && (
         <div className="shrink-0 border-b border-[var(--border)] bg-[color-mix(in_srgb,var(--color-warning)_12%,var(--bg-surface))] px-4 py-2">
-          <div className="mx-auto flex items-center gap-2 text-[12px] font-medium" style={{ maxWidth: larguraListas }}>
+          <div className="mx-auto flex flex-wrap items-center gap-2 text-[12px] font-medium" style={{ maxWidth: larguraListas }}>
             <CalendarDays size={14} className="text-[var(--color-warning)]" />
             <span className="nl-text">
-              Janela de fecho mensal — reveja o relatório de <strong className="capitalize">{mesRelatorio}</strong> e exporte se necessário.
+              Janela de fecho mensal — o relatório de <strong className="capitalize">{mesRelatorio}</strong> está quase pronto.
+              Use <strong className="text-[#c64600]">Exportar</strong> na barra superior.
             </span>
           </div>
         </div>

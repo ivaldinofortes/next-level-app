@@ -33,5 +33,13 @@ Usar o ficheiro interno de credenciais da NEXT LAB (Nexus) e a licença do contr
 
 ## Versão
 
-- **1.0.0** — canal estável, Windows x64  
-- Gerado com `npm run dist:win` após `npm run verify`
+- **1.0.0** — canal **estável** de produção, Windows x64  
+- Gerado com `npm run dist:win` após `npm run verify`  
+- Documentação técnica de release: `docs/RELEASE_v1.0.0.md`
+
+### O que o cliente deve saber (v1)
+1. Trabalho **100% offline** no dia-a-dia.  
+2. Matrícula: escolher *Sem* ou *Com personal trainer* (valores sugeridos 1000 / 2000 CVE, editáveis).  
+3. **Relatórios** (admin): botão laranja **Exportar** na barra superior → PDF ou Excel.  
+4. Meses **passados** na régua ficam em leitura; o admin pode desbloquear se precisar corrigir.  
+5. Fazer **backup ZIP** com regularidade (Ajustes → Dados & Backup).
