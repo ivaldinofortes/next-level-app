@@ -159,8 +159,8 @@ export interface ConfiguracoesPageProps {
   setSlideshowTimer: (v: number) => void;
   slideshowTextEnabled: boolean;
   setSlideshowTextEnabled: (v: boolean) => void;
-  appTheme: 'light' | 'dark' | 'claude';
-  setAppTheme: (v: 'light' | 'dark' | 'claude') => void;
+  appTheme: 'light' | 'dark' | 'claude' | 'hybrid';
+  setAppTheme: (v: 'light' | 'dark' | 'claude' | 'hybrid') => void;
   bannerAcademia: string;
   setBannerAcademia: (v: string) => void;
   listaUtilizadores: any[];
@@ -522,62 +522,80 @@ function ConfiguracoesPage({
                 )}
               />
 
-              <SettingsSection title="Tema da interface" description="Aplica-se de imediato em todo o sistema.">
+              <SettingsSection title="Tema da interface" description="Aplica-se de imediato em todo o sistema. A página Relatórios usa sempre o tema escuro.">
                 <div className="space-y-4">
                   <label className="sr-only">Tema da Interface</label>
-                  <div className="grid grid-cols-3 gap-4">
+                  <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
                     {([
                       {
                         id: 'light' as const,
                         label: 'Claro',
                         desc: 'Padrão profissional',
-                        preview: { bg: '#F4F5F7', surface: '#FFFFFF', header: '#FFFFFF', accent: '#0065FF', text: '#172B4D', border: '#DFE1E6' },
+                        preview: { bg: '#F4F5F7', surface: '#FFFFFF', header: '#FFFFFF', accent: '#0065FF', text: '#172B4D', border: '#DFE1E6', footer: '#FFFFFF' },
                       },
                       {
                         id: 'dark' as const,
                         label: 'Escuro',
                         desc: 'Conforto nocturno',
-                        preview: { bg: '#161A1D', surface: '#22272B', header: '#1D2125', accent: '#579DFF', text: '#F1F2F4', border: '#3D474F' },
+                        preview: { bg: '#161A1D', surface: '#22272B', header: '#1D2125', accent: '#579DFF', text: '#F1F2F4', border: '#3D474F', footer: '#1D2125' },
                       },
                       {
                         id: 'claude' as const,
                         label: 'Claude',
                         desc: 'Quente & elegante',
-                        preview: { bg: '#EDE7DF', surface: '#FAF7F3', header: '#F2EDE6', accent: '#CF7C5A', text: '#1E1612', border: '#DDD4C8' },
+                        preview: { bg: '#EDE7DF', surface: '#FAF7F3', header: '#F2EDE6', accent: '#CF7C5A', text: '#1E1612', border: '#DDD4C8', footer: '#F2EDE6' },
+                      },
+                      {
+                        id: 'hybrid' as const,
+                        label: 'Híbrido',
+                        desc: 'Chrome escuro · corpo claro',
+                        preview: { bg: '#F0EEF2', surface: '#FFFFFF', header: '#241F31', accent: '#3584E4', text: '#241F31', border: '#deddda', footer: '#241F31' },
                       },
                     ] as const).map((tema) => {
                       const active = appTheme === tema.id;
                       return (
                         <button
                           key={tema.id}
+                          type="button"
                           onClick={() => { setAppTheme(tema.id); localStorage.setItem('nl_app_theme', tema.id); }}
                           className={`relative flex flex-col rounded-[8px] overflow-hidden border-2 transition-all text-left ${active ? 'border-[var(--color-primary)] shadow-[0_0_0_3px_var(--shadow-primary)]' : 'border-[var(--border)] hover:border-[var(--color-primary)]/40'}`}
                         >
                           {/* Mini preview */}
-                          <div className="h-[80px] w-full relative overflow-hidden" style={{ background: tema.preview.bg }}>
-                            {/* Mini header */}
-                            <div className="absolute top-0 left-0 right-0 h-5 flex items-center px-2 gap-1.5" style={{ background: tema.preview.header, borderBottom: `1px solid ${tema.preview.border}` }}>
+                          <div className="h-[88px] w-full relative overflow-hidden" style={{ background: tema.preview.bg }}>
+                            {/* Mini header (chrome) */}
+                            <div className="absolute top-0 left-0 right-0 h-5 flex items-center px-2 gap-1.5" style={{ background: tema.preview.header, borderBottom: `1px solid ${tema.id === 'hybrid' ? 'rgba(255,255,255,0.12)' : tema.preview.border}` }}>
                               <div className="w-8 h-1.5 rounded-full" style={{ background: tema.preview.accent }} />
                               <div className="flex gap-1 ml-auto">
-                                {[0,1,2].map(i => <div key={i} className="h-1.5 rounded-full" style={{ width: i === 0 ? 14 : i === 1 ? 10 : 10, background: tema.preview.border }} />)}
+                                {[0,1,2].map(i => (
+                                  <div
+                                    key={i}
+                                    className="h-1.5 rounded-full"
+                                    style={{
+                                      width: i === 0 ? 14 : 10,
+                                      background: tema.id === 'hybrid' || tema.id === 'dark' ? 'rgba(255,255,255,0.25)' : tema.preview.border,
+                                    }}
+                                  />
+                                ))}
                               </div>
                             </div>
-                            {/* Mini content */}
-                            <div className="absolute top-6 left-2 right-2 bottom-2 rounded-[3px] p-2 flex flex-col gap-1" style={{ background: tema.preview.surface, border: `1px solid ${tema.preview.border}` }}>
+                            {/* Mini content (corpo) */}
+                            <div className="absolute top-6 left-2 right-2 bottom-4 rounded-[3px] p-2 flex flex-col gap-1" style={{ background: tema.preview.surface, border: `1px solid ${tema.preview.border}` }}>
                               <div className="h-1.5 rounded-full w-3/4" style={{ background: tema.preview.text, opacity: 0.7 }} />
                               <div className="h-1 rounded-full w-1/2" style={{ background: tema.preview.border }} />
                               <div className="h-4 rounded-[2px] w-16 mt-auto" style={{ background: tema.preview.accent }} />
                             </div>
+                            {/* Mini status bar */}
+                            <div className="absolute bottom-0 left-0 right-0 h-2.5" style={{ background: tema.preview.footer }} />
                           </div>
                           {/* Label */}
                           <div className="px-3 py-2.5 bg-[var(--bg-surface)] border-t border-[var(--border)]">
-                            <div className="flex items-center justify-between">
-                              <div>
+                            <div className="flex items-center justify-between gap-1">
+                              <div className="min-w-0">
                                 <p className="text-[12px] font-bold nl-text">{tema.label}</p>
-                                <p className="text-[10px] nl-text-muted">{tema.desc}</p>
+                                <p className="text-[10px] nl-text-muted leading-snug">{tema.desc}</p>
                               </div>
                               {active && (
-                                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[var(--color-primary)]">
+                                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[var(--color-primary)]">
                                   <CheckCircle2 size={12} className="text-white" />
                                 </span>
                               )}
@@ -587,7 +605,10 @@ function ConfiguracoesPage({
                       );
                     })}
                   </div>
-                  <p className="text-[11px] nl-text-muted">O tema aplica-se imediatamente em todo o sistema sem necessidade de reiniciar.</p>
+                  <p className="text-[11px] nl-text-muted">
+                    O tema aplica-se imediatamente. No <strong className="nl-text">Híbrido</strong>, o cabeçalho e a barra de estado ficam escuros e o conteúdo claro.
+                    A página <strong className="nl-text">Relatórios</strong> permanece sempre em tema escuro.
+                  </p>
                 </div>
               </SettingsSection>
 

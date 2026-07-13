@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import {
   AlertCircle,
+  CalendarClock,
   CalendarDays,
   CheckCircle2,
   ChevronRight,
@@ -17,6 +18,7 @@ import {
   Dumbbell,
   Users,
   Wallet,
+  TrendingUp,
 } from 'lucide-react';
 import {
   formatCve,
@@ -53,6 +55,22 @@ const statusResumoLabel = (status?: string) => {
     case 'pago': return 'Em dia';
     default: return status || '—';
   }
+};
+
+/** Urgência: vence hoje → mais dias em atraso → vence em breve */
+const sortByUrgency = (
+  a: { resumo?: { status?: string; overdueDays?: number; daysUntilCharge?: number } },
+  b: { resumo?: { status?: string; overdueDays?: number; daysUntilCharge?: number } },
+) => {
+  const rank = (r?: { status?: string; overdueDays?: number; daysUntilCharge?: number }) => {
+    if (!r) return 9999;
+    if (r.status === 'hoje') return 0;
+    if (r.status === 'atrasado') return 1 + Math.max(0, 90 - (r.overdueDays || 0)); // mais dias = menor rank
+    if (r.status === 'critico') return 100 + (r.daysUntilCharge || 0);
+    if (r.status === 'pendente') return 200 + (r.daysUntilCharge || 0);
+    return 500 + (r.daysUntilCharge || 0);
+  };
+  return rank(a.resumo) - rank(b.resumo);
 };
 
 interface NotaRecente {
@@ -92,11 +110,18 @@ interface HomePageProps {
   onCobrarAluno?: (alunoId: string) => void;
   notasRecentes: NotaRecente[];
   onUploadBanner: (e: React.ChangeEvent<HTMLInputElement>) => void;
-  /** Zoom da barra de estado (mesma “Vista” que Alunos) */
   larguraListas?: number;
   estiloHome?: CSSProperties;
   isAdmin?: boolean;
   onImport?: () => void;
+  /** Nome do utilizador em sessão (saudação) */
+  sessionUserName?: string;
+  /** Rótulo do período financeiro (ex.: "julho 2026") */
+  periodoLabel?: string;
+  /** Contagens do dia — ligadas ao motor de cobrança */
+  cobrancasHoje?: number;
+  matriculasHoje?: number;
+  totalRecebidoHoje?: number;
 }
 
 const POSTIT_BG = '#FFF59D';
@@ -107,9 +132,9 @@ const POSTIT_MUTED = '#6B5B24';
 type PanelKey = 'prioridade' | 'movimento' | 'notas';
 
 /**
- * Cada card expande de forma independente.
- * - expandMode "width": cresce em largura (bento full-row) — Prioridades
- * - expandMode "height": cresce para baixo — Movimento / Notas
+ * Card bento expansível (mesmo espírito dos Relatórios).
+ * - width: cresce na linha
+ * - height: cresce para baixo
  */
 const ExpandablePanel: React.FC<{
   isOpen: boolean;
@@ -119,12 +144,12 @@ const ExpandablePanel: React.FC<{
   header: React.ReactNode;
   footer?: React.ReactNode;
   children: React.ReactNode;
-  tone?: 'default' | 'green' | 'red' | 'blue' | 'postit';
+  tone?: 'default' | 'green' | 'red' | 'blue' | 'teal' | 'postit';
   expandMode?: 'width' | 'height';
-  /** span na grelha 12 cols quando fechado */
   spanClosed?: string;
-  /** span quando aberto */
   spanOpen?: string;
+  heightClosed?: string;
+  heightOpen?: string;
 }> = ({
   isOpen,
   onToggle,
@@ -137,6 +162,8 @@ const ExpandablePanel: React.FC<{
   expandMode = 'height',
   spanClosed = 'col-span-12 md:col-span-4',
   spanOpen,
+  heightClosed,
+  heightOpen,
 }) => {
   const toneCls =
     tone === 'green'
@@ -145,13 +172,15 @@ const ExpandablePanel: React.FC<{
         ? 'border-[color-mix(in_srgb,var(--color-error)_35%,var(--border))] bg-[color-mix(in_srgb,var(--color-error)_8%,var(--bg-surface))]'
         : tone === 'blue'
           ? 'border-[color-mix(in_srgb,var(--color-primary)_35%,var(--border))] bg-[color-mix(in_srgb,var(--color-primary)_8%,var(--bg-surface))]'
-          : tone === 'postit'
-            ? ''
-            : 'border-[var(--border)] bg-[var(--bg-surface)]';
+          : tone === 'teal'
+            ? 'border-[color-mix(in_srgb,#0f766e_40%,var(--border))] bg-[color-mix(in_srgb,#14b8a6_9%,var(--bg-surface))]'
+            : tone === 'postit'
+              ? ''
+              : 'border-[var(--border)] bg-[var(--bg-surface)]';
 
   const openSpan = spanOpen || (expandMode === 'width' ? 'col-span-12' : spanClosed);
   const sizeCls = isOpen
-    ? 'shadow-[var(--shadow-md)]'
+    ? 'shadow-[var(--shadow-md)] ring-1 ring-[color-mix(in_srgb,var(--color-primary)_14%,transparent)]'
     : 'shadow-[var(--shadow-xs)]';
 
   return (
@@ -161,9 +190,9 @@ const ExpandablePanel: React.FC<{
       } ${className}`}
       style={{
         ...style,
-        height: isOpen ? undefined : 'var(--home-panel-h, 248px)',
-        minHeight: isOpen ? 'var(--home-panel-h-open, 360px)' : undefined,
-        maxHeight: isOpen ? 'calc(var(--home-panel-h-open, 360px) + 160px)' : undefined,
+        height: isOpen ? undefined : (heightClosed || 'var(--home-panel-h, 248px)'),
+        minHeight: isOpen ? (heightOpen || 'var(--home-panel-h-open, 360px)') : undefined,
+        maxHeight: isOpen ? 'calc(var(--home-panel-h-open, 360px) + 200px)' : undefined,
       }}
     >
       <div className="flex shrink-0 items-start justify-between gap-2 border-b border-[var(--border-light)] px-3.5 py-2.5">
@@ -172,7 +201,7 @@ const ExpandablePanel: React.FC<{
           type="button"
           onClick={onToggle}
           className="nl-icon-btn nl-icon-btn-sm shrink-0"
-          title={isOpen ? 'Recolher' : 'Expandir'}
+          title={isOpen ? 'Recolher' : 'Expandir — ver mais'}
         >
           {isOpen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
         </button>
@@ -213,10 +242,14 @@ const HomePage: React.FC<HomePageProps> = React.memo(({
   onCobrarAluno,
   notasRecentes,
   onUploadBanner,
-  larguraListas = 1120,
   estiloHome = {},
   isAdmin = false,
   onImport,
+  sessionUserName,
+  periodoLabel,
+  cobrancasHoje = 0,
+  matriculasHoje = 0,
+  totalRecebidoHoje = 0,
 }) => {
   const alunosEmDia = Math.max(alunosAtivos.length - alunosEmDivida.length, 0);
   const coberturaPercentual = alunosAtivos.length > 0 ? Math.round((alunosEmDia / alunosAtivos.length) * 100) : 100;
@@ -224,20 +257,55 @@ const HomePage: React.FC<HomePageProps> = React.memo(({
   const dataAtual = agora.toLocaleDateString('pt-PT', { weekday: 'long', day: '2-digit', month: 'long' });
   const alunoPorId = useMemo(() => new Map(alunos.map((aluno) => [aluno.id, aluno])), [alunos]);
 
-  // Lista prioritária: atraso → importados → críticos do resumo
+  const venceHojeLista = useMemo(
+    () => alunosEmDivida.filter(({ resumo }) => resumo?.status === 'hoje'),
+    [alunosEmDivida],
+  );
+  const atrasadosLista = useMemo(
+    () => alunosEmDivida.filter(({ resumo }) => resumo?.status === 'atrasado'),
+    [alunosEmDivida],
+  );
+  /** Só “vence em ≤3 dias” (sem misturar com “vence hoje”) */
+  const criticosProximos = useMemo(
+    () => alunosAtivos.filter(({ resumo }) => resumo?.status === 'critico').length,
+    [alunosAtivos],
+  );
+
+  /** Vence em ≤7 dias (ainda cobertos, mas a acompanhar) — lacuna que a Home não mostrava */
+  const aAcompanhar = useMemo(
+    () => alunosAtivos
+      .filter(({ resumo }) => ['critico', 'pendente'].includes(resumo?.status))
+      .slice()
+      .sort(sortByUrgency)
+      .slice(0, 12),
+    [alunosAtivos],
+  );
+
+  // Prioridade: atraso/hoje (urgência) → a acompanhar → importados
   const listaPrioridade = useMemo(() => {
     if (alunosEmDivida.length > 0) {
       return alunosEmDivida
         .slice()
-        .sort((a, b) => (a.resumo?.overdueDays || 0) - (b.resumo?.overdueDays || 0) || (a.resumo?.daysUntilCharge || 0) - (b.resumo?.daysUntilCharge || 0))
-        .slice(0, 12)
+        .sort(sortByUrgency)
+        .slice(0, 14)
         .map(({ aluno, resumo }) => ({
           kind: 'divida' as const,
           aluno,
           resumo,
           title: aluno.nome,
-          meta: `${statusResumoLabel(resumo?.status)} · ${formatCve(aluno.plano)}`,
+          meta: `${resumo?.statusLabel || statusResumoLabel(resumo?.status)} · ${formatCve(aluno.plano)}`,
+          urgent: resumo?.status === 'hoje' || (resumo?.overdueDays || 0) >= 7,
         }));
+    }
+    if (aAcompanhar.length > 0) {
+      return aAcompanhar.map(({ aluno, resumo }) => ({
+        kind: 'proximo' as const,
+        aluno,
+        resumo,
+        title: aluno.nome,
+        meta: `${resumo?.statusLabel || statusResumoLabel(resumo?.status)} · ${formatCve(aluno.plano)}`,
+        urgent: resumo?.status === 'critico',
+      }));
     }
     if (alunosImportados.length > 0) {
       return alunosImportados.slice(0, 12).map((aluno) => ({
@@ -246,12 +314,12 @@ const HomePage: React.FC<HomePageProps> = React.memo(({
         resumo: null as any,
         title: aluno.nome,
         meta: 'Importado · aguarda validação',
+        urgent: false,
       }));
     }
     return [];
-  }, [alunosEmDivida, alunosImportados]);
+  }, [alunosEmDivida, aAcompanhar, alunosImportados]);
 
-  // Expansão independente por card (vários podem estar abertos ao mesmo tempo)
   const [openPanels, setOpenPanels] = useState<Record<PanelKey, boolean>>({
     prioridade: false,
     movimento: false,
@@ -260,11 +328,14 @@ const HomePage: React.FC<HomePageProps> = React.memo(({
   const togglePanel = (key: PanelKey) =>
     setOpenPanels((prev) => ({ ...prev, [key]: !prev[key] }));
 
-  // Verde leve quando está bem; vermelho quando há dívida
   const prioridadeMeta = alunosEmDivida.length > 0
     ? {
         title: 'Prioridades',
-        subtitle: `${alunosEmDivida.length} a cobrar · ${formatCve(previsaoRecuperacao)}`,
+        subtitle: [
+          venceHojeLista.length > 0 ? `${venceHojeLista.length} vence hoje` : null,
+          atrasadosLista.length > 0 ? `${atrasadosLista.length} em atraso` : null,
+          formatCve(previsaoRecuperacao),
+        ].filter(Boolean).join(' · '),
         tone: 'text-[var(--color-error)]',
         cardTone: 'red' as const,
         icon: <AlertCircle size={15} className="text-[var(--color-error)]" />,
@@ -273,50 +344,65 @@ const HomePage: React.FC<HomePageProps> = React.memo(({
         footerLabel: 'Ver cobranças',
         footerAction: () => { setAba('gestao'); setFiltroStatus('divida'); },
       }
-    : alunosImportados.length > 0
+    : aAcompanhar.length > 0
       ? {
-          title: 'Prioridades',
-          subtitle: `${alunosImportados.length} importação(ões)`,
-          tone: 'text-[var(--color-primary)]',
-          cardTone: 'blue' as const,
-          icon: <FileSpreadsheet size={15} className="text-[var(--color-primary)]" />,
+          title: 'A acompanhar',
+          subtitle: `${aAcompanhar.length} vence(m) em breve`,
+          tone: 'text-[var(--color-warning)]',
+          cardTone: 'default' as const,
+          icon: <CalendarClock size={15} className="text-[var(--color-warning)]" />,
           emptyTitle: '',
           emptyBody: '',
-          footerLabel: 'Rever importados',
-          footerAction: () => { setAba('gestao'); setFiltroStatus('importados'); },
+          footerLabel: 'Ver alunos',
+          footerAction: () => { setAba('gestao'); setFiltroStatus('todos'); },
         }
-      : relatorioMensalDisponivel
+      : alunosImportados.length > 0
         ? {
             title: 'Prioridades',
-            subtitle: `Relatório de ${relatorioMensalDisponivel}`,
-            tone: 'text-[var(--color-success)]',
-            cardTone: 'green' as const,
-            icon: <FileBarChart size={15} className="text-[var(--color-success)]" />,
-            emptyTitle: 'Relatório pronto',
-            emptyBody: 'Consulte o relatório administrativo.',
-            footerLabel: 'Abrir relatório',
-            footerAction: () => setAba('relatorios_detalhado'),
+            subtitle: `${alunosImportados.length} importação(ões)`,
+            tone: 'text-[var(--color-primary)]',
+            cardTone: 'blue' as const,
+            icon: <FileSpreadsheet size={15} className="text-[var(--color-primary)]" />,
+            emptyTitle: '',
+            emptyBody: '',
+            footerLabel: 'Rever importados',
+            footerAction: () => { setAba('gestao'); setFiltroStatus('importados'); },
           }
-        : {
-            title: 'Prioridades',
-            subtitle: 'Tudo controlado',
-            tone: 'text-[var(--color-success)]',
-            cardTone: 'green' as const,
-            icon: <CheckCircle2 size={15} className="text-[var(--color-success)]" />,
-            emptyTitle: 'Operação controlada',
-            emptyBody: 'Sem pendências críticas.',
-            footerLabel: 'Ver alunos',
-            footerAction: () => { setAba('gestao'); setFiltroStatus('todos'); },
-          };
+        : relatorioMensalDisponivel
+          ? {
+              title: 'Prioridades',
+              subtitle: `Relatório de ${relatorioMensalDisponivel}`,
+              tone: 'text-[var(--color-success)]',
+              cardTone: 'green' as const,
+              icon: <FileBarChart size={15} className="text-[var(--color-success)]" />,
+              emptyTitle: 'Relatório pronto',
+              emptyBody: 'Consulte o relatório administrativo.',
+              footerLabel: 'Abrir relatório',
+              footerAction: () => setAba('relatorios_detalhado'),
+            }
+          : {
+              title: 'Prioridades',
+              subtitle: 'Tudo controlado',
+              tone: 'text-[var(--color-success)]',
+              cardTone: 'green' as const,
+              icon: <CheckCircle2 size={15} className="text-[var(--color-success)]" />,
+              emptyTitle: 'Operação controlada',
+              emptyBody: 'Sem pendências críticas nem vencimentos próximos.',
+              footerLabel: 'Ver alunos',
+              footerAction: () => { setAba('gestao'); setFiltroStatus('todos'); },
+            };
+
+  const periodoTxt = periodoLabel || 'Período actual';
 
   const indicadores = [
     {
-      label: 'Alunos ativos',
+      label: 'Alunos activos',
       value: String(alunosAtivos.length),
       sub: `${alunos.length} no sistema`,
       icon: <Users size={16} />,
       accent: 'text-[var(--color-primary)]',
       action: () => { setAba('gestao'); setFiltroStatus('todos'); },
+      progress: null as number | null,
     },
     {
       label: 'Em dia',
@@ -325,22 +411,27 @@ const HomePage: React.FC<HomePageProps> = React.memo(({
       icon: <CheckCircle2 size={16} />,
       accent: 'text-[var(--color-success)]',
       action: () => { setAba('gestao'); setFiltroStatus('cobertos'); },
+      progress: coberturaPercentual,
     },
     {
       label: 'Recebido',
       value: formatCve(totalRecebidoPeriodo),
-      sub: 'Período atual',
+      sub: periodoTxt,
       icon: <Wallet size={16} />,
       accent: 'text-[var(--color-primary)]',
-      action: () => setAba('relatorios_detalhado'),
+      action: () => setAba(isAdmin ? 'relatorios_detalhado' : 'gestao'),
+      progress: null,
     },
     {
       label: 'A recuperar',
       value: formatCve(previsaoRecuperacao),
-      sub: `${alunosEmDivida.length} pendência(s)`,
+      sub: alunosEmDivida.length > 0
+        ? `${alunosEmDivida.length} pendência(s)${venceHojeLista.length ? ` · ${venceHojeLista.length} hoje` : ''}`
+        : 'Sem pendências',
       icon: <AlertCircle size={16} />,
       accent: alunosEmDivida.length > 0 ? 'text-[var(--color-error)]' : 'text-[var(--text-secondary)]',
       action: () => { setAba('gestao'); setFiltroStatus('divida'); },
+      progress: null,
     },
   ];
 
@@ -350,7 +441,9 @@ const HomePage: React.FC<HomePageProps> = React.memo(({
     setMostrarForm(true);
   };
 
-  // Atalho estilo Spotlight (⌘K / Ctrl+K) foca a pesquisa da Início
+  const primeiroNome = (sessionUserName || '').trim().split(/\s+/)[0] || '';
+
+  // Atalho estilo Spotlight (⌘K / Ctrl+K)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
@@ -363,9 +456,40 @@ const HomePage: React.FC<HomePageProps> = React.memo(({
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
+  const pulsoItems = [
+    {
+      label: 'Vence hoje',
+      value: String(cobrancasHoje || venceHojeLista.length),
+      tone: (cobrancasHoje || venceHojeLista.length) > 0 ? 'text-[var(--color-error)]' : 'text-[var(--color-success)]',
+      icon: <CalendarClock size={14} />,
+      action: () => { setAba('gestao'); setFiltroStatus('divida'); },
+    },
+    {
+      label: 'Críticos (≤3d)',
+      value: String(criticosProximos),
+      tone: criticosProximos > 0 ? 'text-[var(--color-warning)]' : 'nl-text-muted',
+      icon: <AlertCircle size={14} />,
+      action: () => { setAba('gestao'); setFiltroStatus('todos'); },
+    },
+    {
+      label: 'Caixa de hoje',
+      value: formatCve(totalRecebidoHoje),
+      tone: 'text-[var(--color-success)]',
+      icon: <TrendingUp size={14} />,
+      action: () => setAba(isAdmin ? 'relatorios_detalhado' : 'gestao'),
+    },
+    {
+      label: 'Matrículas hoje',
+      value: String(matriculasHoje),
+      tone: 'text-[var(--color-primary)]',
+      icon: <Sparkles size={14} />,
+      action: () => { setAba('gestao'); setFiltroStatus('todos'); },
+    },
+  ];
+
   return (
     <div className="relative h-full w-full overflow-y-auto custom-scrollbar nl-bg-app" style={estiloHome}>
-      {/* Bolinhas de cor no fundo — mesmo espírito do login / matrícula */}
+      {/* Bolinhas de cor no fundo */}
       <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden>
         <div
           className="absolute -right-20 top-[18%] h-72 w-72 rounded-full opacity-40 blur-[1px]"
@@ -389,7 +513,7 @@ const HomePage: React.FC<HomePageProps> = React.memo(({
         />
       </div>
 
-      {/* Banner com mais respiro (altura + padding) */}
+      {/* Banner */}
       <section className="relative z-[1] min-h-[240px] w-full overflow-hidden border-b border-[var(--border)] sm:min-h-[260px]">
         <input
           id="home-banner-upload"
@@ -423,20 +547,30 @@ const HomePage: React.FC<HomePageProps> = React.memo(({
               <img src={appLogo || APP_ICON_PATH} alt="Logo" className="h-full w-full object-contain" />
             </div>
             <div className="min-w-0 text-white">
-              <p className="text-[13px] font-medium text-white/85">Bem-vindo</p>
+              <p className="text-[13px] font-medium text-white/85">
+                {primeiroNome ? `Olá, ${primeiroNome}` : 'Bem-vindo'}
+              </p>
               <h1 className="mt-1 truncate text-[28px] font-semibold leading-tight tracking-tight">{nomeAcademia}</h1>
-              <p className="mt-1.5 max-w-[640px] truncate text-[14px] font-medium text-white/75">{subtituloAcademia}</p>
+              <p className="mt-1.5 max-w-[640px] truncate text-[14px] font-medium text-white/75">
+                {subtituloAcademia}
+                {periodoLabel ? ` · ${periodoLabel}` : ''}
+              </p>
             </div>
           </div>
 
           <div className="hidden shrink-0 text-right text-white sm:block">
             <p className="text-[28px] font-semibold leading-none tabular-nums tracking-tight">{horaAtual}</p>
             <p className="mt-1.5 text-[13px] font-medium capitalize text-white/80">{dataAtual}</p>
+            {(cobrancasHoje > 0 || venceHojeLista.length > 0) && (
+              <p className="mt-2 inline-flex items-center gap-1 rounded-full bg-red-500/90 px-2.5 py-0.5 text-[11px] font-semibold text-white">
+                <AlertCircle size={12} />
+                {cobrancasHoje || venceHojeLista.length} a cobrar hoje
+              </p>
+            )}
           </div>
         </div>
       </section>
 
-      {/* Conteúdo afastado do banner — zoom da barra de estado */}
       <div
         className="relative z-[1] mx-auto flex w-full flex-col transition-[max-width,gap,padding] duration-200"
         style={{
@@ -448,7 +582,7 @@ const HomePage: React.FC<HomePageProps> = React.memo(({
           paddingBottom: 'var(--home-pad-y, 20px)',
         }}
       >
-        {/* Spotlight — pesquisa global (abaixo do banner, centrada) */}
+        {/* Spotlight */}
         <div className="relative z-[30] -mt-1 flex w-full justify-center px-1">
           <SpotlightSearch
             alunos={alunos}
@@ -468,7 +602,7 @@ const HomePage: React.FC<HomePageProps> = React.memo(({
           />
         </div>
 
-        {/* KPIs clicáveis */}
+        {/* KPIs — alinhados com Relatórios */}
         <section className="grid gap-3 sm:grid-cols-2 md:grid-cols-4" style={{ gap: 'var(--home-gap, 12px)' }}>
           {indicadores.map((item) => (
             <button
@@ -477,6 +611,7 @@ const HomePage: React.FC<HomePageProps> = React.memo(({
               onClick={item.action}
               className="nl-card text-left transition-all hover:-translate-y-0.5 hover:border-[var(--color-primary)] focus-visible:outline-none"
               style={{ padding: 'var(--home-kpi-pad, 14px)' }}
+              title="Clique para abrir detalhes"
             >
               <div className="flex items-center justify-between gap-3">
                 <span className={item.accent}>{item.icon}</span>
@@ -484,11 +619,37 @@ const HomePage: React.FC<HomePageProps> = React.memo(({
               </div>
               <p className={`mt-1.5 truncate font-semibold leading-tight tabular-nums ${item.accent}`} style={{ fontSize: 'var(--home-kpi-title, 20px)' }}>{item.value}</p>
               <p className="mt-0.5 truncate font-medium nl-text-muted" style={{ fontSize: 'var(--home-kpi-label, 11px)' }}>{item.sub}</p>
+              {typeof item.progress === 'number' && (
+                <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[var(--border-light)]">
+                  <div
+                    className="h-full rounded-full bg-[var(--color-success)] transition-all"
+                    style={{ width: `${Math.min(100, item.progress)}%` }}
+                  />
+                </div>
+              )}
             </button>
           ))}
         </section>
 
-        {/* Atalhos compactos */}
+        {/* Pulso do dia — resposta em &lt;30s (blueprint V2) */}
+        <section className="grid grid-cols-2 gap-2 sm:grid-cols-4" style={{ gap: 'var(--home-gap, 10px)' }}>
+          {pulsoItems.map((item) => (
+            <button
+              key={item.label}
+              type="button"
+              onClick={item.action}
+              className="flex items-center gap-2.5 rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2.5 text-left shadow-[var(--shadow-xs)] transition-all hover:-translate-y-0.5 hover:border-[var(--color-primary)]"
+            >
+              <span className={`shrink-0 ${item.tone}`}>{item.icon}</span>
+              <div className="min-w-0">
+                <p className="text-[10px] font-semibold uppercase tracking-wide nl-text-muted">{item.label}</p>
+                <p className={`truncate text-[14px] font-semibold tabular-nums leading-tight ${item.tone}`}>{item.value}</p>
+              </div>
+            </button>
+          ))}
+        </section>
+
+        {/* Atalhos — admin vê Relatórios / Importar */}
         <section className="flex flex-wrap items-center gap-2">
           <button
             type="button"
@@ -500,27 +661,39 @@ const HomePage: React.FC<HomePageProps> = React.memo(({
           </button>
           <button type="button" onClick={() => { setAba('gestao'); setFiltroStatus('divida'); }} className="nl-btn nl-btn-sm !bg-[var(--color-success)] !border-[var(--color-success)] !text-white">
             <Wallet size={14} /> Cobranças
+            {alunosEmDivida.length > 0 && (
+              <span className="ml-0.5 rounded-full bg-white/25 px-1.5 text-[10px] tabular-nums">{alunosEmDivida.length}</span>
+            )}
           </button>
           <button type="button" onClick={() => setAba('contactos')} className="nl-btn nl-btn-sm !bg-[var(--color-primary)] !border-[var(--color-primary)] !text-white">
             <MessageSquare size={14} /> Contactos
           </button>
-          <button type="button" onClick={() => setMostrarImportar(true)} className="nl-btn nl-btn-ghost nl-btn-sm">
-            <FileSpreadsheet size={14} /> Importar
-          </button>
-          <button type="button" onClick={() => setAba('configuracoes')} className="nl-btn nl-btn-ghost nl-btn-sm">
-            <CalendarDays size={14} /> Ajustes
-          </button>
+          {isAdmin && (
+            <button type="button" onClick={() => setAba('relatorios_detalhado')} className="nl-btn nl-btn-ghost nl-btn-sm">
+              <FileBarChart size={14} /> Relatórios
+            </button>
+          )}
+          {isAdmin && (
+            <button type="button" onClick={() => setMostrarImportar(true)} className="nl-btn nl-btn-ghost nl-btn-sm">
+              <FileSpreadsheet size={14} /> Importar
+            </button>
+          )}
+          {isAdmin && (
+            <button type="button" onClick={() => setAba('configuracoes')} className="nl-btn nl-btn-ghost nl-btn-sm">
+              <CalendarDays size={14} /> Ajustes
+            </button>
+          )}
         </section>
 
-        {/* Bento: Prioridade maior; cada card expande sozinho */}
+        {/* Bento assimétrico: prioridade 2×1, novos 1×1, notas 1×1 */}
         <section className="grid grid-cols-12 items-start" style={{ gap: 'var(--home-gap, 12px)' }}>
-          {/* ── PRIORIDADES — expande em largura + nomes em colunas ── */}
+          {/* ── PRIORIDADES — 2×1, expande em largura ── */}
           <ExpandablePanel
             isOpen={openPanels.prioridade}
             onToggle={() => togglePanel('prioridade')}
-            tone={prioridadeMeta.cardTone}
+            tone={prioridadeMeta.cardTone === 'default' ? 'default' : prioridadeMeta.cardTone}
             expandMode="width"
-            spanClosed="col-span-12 md:col-span-6 xl:col-span-5"
+            spanClosed="col-span-12 md:col-span-7 xl:col-span-6"
             spanOpen="col-span-12"
             header={(
               <div className="min-w-0">
@@ -528,7 +701,13 @@ const HomePage: React.FC<HomePageProps> = React.memo(({
                   {prioridadeMeta.icon}
                   <h2 className="text-[14px] font-semibold nl-text">{prioridadeMeta.title}</h2>
                   {listaPrioridade.length > 0 && (
-                    <span className={`badge tabular-nums ${prioridadeMeta.cardTone === 'red' ? 'badge-error' : prioridadeMeta.cardTone === 'green' ? 'badge-success' : 'badge-info'}`}>
+                    <span className={`badge tabular-nums ${
+                      prioridadeMeta.cardTone === 'red' ? 'badge-error'
+                        : prioridadeMeta.cardTone === 'green' ? 'badge-success'
+                          : prioridadeMeta.cardTone === 'blue' ? 'badge-info'
+                            : 'badge-warning'
+                    }`}
+                    >
                       {listaPrioridade.length}
                     </span>
                   )}
@@ -548,6 +727,15 @@ const HomePage: React.FC<HomePageProps> = React.memo(({
                 <CheckCircle2 size={22} className="text-[var(--color-success)] opacity-80" />
                 <p className="text-[13px] font-semibold nl-text">{prioridadeMeta.emptyTitle}</p>
                 <p className="text-[11px] font-medium nl-text-muted">{prioridadeMeta.emptyBody}</p>
+                {relatorioMensalDisponivel && isAdmin && (
+                  <button
+                    type="button"
+                    className="mt-2 nl-btn nl-btn-secondary nl-btn-sm"
+                    onClick={() => setAba('relatorios_detalhado')}
+                  >
+                    <FileBarChart size={13} /> Abrir relatório
+                  </button>
+                )}
               </div>
             ) : (
               <ul
@@ -557,12 +745,21 @@ const HomePage: React.FC<HomePageProps> = React.memo(({
                     : 'space-y-0.5'
                 }
               >
-                {listaPrioridade.map(({ aluno, title, meta, kind }) => (
+                {listaPrioridade.map(({ aluno, title, meta, kind, urgent, resumo }) => (
                   <li key={aluno.id}>
                     <div
                       className={`group flex items-center gap-1.5 rounded-[var(--radius-control)] px-1.5 py-1.5 hover:bg-[var(--color-secondary-light)] ${
                         openPanels.prioridade ? 'border border-[var(--border-light)] bg-[var(--bg-surface)]/80 px-2.5 py-2' : ''
                       }`}
+                      style={
+                        kind === 'divida' || kind === 'proximo'
+                          ? { boxShadow: `inset 3px 0 0 ${
+                            resumo?.status === 'hoje' || resumo?.status === 'atrasado'
+                              ? 'var(--color-error)'
+                              : 'var(--color-warning)'
+                          }` }
+                          : undefined
+                      }
                     >
                       <button
                         type="button"
@@ -576,11 +773,19 @@ const HomePage: React.FC<HomePageProps> = React.memo(({
                             : getAlunoIniciais(aluno)}
                         </div>
                         <div className="min-w-0 flex-1">
-                          <p className="truncate text-[13px] font-semibold nl-text">{title}</p>
+                          <div className="flex min-w-0 items-center gap-1">
+                            <p className="truncate text-[13px] font-semibold nl-text">{title}</p>
+                            {urgent && (
+                              <span className="badge badge-error shrink-0 !px-1.5 !py-0 !text-[8px]">!</span>
+                            )}
+                            {resumo?.status === 'hoje' && (
+                              <span className="badge badge-error shrink-0 !px-1.5 !py-0 !text-[8px]">Hoje</span>
+                            )}
+                          </div>
                           <p className="truncate text-[11px] font-medium nl-text-muted">{meta}</p>
                         </div>
                       </button>
-                      {kind === 'divida' && onCobrarAluno && (
+                      {(kind === 'divida' || kind === 'proximo') && onCobrarAluno && (
                         <button
                           type="button"
                           onClick={() => onCobrarAluno(aluno.id)}
@@ -610,14 +815,14 @@ const HomePage: React.FC<HomePageProps> = React.memo(({
             )}
           </ExpandablePanel>
 
-          {/* ── MOVIMENTO — expande para baixo ── */}
+          {/* ── NOVOS ALUNOS — 1×1 ── */}
           <ExpandablePanel
             isOpen={openPanels.movimento}
             onToggle={() => togglePanel('movimento')}
             tone="blue"
             expandMode="height"
-            spanClosed="col-span-12 md:col-span-6 xl:col-span-4"
-            spanOpen="col-span-12 md:col-span-6 xl:col-span-4"
+            spanClosed="col-span-12 md:col-span-5 xl:col-span-3"
+            spanOpen="col-span-12 md:col-span-5 xl:col-span-4"
             header={(
               <div className="min-w-0">
                 <div className="flex items-center gap-1.5">
@@ -626,7 +831,8 @@ const HomePage: React.FC<HomePageProps> = React.memo(({
                   <span className="badge badge-warning tabular-nums">{novosInscritosRecentes.length}</span>
                 </div>
                 <p className="mt-0.5 text-[11px] font-medium nl-text-muted">
-                  Últimos 7 dias · sem importados
+                  Últimos 7 dias
+                  {matriculasHoje > 0 ? ` · ${matriculasHoje} hoje` : ''}
                 </p>
               </div>
             )}
@@ -675,7 +881,6 @@ const HomePage: React.FC<HomePageProps> = React.memo(({
                               ? <img src={`local-resource://${aluno.foto_path}`} className="h-full w-full object-cover" alt="" />
                               : getAlunoIniciais(aluno)}
                           </div>
-                          {/* Estrela “novo aluno” */}
                           <span
                             className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full border border-[var(--bg-surface)] bg-amber-400 text-amber-950 shadow-sm"
                             title="Novo aluno"
@@ -703,7 +908,7 @@ const HomePage: React.FC<HomePageProps> = React.memo(({
             )}
           </ExpandablePanel>
 
-          {/* ── NOTAS — expande para baixo ── */}
+          {/* ── NOTAS — 1×1 ── */}
           <ExpandablePanel
             isOpen={openPanels.notas}
             onToggle={() => togglePanel('notas')}
@@ -722,7 +927,7 @@ const HomePage: React.FC<HomePageProps> = React.memo(({
                 <div>
                   <p className="text-[15px] font-semibold leading-none">Notas</p>
                   <p className="mt-0.5 text-[11px] font-medium" style={{ color: POSTIT_MUTED }}>
-                    {notasRecentes.length} recente(s) · destaque da operação
+                    {notasRecentes.length} recente(s) · operação
                   </p>
                 </div>
               </div>
@@ -781,6 +986,35 @@ const HomePage: React.FC<HomePageProps> = React.memo(({
             )}
           </ExpandablePanel>
         </section>
+
+        {/* Rodapé de contexto — liga Home ↔ Relatórios */}
+        {isAdmin && (
+          <section className="flex flex-wrap items-center justify-between gap-2 rounded-[var(--radius-lg)] border border-[var(--border-light)] bg-[var(--bg-surface)]/70 px-3.5 py-2.5 text-[12px]">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 nl-text-muted">
+              <span className="font-medium">Resumo {periodoTxt}</span>
+              <span className="text-[var(--border)]">·</span>
+              <span>
+                Recebido <strong className="tabular-nums nl-text text-[var(--color-success)]">{formatCve(totalRecebidoPeriodo)}</strong>
+              </span>
+              <span className="text-[var(--border)]">·</span>
+              <span>
+                A recuperar <strong className="tabular-nums text-[var(--color-error)]">{formatCve(previsaoRecuperacao)}</strong>
+              </span>
+              <span className="text-[var(--border)]">·</span>
+              <span>
+                Cobertura <strong className="tabular-nums nl-text">{coberturaPercentual}%</strong>
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setAba('relatorios_detalhado')}
+              className="nl-btn nl-btn-ghost nl-btn-sm !h-7"
+            >
+              Ver relatório completo
+              <ChevronRight size={13} />
+            </button>
+          </section>
+        )}
       </div>
     </div>
   );

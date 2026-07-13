@@ -118,9 +118,29 @@ import {
 
 
 
-// ─── Design System — Adwaita/GNOME-inspired Light · Dark · Claude ──
+// ─── Design System — Adwaita/GNOME: Light · Dark · Claude · Híbrido ──
 // Palette ref: https://developer.gnome.org/hig/reference/palette.html
-const themeVars = {
+// Chrome vars (--chrome-*): header + barra de estado. No hybrid, chrome=escuro e corpo=claro.
+type AppThemeId = 'light' | 'dark' | 'claude' | 'hybrid';
+
+const CHROME_LIGHT = {
+  '--chrome-bg':           '#fafafa',
+  '--chrome-surface':      '#f6f5f4',
+  '--chrome-border':       '#deddda',
+  '--chrome-text':         '#241f31',
+  '--chrome-text-muted':   '#77767b',
+  '--chrome-text-sub':     '#5e5c64',
+};
+const CHROME_DARK = {
+  '--chrome-bg':           '#241f31',
+  '--chrome-surface':      '#2d2a35',
+  '--chrome-border':       'rgba(255,255,255,0.12)',
+  '--chrome-text':         '#f6f5f4',
+  '--chrome-text-muted':   '#9a9996',
+  '--chrome-text-sub':     '#c0bfbc',
+};
+
+const themeVars: Record<AppThemeId, Record<string, string>> = {
   light: {
     '--color-primary':           '#3584e4', // GNOME Blue 3
     '--color-primary-hover':     '#1c71d8', // Blue 4
@@ -181,6 +201,7 @@ const themeVars = {
     '--rp3': '#fafafa', '--rp3h': '#f0efed',
     '--rp4': '#ffffff', '--rp4h': '#f6f5f4',
     '--rp5': '#fafafa', '--rp5h': '#f0efed',
+    ...CHROME_LIGHT,
   },
   dark: {
     '--color-primary':           '#62a0ea', // Blue 2
@@ -241,6 +262,7 @@ const themeVars = {
     '--rp3': '#261f30', '--rp3h': '#30293a',
     '--rp4': '#2a2433', '--rp4h': '#322c3c',
     '--rp5': '#261f30', '--rp5h': '#30293a',
+    ...CHROME_DARK,
   },
 
   // Claude — mesma geometria Adwaita, paleta quente
@@ -303,10 +325,79 @@ const themeVars = {
     '--rp3': '#f7f3ee', '--rp3h': '#efe9e1',
     '--rp4': '#faf7f3', '--rp4h': '#f2ede6',
     '--rp5': '#f7f3ee', '--rp5h': '#efe9e1',
+    '--chrome-bg':               '#f5f0e9',
+    '--chrome-surface':          '#f2ede6',
+    '--chrome-border':           '#ddd4c8',
+    '--chrome-text':             '#241f1a',
+    '--chrome-text-muted':       '#9c8a7a',
+    '--chrome-text-sub':         '#6b5f52',
+  },
+
+  // Híbrido — corpo claro (leitura) + chrome escuro (header / estado)
+  hybrid: {
+    '--color-primary':           '#3584e4',
+    '--color-primary-hover':     '#1c71d8',
+    '--color-primary-light':     '#eaf2fc',
+    '--color-secondary':         '#5e5c64',
+    '--color-secondary-light':   '#f6f5f4',
+    '--color-secondary-lighter': '#ededec',
+    '--color-success':           '#26a269',
+    '--color-error':             '#e01b24',
+    '--color-warning':           '#e5a50a',
+    '--color-info':              '#1c71d8',
+    '--color-bg-primary':        '#ffffff',
+    '--color-bg-secondary':      '#f6f5f4',
+    '--color-bg-tertiary':       '#ededec',
+    '--color-text-primary':      '#241f31',
+    '--color-text-secondary':    '#5e5c64',
+    '--color-text-tertiary':     '#77767b',
+    '--color-border':            '#deddda',
+    '--color-border-light':      '#e8e7e5',
+    '--bg-app':                  '#f0eef2',
+    '--bg-surface':              '#ffffff',
+    '--bg-header':               '#241f31',
+    '--bg-input':                '#ffffff',
+    '--text-primary':            '#241f31',
+    '--text-secondary':          '#5e5c64',
+    '--text-tertiary':           '#77767b',
+    '--border':                  '#deddda',
+    '--border-light':            '#e8e7e5',
+    '--shadow-xs':               '0 1px 1px rgba(0,0,0,0.04)',
+    '--shadow-sm':               '0 1px 2px rgba(0,0,0,0.06), 0 0 0 1px rgba(0,0,0,0.04)',
+    '--shadow-md':               '0 2px 6px rgba(0,0,0,0.08), 0 0 0 1px rgba(0,0,0,0.05)',
+    '--shadow-lg':               '0 4px 16px rgba(0,0,0,0.10), 0 0 0 1px rgba(0,0,0,0.05)',
+    '--shadow-xl':               '0 12px 32px rgba(0,0,0,0.14), 0 0 0 1px rgba(0,0,0,0.06)',
+    '--shadow-primary':          'rgba(53,132,228,0.28)',
+    '--shadow-primary-focus':    'rgba(53,132,228,0.22)',
+    '--modal-overlay':           'rgba(15, 23, 42, 0.34)',
+    '--modal-overlay-blur':      '7px',
+    '--radius-sm':               '6px',
+    '--radius-md':               '9px',
+    '--radius-lg':               '12px',
+    '--font-size-xs':            '11px',
+    '--font-size-sm':            '12px',
+    '--font-size-base':          '14px',
+    '--font-size-lg':            '15px',
+    '--font-size-xl':            '17px',
+    '--font-size-2xl':           '20px',
+    '--font-size-3xl':           '24px',
+    '--spacing-xs':              '4px',
+    '--spacing-sm':              '8px',
+    '--spacing-md':              '12px',
+    '--spacing-lg':              '16px',
+    '--spacing-xl':              '20px',
+    '--spacing-2xl':             '24px',
+    '--rp0': '#ffffff', '--rp0h': '#f6f5f4',
+    '--rp1': '#fafafa', '--rp1h': '#f0efed',
+    '--rp2': '#ffffff', '--rp2h': '#f6f5f4',
+    '--rp3': '#fafafa', '--rp3h': '#f0efed',
+    '--rp4': '#ffffff', '--rp4h': '#f6f5f4',
+    '--rp5': '#fafafa', '--rp5h': '#f0efed',
+    ...CHROME_DARK,
   },
 };
 
-const GlobalStyles = ({ theme }: { theme: 'light' | 'dark' | 'claude' }) => {
+const GlobalStyles = ({ theme }: { theme: AppThemeId }) => {
   const vars = themeVars[theme] || themeVars.light;
   const cssVars = Object.entries(vars).map(([k,v]) => `${k}:${v};`).join('');
 
@@ -400,8 +491,32 @@ const GlobalStyles = ({ theme }: { theme: 'light' | 'dark' | 'claude' }) => {
         border-color: color-mix(in srgb, var(--border) 70%, var(--color-secondary));
       }
 
-      /* ── Relatórios: mesmo fundo das outras páginas ── */
+      /* ── Relatórios: SEMPRE tema escuro (independente do tema global) ── */
       .nl-reports-page {
+        --color-primary: #62a0ea;
+        --color-primary-hover: #99c1f1;
+        --color-primary-light: #1a2f4a;
+        --color-secondary: #c0bfbc;
+        --color-secondary-light: #2d2a35;
+        --color-secondary-lighter: #3d3846;
+        --color-success: #33d17a;
+        --color-error: #ed333b;
+        --color-warning: #f8e45c;
+        --color-info: #62a0ea;
+        --bg-app: #1e1a24;
+        --bg-surface: #2a2433;
+        --bg-header: #241f31;
+        --bg-input: #322c3c;
+        --text-primary: #f6f5f4;
+        --text-secondary: #c0bfbc;
+        --text-tertiary: #9a9996;
+        --border: rgba(255,255,255,0.12);
+        --border-light: rgba(255,255,255,0.08);
+        --shadow-xs: 0 1px 1px rgba(0,0,0,0.28);
+        --shadow-sm: 0 1px 3px rgba(0,0,0,0.32), 0 0 0 1px rgba(0,0,0,0.24);
+        --shadow-md: 0 3px 10px rgba(0,0,0,0.36), 0 0 0 1px rgba(0,0,0,0.24);
+        --shadow-primary: rgba(98,160,234,0.30);
+        color: var(--text-primary);
         background: var(--bg-app);
       }
       .nl-reports-page .nl-reports-scroll {
@@ -419,6 +534,18 @@ const GlobalStyles = ({ theme }: { theme: 'light' | 'dark' | 'claude' }) => {
       }
       .nl-reports-page .nl-reports-kpi:hover {
         box-shadow: var(--shadow-md);
+      }
+      .nl-reports-page .nl-text { color: var(--text-primary); }
+      .nl-reports-page .nl-text-sub { color: var(--text-secondary); }
+      .nl-reports-page .nl-text-muted { color: var(--text-tertiary); }
+      .nl-reports-page .nl-card {
+        background: var(--bg-surface);
+        border-color: var(--border);
+      }
+      .nl-reports-page .nl-input,
+      .nl-reports-page .nl-btn-ghost,
+      .nl-reports-page .nl-icon-btn {
+        color: inherit;
       }
 
       /* ── Buttons (libadwaita-like) ── */
@@ -601,12 +728,44 @@ const GlobalStyles = ({ theme }: { theme: 'light' | 'dark' | 'claude' }) => {
       .nl-bg-app     { background-color: var(--bg-app); }
       .nl-bg-input   { background-color: var(--bg-input); }
 
-      /* Header bar — flat Adwaita headerbar */
+      /* Header bar — chrome (escuro no tema Híbrido) */
       .nl-glass {
-        background: var(--bg-header);
-        border-bottom: 1px solid var(--border);
+        background: var(--chrome-bg, var(--bg-header));
+        border-bottom: 1px solid var(--chrome-border, var(--border));
         box-shadow: none;
+        color: var(--chrome-text, var(--text-primary));
       }
+      .nl-glass .nl-text { color: var(--chrome-text, var(--text-primary)); }
+      .nl-glass .nl-text-sub { color: var(--chrome-text-sub, var(--text-secondary)); }
+      .nl-glass .nl-text-muted { color: var(--chrome-text-muted, var(--text-tertiary)); }
+      .nl-glass .nl-icon-btn {
+        color: var(--chrome-text, var(--text-primary));
+        border-color: var(--chrome-border, var(--border));
+        background: transparent;
+      }
+      .nl-glass .nl-icon-btn:hover {
+        background: var(--chrome-surface, var(--color-secondary-light));
+      }
+      .nl-glass .nl-btn-ghost,
+      .nl-glass .nl-btn-secondary {
+        border-color: var(--chrome-border, var(--border));
+        color: var(--chrome-text, var(--text-primary));
+        background: var(--chrome-surface, var(--color-secondary-light));
+      }
+      .nl-glass .nl-btn-ghost:hover,
+      .nl-glass .nl-btn-secondary:hover {
+        background: color-mix(in srgb, var(--chrome-surface, var(--color-secondary-light)) 80%, var(--chrome-text, #fff) 8%);
+      }
+
+      /* Barra de estado — mesmo chrome do header */
+      .nl-status-bar {
+        background: var(--chrome-bg, var(--bg-header));
+        border-top: 1px solid var(--chrome-border, var(--border));
+        color: var(--chrome-text-sub, var(--text-secondary));
+      }
+      .nl-status-bar .nl-text { color: var(--chrome-text, var(--text-primary)); }
+      .nl-status-bar .nl-text-sub { color: var(--chrome-text-sub, var(--text-secondary)); }
+      .nl-status-bar .nl-text-muted { color: var(--chrome-text-muted, var(--text-tertiary)); }
 
       /* Fundo translúcido + blur — vê-se o ecrã por trás do popup */
       .nl-modal-overlay {
@@ -1022,9 +1181,9 @@ function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(!!sessionUser);
   const [loginForm, setLoginForm] = useState(() => ({ username: localStorage.getItem('nl_last_username') || '', password: '' }));
   const [loginError, setLoginError] = useState('');
-  const [appTheme, setAppTheme] = useState<'light' | 'dark' | 'claude'>(() => {
+  const [appTheme, setAppTheme] = useState<AppThemeId>(() => {
     const saved = localStorage.getItem('nl_app_theme') || localStorage.getItem('nl_gnome_theme');
-    return (saved === 'light' || saved === 'dark' || saved === 'claude') ? saved : 'light';
+    return (saved === 'light' || saved === 'dark' || saved === 'claude' || saved === 'hybrid') ? saved : 'light';
   });
   const [themeColor, setThemeColor] = useState(DEFAULT_THEME);
   const [contextMenu, setContextMenu] = useState<{ x: number, y: number, alunoId: string } | null>(null);
@@ -1375,6 +1534,16 @@ function App() {
     }).length;
   }, [alunos, hojeReferencia]);
 
+  /** Caixa do dia (pagamentos com data = hoje) — pulso operacional da Início */
+  const totalRecebidoHoje = useMemo(() => {
+    const hojeLabel = formatPtDate(hojeReferencia);
+    return pagamentos.reduce((acc, pagamento) => {
+      const d = parseFlexibleDate(pagamento.data_pagamento);
+      if (!d || formatPtDate(d) !== hojeLabel) return acc;
+      return acc + normalizeAmount(pagamento.valor);
+    }, 0);
+  }, [pagamentos, hojeReferencia]);
+
   const cobrancasCriticas = useMemo(() => alunosAtivos.filter(({ resumo }) => ['hoje', 'critico'].includes(resumo.status)).length, [alunosAtivos]);
   const mesAtualOperacional = `${hojeReferencia.getFullYear()}-${String(hojeReferencia.getMonth() + 1).padStart(2, '0')}`;
   const backupMensalPendente = backupReminderEnabled && ultimoBackupMes !== mesAtualOperacional;
@@ -1606,7 +1775,7 @@ function App() {
         // Categorias oficiais fixas (Sem / Com personal trainer) — lista de sistema
         setCategorias(['Sem personal trainer', 'Com personal trainer'] as any);
         if (configs.theme_color) setThemeColor(configs.theme_color);
-        if (configs.app_theme && ['light','dark','claude'].includes(configs.app_theme)) setAppTheme(configs.app_theme as 'light' | 'dark' | 'claude');
+        if (configs.app_theme && ['light','dark','claude','hybrid'].includes(configs.app_theme)) setAppTheme(configs.app_theme as AppThemeId);
         if (configs.banner_academia) setBannerAcademia(configs.banner_academia);
         setDesktopNotificationsEnabled(configs.desktop_notifications !== '0');
         setNotifPagamentos(configs.notif_pagamentos !== '0');
@@ -3474,8 +3643,9 @@ function App() {
         utilizadorAvatares={utilizadorAvatares}
         setUtilizadorAvatares={setUtilizadorAvatares}
         onCycleTheme={() => {
-          const order: Array<'light' | 'dark' | 'claude'> = ['light', 'dark', 'claude'];
-          const next = order[(order.indexOf(appTheme) + 1) % order.length];
+          const order: AppThemeId[] = ['light', 'dark', 'claude', 'hybrid'];
+          const idx = order.indexOf(appTheme);
+          const next = order[(idx >= 0 ? idx + 1 : 0) % order.length];
           setAppTheme(next);
           localStorage.setItem('nl_app_theme', next);
           try {
@@ -3531,6 +3701,11 @@ function App() {
             estiloHome={estiloHome}
             isAdmin={sessionUser?.role === 'admin' || String(sessionUser?.role) === 'root'}
             onImport={() => setMostrarImportar(true)}
+            sessionUserName={sessionUser?.name || ''}
+            periodoLabel={`${mesFinanceiro} ${anoFinanceiro}`}
+            cobrancasHoje={cobrancasParaHoje}
+            matriculasHoje={alunosInscritosHoje}
+            totalRecebidoHoje={totalRecebidoHoje}
           />
         )}
 
@@ -3562,6 +3737,12 @@ function App() {
                   }
                 : undefined
             }
+            onNavigateGestao={(filtro) => {
+              setFiltroStatus(filtro || 'todos');
+              setAba('gestao');
+            }}
+            onOpenStudent={abrirPerfilAluno}
+            onCobrarAluno={marcarComoPago}
           />
         )}
 

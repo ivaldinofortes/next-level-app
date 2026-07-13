@@ -25,12 +25,13 @@ const PASTELS_DARK = [
   { bg: 'bg-teal-400/10', border: 'border-teal-300/25', rowBg: 'rgba(45, 212, 191, 0.10)', rowHover: 'rgba(45, 212, 191, 0.18)' },
 ];
 
-export type AppThemeName = 'light' | 'dark' | 'claude';
+export type AppThemeName = 'light' | 'dark' | 'claude' | 'hybrid';
 
 export function useListLayout(zoom: number, theme: AppThemeName = 'light') {
   return useMemo(() => {
     const normalized = Math.max(60, Math.min(100, zoom));
     const density = (normalized - 60) / 40;
+    // Híbrido = corpo claro; só o chrome é escuro
     const isDark = theme === 'dark';
     const pastels = isDark ? PASTELS_DARK : PASTELS_LIGHT;
 

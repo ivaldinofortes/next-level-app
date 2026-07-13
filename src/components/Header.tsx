@@ -3,7 +3,7 @@ import {
   Layout, Users, FileBarChart, BookUser, Settings,
   RotateCw, Bell, Info, LogOut, Wallet,
   Activity, X, TrendingUp, CheckCircle2, Sun, Moon, Sparkles, Camera,
-  ChevronLeft, ChevronRight, Dumbbell, Download,
+  ChevronLeft, ChevronRight, Dumbbell, Download, Layers,
 } from 'lucide-react';
 import { formatCve } from '../lib/billing';
 import {
@@ -14,7 +14,7 @@ import {
   type UserAvatarMap,
 } from '../utils/userAvatar';
 
-type AppTheme = 'light' | 'dark' | 'claude';
+type AppTheme = 'light' | 'dark' | 'claude' | 'hybrid';
 
 interface HeaderProps {
   nomeAcademia: string;
@@ -53,11 +53,11 @@ interface HeaderProps {
   setUtilizadorAvatares?: React.Dispatch<React.SetStateAction<UserAvatarMap>>;
 }
 
-const THEME_CYCLE: AppTheme[] = ['light', 'dark', 'claude'];
 const THEME_META: Record<AppTheme, { label: string; icon: typeof Sun }> = {
   light: { label: 'Tema claro', icon: Sun },
   dark: { label: 'Tema escuro', icon: Moon },
   claude: { label: 'Tema Claude', icon: Sparkles },
+  hybrid: { label: 'Tema híbrido', icon: Layers },
 };
 
 /** 3 abas principais — cada uma com cor própria */
@@ -253,7 +253,7 @@ const Header: React.FC<HeaderProps> = React.memo(({
           <RotateCw size={14} className={sincronizando ? 'animate-spin' : ''} />
         </button>
 
-        <div className="ml-0.5 flex items-center gap-0.5 rounded-[var(--radius-control)] border border-[var(--border)] bg-[var(--color-secondary-light)] p-0.5">
+        <div className="ml-0.5 flex items-center gap-0.5 rounded-[var(--radius-control)] border border-[var(--chrome-border,var(--border))] bg-[var(--chrome-surface,var(--color-secondary-light))] p-0.5">
           <button
             type="button"
             onClick={goBack}
@@ -279,7 +279,7 @@ const Header: React.FC<HeaderProps> = React.memo(({
 
       {/* ── Centro: 3 abas coloridas ── */}
       <nav
-        className="absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-1/2 items-center gap-1 rounded-[var(--radius-control)] border border-[var(--border)] bg-[var(--color-secondary-light)] p-1 shadow-[var(--shadow-xs)]"
+        className="absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-1/2 items-center gap-1 rounded-[var(--radius-control)] border border-[var(--chrome-border,var(--border))] bg-[var(--chrome-surface,var(--color-secondary-light))] p-1 shadow-[var(--shadow-xs)]"
         aria-label="Navegação principal"
       >
         {visibleTabs.map((tab) => {
@@ -380,9 +380,9 @@ const Header: React.FC<HeaderProps> = React.memo(({
           </button>
         )}
 
-        <div className="mx-0.5 h-6 w-px bg-[var(--border)]" />
+        <div className="mx-0.5 h-6 w-px bg-[var(--chrome-border,var(--border))]" />
 
-        {/* Tema: claro → escuro → claude */}
+        {/* Tema: claro → escuro → claude → híbrido */}
         <button
           type="button"
           onClick={onCycleTheme}
