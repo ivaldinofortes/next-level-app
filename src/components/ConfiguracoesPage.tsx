@@ -3,7 +3,7 @@ import {
   Landmark, Users, Palette, Bell, Shield, Info, Sparkles,
   Plus, CheckCircle2, Zap, ChevronRight, CreditCard, UserPlus, Activity,
   FileBarChart, FileSpreadsheet, Archive, AlertTriangle, Database,
-  HelpCircle, Globe, Phone, Mail,
+  HelpCircle, Globe, Phone, Mail, Download, Trash2, RefreshCw,
 } from 'lucide-react';
 import {
   APP_ICON_PATH,
@@ -191,8 +191,8 @@ export interface ConfiguracoesPageProps {
   setNotificacoes: Dispatch<SetStateAction<any[]>>;
   diretorioBackup: string;
   setDiretorioBackup: (v: string) => void;
-  resetSeguroForm: { password: string; confirmation: string };
-  setResetSeguroForm: Dispatch<SetStateAction<{ password: string; confirmation: string }>>;
+  resetSeguroForm: { password: string; confirmation: string; exportBeforeReset: boolean };
+  setResetSeguroForm: Dispatch<SetStateAction<{ password: string; confirmation: string; exportBeforeReset: boolean }>>;
   resetSeguroLoading: boolean;
   carregandoDuplicados: boolean;
   mostrarImportar: boolean;
@@ -292,6 +292,118 @@ function ConfiguracoesPage({
   setAba,
   setMostrarModalExport,
 }: ConfiguracoesPageProps) {
+  const electron = (typeof window !== 'undefined' ? (window as any).electron : null) || null;
+  const [dbStats, setDbStats] = useState<{
+    alunos: number;
+    lixeira: number;
+    pagamentos: number;
+    notas: number;
+    logs: number;
+    importados: number;
+    dbSizeBytes: number;
+  } | null>(null);
+  const [dbBusy, setDbBusy] = useState<string | null>(null);
+  const [purgePassword, setPurgePassword] = useState('');
+
+  const formatBytes = (n: number) => {
+    if (!n || n < 1024) return `${n || 0} B`;
+    if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+    return `${(n / (1024 * 1024)).toFixed(2)} MB`;
+  };
+
+  const refreshDbStats = async () => {
+    if (!electron?.ipcRenderer) return;
+    try {
+      const res = await electron.ipcRenderer.invoke('db:stats');
+      if (res?.success) setDbStats(res.stats);
+    } catch (e) {
+      console.error('db:stats', e);
+    }
+  };
+
+  useEffect(() => {
+    if (configAba === 'operacao') refreshDbStats();
+  }, [configAba]);
+
+  const exportarDadosExcel = async () => {
+    if (!electron?.ipcRenderer) return;
+    setDbBusy('export');
+    try {
+      const res = await electron.ipcRenderer.invoke('data:export-full-excel');
+      if (res?.canceled) return;
+      if (!res?.success) throw new Error(res?.message || 'Falha na exportação');
+      if (res.path) {
+        try { await electron.ipcRenderer.invoke('show-item-in-folder', res.path); } catch { /* */ }
+      }
+      await refreshDbStats();
+    } catch (e: any) {
+      alert(e?.message || 'Erro ao exportar Excel');
+    } finally {
+      setDbBusy(null);
+    }
+  };
+
+  const exportarModeloImportacao = async () => {
+    if (!electron?.ipcRenderer) return;
+    setDbBusy('template');
+    try {
+      const res = await electron.ipcRenderer.invoke('data:export-import-template');
+      if (res?.canceled) return;
+      if (!res?.success) throw new Error(res?.message || 'Falha ao gerar modelo');
+      if (res.path) {
+        try { await electron.ipcRenderer.invoke('show-item-in-folder', res.path); } catch { /* */ }
+      }
+    } catch (e: any) {
+      alert(e?.message || 'Erro ao gerar modelo');
+    } finally {
+      setDbBusy(null);
+    }
+  };
+
+  const otimizarBase = async () => {
+    if (!electron?.ipcRenderer) return;
+    setDbBusy('optimize');
+    try {
+      const res = await electron.ipcRenderer.invoke('db:optimize');
+      if (!res?.success) throw new Error(res?.message || 'Falha na otimização');
+      setDbStats(res.stats);
+      alert(res.freedBytes > 0
+        ? `Base otimizada. Espaço libertado: ${formatBytes(res.freedBytes)}`
+        : 'Base otimizada (VACUUM + ANALYZE).');
+    } catch (e: any) {
+      alert(e?.message || 'Erro ao otimizar');
+    } finally {
+      setDbBusy(null);
+    }
+  };
+
+  const esvaziarLixeira = async () => {
+    if (!electron?.ipcRenderer || sessionUser?.role !== 'admin') return;
+    if (!purgePassword) {
+      alert('Indique a senha do administrador para esvaziar a lixeira.');
+      return;
+    }
+    setDbBusy('purge');
+    try {
+      const res = await electron.ipcRenderer.invoke('db:purge-trash', {
+        userId: sessionUser?.id,
+        email: sessionUser?.email,
+        password: purgePassword,
+      });
+      if (!res?.success) throw new Error(res?.message || 'Falha ao esvaziar lixeira');
+      setPurgePassword('');
+      setDbStats(res.stats || null);
+      alert(res.purged
+        ? `${res.purged} aluno(s) eliminados definitivamente da lixeira.`
+        : (res.message || 'Lixeira vazia.'));
+      await refreshDbStats();
+    } catch (e: any) {
+      alert(e?.message || 'Erro ao esvaziar lixeira');
+    } finally {
+      setDbBusy(null);
+    }
+  };
+
   const navGroups = [
     {
       label: 'Instituição',
@@ -864,10 +976,32 @@ function ConfiguracoesPage({
             <div className="animate-slide-up space-y-5">
               <SettingsHeader
                 title="Dados & Backup"
-                subtitle="Cópias de segurança, importação e manutenção da base de dados."
+                subtitle="Exportar, importar, limpar e manter a base de dados da academia."
+                action={(
+                  <button type="button" onClick={refreshDbStats} className="nl-btn nl-btn-ghost nl-btn-sm" title="Actualizar contagens">
+                    <RefreshCw size={14} className={dbBusy ? 'animate-spin' : ''} /> Actualizar
+                  </button>
+                )}
               />
 
-              <SettingsSection title="Cópia de segurança" description="Exportar base de dados e ficheiros locais para um ZIP.">
+              {/* Visão geral da BD */}
+              <section className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+                {[
+                  { label: 'Alunos', value: dbStats?.alunos ?? '—', tone: 'text-[var(--color-primary)]' },
+                  { label: 'Pagamentos', value: dbStats?.pagamentos ?? '—', tone: 'text-[var(--color-success)]' },
+                  { label: 'Notas', value: dbStats?.notas ?? '—', tone: 'nl-text' },
+                  { label: 'Lixeira', value: dbStats?.lixeira ?? '—', tone: 'text-[var(--color-warning)]' },
+                  { label: 'Importados', value: dbStats?.importados ?? '—', tone: 'text-[var(--color-primary)]' },
+                  { label: 'Tamanho BD', value: dbStats ? formatBytes(dbStats.dbSizeBytes) : '—', tone: 'nl-text-muted' },
+                ].map((k) => (
+                  <div key={k.label} className="rounded-[6px] border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2.5">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide nl-text-muted">{k.label}</p>
+                    <p className={`mt-0.5 text-[16px] font-semibold tabular-nums ${k.tone}`}>{k.value}</p>
+                  </div>
+                ))}
+              </section>
+
+              <SettingsSection title="Cópia de segurança" description="ZIP completo do sistema (base + ficheiros) para restauro de desastre.">
                 <SettingsActionRow
                   icon={<Archive size={18} className="text-blue-600" />}
                   title="Backup integral (ZIP)"
@@ -877,24 +1011,60 @@ function ConfiguracoesPage({
                       <button type="button" onClick={selecionarDiretorioBackup} className="nl-btn nl-btn-secondary h-9 px-3 text-[11px]">Pasta</button>
                       {diretorioBackup && (
                         <button type="button" onClick={async () => {
-                          const electron = (window as any).electron || null;
                           setDiretorioBackup('');
                           await electron?.ipcRenderer.invoke('update-configuracao', 'diretorio_backup', '');
                         }} className="text-[11px] font-bold text-red-500 hover:underline">Limpar</button>
                       )}
-                      <button type="button" onClick={gerarBackup} className="nl-btn nl-btn-primary h-9 px-4 text-[11px]">Exportar agora</button>
+                      <button type="button" onClick={gerarBackup} className="nl-btn nl-btn-primary h-9 px-4 text-[11px]">Exportar ZIP</button>
                     </>
                   )}
                 />
               </SettingsSection>
 
-              <SettingsSection title="Dados" description="Importar alunos e rever registos duplicados.">
+              <SettingsSection
+                title="Excel — exportar e importar"
+                description="O Excel de dados inclui a folha «Importar Alunos» no formato exacto do assistente (reimportável)."
+              >
                 <div className="space-y-2.5">
                   <SettingsActionRow
+                    icon={<Download size={18} className="text-[var(--color-primary)]" />}
+                    title="Exportar dados (Excel)"
+                    description="Alunos (formato importação) + pagamentos, notas, lixeira e logs. Ideal antes de limpar ou migrar."
+                    action={(
+                      <button
+                        type="button"
+                        onClick={exportarDadosExcel}
+                        disabled={dbBusy === 'export'}
+                        className="nl-btn nl-btn-primary h-9 px-4 text-[11px]"
+                      >
+                        {dbBusy === 'export' ? 'A exportar…' : 'Exportar Excel'}
+                      </button>
+                    )}
+                  />
+                  <SettingsActionRow
                     icon={<FileSpreadsheet size={18} className="text-emerald-600" />}
-                    title="Importar Excel"
-                    description="Importação com validação e prevenção de duplicados. Ideal para migração."
-                    action={<button type="button" onClick={() => setMostrarImportar(true)} className="nl-btn nl-btn-primary h-9 px-4 text-[11px]">Importar</button>}
+                    title="Modelo de importação"
+                    description="Ficheiro pré-definido com colunas, exemplos e instruções. Use-o para criar a lista de alunos."
+                    action={(
+                      <button
+                        type="button"
+                        onClick={exportarModeloImportacao}
+                        disabled={dbBusy === 'template'}
+                        className="nl-btn nl-btn-secondary h-9 px-4 text-[11px]"
+                      >
+                        {dbBusy === 'template' ? 'A gerar…' : 'Descarregar modelo'}
+                      </button>
+                    )}
+                  />
+                  <SettingsActionRow
+                    icon={<FileSpreadsheet size={18} className="text-emerald-700" />}
+                    title="Importar alunos (Excel / CSV)"
+                    description="Assistente com mapeamento de colunas, validação e prevenção de duplicados."
+                    action={(
+                      <button type="button" onClick={() => setMostrarImportar(true)} className="nl-btn nl-btn-primary h-9 px-4 text-[11px]">
+                        Abrir importação
+                      </button>
+                    )}
                   />
                   <SettingsActionRow
                     icon={<Sparkles size={18} className="text-amber-600" />}
@@ -906,21 +1076,80 @@ function ConfiguracoesPage({
                       </button>
                     )}
                   />
+                </div>
+              </SettingsSection>
+
+              <SettingsSection title="Manutenção" description="Otimizar ficheiro SQLite e limpar lixeira (soft-delete).">
+                <div className="space-y-2.5">
                   <SettingsActionRow
-                    icon={<Database size={18} className="nl-text-muted" />}
-                    title="Limpeza de cache"
-                    description="Otimização da base de dados interna (em breve)."
-                    tone="muted"
-                    action={<button type="button" className="nl-btn nl-btn-secondary h-9 px-4 text-[11px]" disabled>Otimizar</button>}
+                    icon={<Database size={18} className="text-[var(--color-primary)]" />}
+                    title="Otimizar base de dados"
+                    description="VACUUM + ANALYZE — compacta o ficheiro e melhora desempenho após muitas eliminações."
+                    action={(
+                      <button
+                        type="button"
+                        onClick={otimizarBase}
+                        disabled={dbBusy === 'optimize'}
+                        className="nl-btn nl-btn-secondary h-9 px-4 text-[11px]"
+                      >
+                        {dbBusy === 'optimize' ? 'A otimizar…' : 'Otimizar'}
+                      </button>
+                    )}
+                  />
+                  <SettingsActionRow
+                    icon={<Trash2 size={18} className="text-[var(--color-error)]" />}
+                    title="Esvaziar lixeira"
+                    description={`${dbStats?.lixeira ?? 0} aluno(s) na lixeira. Eliminação definitiva (pagamentos e notas associados).`}
+                    tone={dbStats && dbStats.lixeira > 0 ? 'danger' : 'default'}
+                    action={(
+                      <div className="flex flex-wrap items-center gap-2">
+                        <input
+                          type="password"
+                          value={purgePassword}
+                          onChange={(e) => setPurgePassword(e.target.value)}
+                          placeholder="Senha admin"
+                          className="nl-input h-9 w-[140px] text-[12px]"
+                          disabled={sessionUser?.role !== 'admin'}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => abrirConfirmacao({
+                            title: 'Esvaziar lixeira',
+                            message: `Eliminar definitivamente ${dbStats?.lixeira || 0} aluno(s) e os pagamentos/notas ligados? Esta acção não pode ser desfeita.`,
+                            confirmLabel: 'Eliminar para sempre',
+                            tone: 'danger',
+                            onConfirm: esvaziarLixeira,
+                          })}
+                          disabled={dbBusy === 'purge' || sessionUser?.role !== 'admin' || !dbStats?.lixeira}
+                          className="nl-btn h-9 bg-red-600 px-3 text-[11px] text-white hover:bg-red-700 disabled:opacity-50"
+                        >
+                          {dbBusy === 'purge' ? 'A limpar…' : 'Esvaziar'}
+                        </button>
+                      </div>
+                    )}
                   />
                 </div>
               </SettingsSection>
 
               <SettingsSection
-                title="Zona de risco"
-                description="Remove alunos, pagamentos e notas. Mantém utilizadores, licença e configurações."
+                title="Zona de risco — reset total"
+                description="Apaga todos os alunos (incl. lixeira), pagamentos, notas e logs. Mantém utilizadores, licença e configurações. Deixa a base operacional a zero."
                 danger
               >
+                <label className="mb-3 flex cursor-pointer items-start gap-2.5 rounded-[6px] border border-red-200/80 bg-white/80 px-3 py-2.5">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5"
+                    checked={resetSeguroForm.exportBeforeReset !== false}
+                    onChange={(e) => setResetSeguroForm((form: any) => ({ ...form, exportBeforeReset: e.target.checked }))}
+                  />
+                  <span>
+                    <span className="block text-[12px] font-bold text-red-900">Exportar Excel antes de resetar (recomendado)</span>
+                    <span className="mt-0.5 block text-[11px] font-medium text-red-800/80">
+                      Guarda um ficheiro com a folha «Importar Alunos» reimportável + pagamentos e notas. Se cancelar o diálogo de gravação, o reset não corre.
+                    </span>
+                  </span>
+                </label>
                 <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
                   <input
                     type="password"
@@ -939,9 +1168,11 @@ function ConfiguracoesPage({
                   <button
                     type="button"
                     onClick={() => abrirConfirmacao({
-                      title: 'Resetar dados operacionais',
-                      message: 'Esta ação remove alunos, pagamentos e notas da base de dados. Utilizadores e licença serão mantidos. Confirmas?',
-                      confirmLabel: 'Resetar Dados',
+                      title: 'Resetar dados operacionais a zero',
+                      message: resetSeguroForm.exportBeforeReset !== false
+                        ? 'Vai ser pedido um local para o Excel de segurança. Depois: alunos, pagamentos, notas e logs serão apagados. Utilizadores e licença mantêm-se. Confirmas?'
+                        : 'SEM exportação prévia. Todos os alunos, pagamentos, notas e logs serão apagados de forma irreversível. Confirmas?',
+                      confirmLabel: 'Resetar a zero',
                       tone: 'danger',
                       onConfirm: resetarBancoDeDados,
                     })}

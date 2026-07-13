@@ -1078,6 +1078,298 @@ app.whenReady().then(() => {
     message: 'Reset direto desativado. Use o reset operacional com senha do administrador.',
   }));
 
+  // ── Gestão de dados: helpers Excel (importáveis) ─────────────────────────
+  const IMPORT_HEADERS = [
+    'Nome',
+    'Telefone',
+    'Email',
+    'Valor Mensalidade',
+    'Dia/Data Vencimento',
+    'Data de Matrícula',
+    'Morada',
+    'Categoria',
+    'Status',
+  ];
+
+  const IMPORT_EXAMPLES = [
+    ['João Silva', '9912345', 'joao@email.com', 1000, '05/07/2026', '01/07/2026', 'Praia', 'Sem personal trainer', 'ativo'],
+    ['Maria Lopes', '9811122', '', 2000, '10/07/2026', '01/07/2026', 'Mindelo', 'Com personal trainer', 'ativo'],
+    ['Carlos Andrade', '9722233', 'carlos@email.com', 1000, 15, '06/07/2026', 'Assomada', 'Sem personal trainer', 'importado'],
+  ];
+
+  const IMPORT_GUIDE_ROWS = [
+    ['Coluna', 'Obrigatório', 'Formato recomendado', 'Observação'],
+    ['Nome', 'Sim', 'Texto', 'Nome completo do aluno/contacto.'],
+    ['Telefone', 'Recomendado', '9912345 ou +238 9912345', 'Usado para detetar duplicados.'],
+    ['Email', 'Não', 'email@dominio.com', 'Pode ficar vazio.'],
+    ['Valor Mensalidade', 'Sim', '1000', 'Apenas números, sem CVE.'],
+    ['Dia/Data Vencimento', 'Sim', '05/07/2026 ou 5', 'Data completa (DD/MM/AAAA) ou só o dia do mês.'],
+    ['Data de Matrícula', 'Recomendado', '01/07/2026', 'Se vazio, o app usa a data actual.'],
+    ['Morada', 'Não', 'Texto', 'Cidade, bairro ou referência.'],
+    ['Categoria', 'Não', 'Sem personal trainer | Com personal trainer', 'Se vazio, usa a categoria por defeito da importação.'],
+    ['Status', 'Não', 'importado | ativo | pausado…', 'Recomendado: "importado" para rever antes de activar.'],
+    ['Folha', '-', 'Importar Alunos', 'A 1.ª linha tem de ser o cabeçalho exacto (ou mapeável).'],
+  ];
+
+  const toImportRow = (aluno) => ([
+    aluno.nome || '',
+    aluno.telefone || '',
+    aluno.email || '',
+    aluno.plano != null && aluno.plano !== '' ? Number(String(aluno.plano).replace(',', '.')) || aluno.plano : '',
+    aluno.vencimento || '',
+    aluno.data_matricula || '',
+    aluno.morada || '',
+    aluno.categoria || '',
+    aluno.status || 'ativo',
+  ]);
+
+  const buildImportTemplateWorkbook = () => {
+    const workbook = XLSX.utils.book_new();
+    const sheetData = [IMPORT_HEADERS, ...IMPORT_EXAMPLES, ...Array.from({ length: 7 }, () => IMPORT_HEADERS.map(() => ''))];
+    const sheet = XLSX.utils.aoa_to_sheet(sheetData);
+    sheet['!cols'] = [
+      { wch: 28 }, { wch: 14 }, { wch: 26 }, { wch: 16 },
+      { wch: 18 }, { wch: 16 }, { wch: 18 }, { wch: 22 }, { wch: 12 },
+    ];
+    XLSX.utils.book_append_sheet(workbook, sheet, 'Importar Alunos');
+
+    const guide = XLSX.utils.aoa_to_sheet([
+      ['Modelo de Importação — Next Level Academia'],
+      [],
+      ...IMPORT_GUIDE_ROWS,
+      [],
+      ['Dica', 'Em Ajustes → Dados & Backup pode descarregar este modelo e exportar os alunos actuais no mesmo formato.'],
+    ]);
+    guide['!cols'] = [{ wch: 22 }, { wch: 14 }, { wch: 36 }, { wch: 52 }];
+    XLSX.utils.book_append_sheet(workbook, guide, 'Instruções');
+    return workbook;
+  };
+
+  const buildFullDataWorkbook = () => {
+    const workbook = XLSX.utils.book_new();
+    const alunosAtivos = db.prepare('SELECT * FROM alunos WHERE deleted = 0 ORDER BY nome COLLATE NOCASE ASC').all();
+    const alunosLixeira = db.prepare('SELECT * FROM alunos WHERE deleted = 1 ORDER BY nome COLLATE NOCASE ASC').all();
+    const pagamentos = db.prepare(`
+      SELECT p.id, p.aluno_id, a.nome AS nome_aluno, p.valor, p.status,
+             p.data_pagamento, p.metodo_pagamento, p.mes_referencia,
+             p.referencia_inicio, p.referencia_fim
+      FROM pagamentos p
+      LEFT JOIN alunos a ON a.id = p.aluno_id
+      ORDER BY p.id DESC
+    `).all();
+    const notas = db.prepare(`
+      SELECT n.id, n.aluno_id, a.nome AS nome_aluno, n.texto, n.data_criacao
+      FROM notas_contacto n
+      LEFT JOIN alunos a ON a.id = n.aluno_id
+      ORDER BY n.id DESC
+    `).all();
+    const logs = db.prepare('SELECT * FROM logs ORDER BY id DESC LIMIT 2000').all();
+
+    // Folha principal no formato do importador (reimportável)
+    const importSheet = XLSX.utils.aoa_to_sheet([
+      IMPORT_HEADERS,
+      ...alunosAtivos.map(toImportRow),
+    ]);
+    importSheet['!cols'] = [
+      { wch: 28 }, { wch: 14 }, { wch: 26 }, { wch: 16 },
+      { wch: 18 }, { wch: 16 }, { wch: 18 }, { wch: 22 }, { wch: 12 },
+    ];
+    XLSX.utils.book_append_sheet(workbook, importSheet, 'Importar Alunos');
+
+    XLSX.utils.book_append_sheet(
+      workbook,
+      XLSX.utils.json_to_sheet(alunosAtivos.length ? alunosAtivos : [{ info: 'Sem alunos activos' }]),
+      'Alunos (completo)',
+    );
+    XLSX.utils.book_append_sheet(
+      workbook,
+      XLSX.utils.json_to_sheet(pagamentos.length ? pagamentos : [{ info: 'Sem pagamentos' }]),
+      'Pagamentos',
+    );
+    XLSX.utils.book_append_sheet(
+      workbook,
+      XLSX.utils.json_to_sheet(notas.length ? notas : [{ info: 'Sem notas' }]),
+      'Notas',
+    );
+    XLSX.utils.book_append_sheet(
+      workbook,
+      XLSX.utils.json_to_sheet(alunosLixeira.length ? alunosLixeira : [{ info: 'Lixeira vazia' }]),
+      'Lixeira',
+    );
+    XLSX.utils.book_append_sheet(
+      workbook,
+      XLSX.utils.json_to_sheet(logs.length ? logs : [{ info: 'Sem logs' }]),
+      'Logs',
+    );
+
+    const resumo = [[
+      'Gerado em',
+      'Alunos activos',
+      'Na lixeira',
+      'Pagamentos',
+      'Notas',
+      'Logs (amostra)',
+    ], [
+      new Date().toLocaleString('pt-PT'),
+      alunosAtivos.length,
+      alunosLixeira.length,
+      pagamentos.length,
+      notas.length,
+      logs.length,
+    ], [],
+    ['Como reimportar', 'Abra a folha "Importar Alunos" no assistente de importação (Ajustes → Dados ou menu Importar).'],
+    ['Nota', 'Pagamentos e notas nesta exportação são arquivo — o assistente actual importa apenas alunos.'],
+    ];
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(resumo), 'Resumo');
+    return workbook;
+  };
+
+  const getDbStats = () => {
+    const alunos = db.prepare('SELECT COUNT(*) as total FROM alunos WHERE deleted = 0').get().total || 0;
+    const lixeira = db.prepare('SELECT COUNT(*) as total FROM alunos WHERE deleted = 1').get().total || 0;
+    const pagamentos = db.prepare('SELECT COUNT(*) as total FROM pagamentos').get().total || 0;
+    const notas = db.prepare('SELECT COUNT(*) as total FROM notas_contacto').get().total || 0;
+    const logs = db.prepare('SELECT COUNT(*) as total FROM logs').get().total || 0;
+    const importados = db.prepare("SELECT COUNT(*) as total FROM alunos WHERE deleted = 0 AND status = 'importado'").get().total || 0;
+    let dbSizeBytes = 0;
+    try {
+      if (dbPath && fs.existsSync(dbPath)) dbSizeBytes = fs.statSync(dbPath).size;
+    } catch (e) { /* ignore */ }
+    return {
+      alunos,
+      lixeira,
+      pagamentos,
+      notas,
+      logs,
+      importados,
+      totalAlunosInclLixeira: alunos + lixeira,
+      dbSizeBytes,
+      dbPath: dbPath || null,
+    };
+  };
+
+  const clearStudentPhotos = () => {
+    let removed = 0;
+    const photosDir = path.join(app.getPath('userData'), 'uploads');
+    try {
+      const rows = db.prepare('SELECT foto_path FROM alunos WHERE foto_path IS NOT NULL AND foto_path != \'\'').all();
+      for (const row of rows) {
+        if (row.foto_path && fs.existsSync(row.foto_path)) {
+          try { fs.unlinkSync(row.foto_path); removed++; } catch (e) { /* ignore */ }
+        }
+      }
+      // Ficheiros órfãos na pasta de uploads
+      if (fs.existsSync(photosDir)) {
+        for (const name of fs.readdirSync(photosDir)) {
+          if (!name.startsWith('foto_')) continue;
+          const full = path.join(photosDir, name);
+          try { fs.unlinkSync(full); removed++; } catch (e) { /* ignore */ }
+        }
+      }
+    } catch (e) {
+      console.warn('Limpeza de fotos:', e.message);
+    }
+    return removed;
+  };
+
+  ipcMain.handle('db:stats', async () => {
+    try {
+      return { success: true, stats: getDbStats() };
+    } catch (err) {
+      return { success: false, message: err.message };
+    }
+  });
+
+  ipcMain.handle('db:optimize', async () => {
+    try {
+      const before = getDbStats();
+      db.exec('VACUUM');
+      db.exec('ANALYZE');
+      const after = getDbStats();
+      registrarLog('Otimização', `VACUUM/ANALYZE — antes ${before.dbSizeBytes}B · depois ${after.dbSizeBytes}B`);
+      return { success: true, stats: after, freedBytes: Math.max(0, (before.dbSizeBytes || 0) - (after.dbSizeBytes || 0)) };
+    } catch (err) {
+      console.error('Erro ao otimizar BD:', err);
+      return { success: false, message: err.message };
+    }
+  });
+
+  ipcMain.handle('db:purge-trash', async (event, payload = {}) => {
+    try {
+      const auth = verifyAdminPassword(payload || {});
+      if (!auth.ok) return { success: false, message: auth.message };
+
+      const trash = db.prepare('SELECT id, foto_path FROM alunos WHERE deleted = 1').all();
+      if (trash.length === 0) {
+        return { success: true, purged: 0, message: 'Lixeira já está vazia.' };
+      }
+
+      const tx = db.transaction(() => {
+        for (const aluno of trash) {
+          db.prepare('DELETE FROM pagamentos WHERE aluno_id = ?').run(aluno.id);
+          db.prepare('DELETE FROM notas_contacto WHERE aluno_id = ?').run(aluno.id);
+          db.prepare('DELETE FROM alunos WHERE id = ?').run(aluno.id);
+          if (aluno.foto_path && fs.existsSync(aluno.foto_path)) {
+            try { fs.unlinkSync(aluno.foto_path); } catch (e) { /* ignore */ }
+          }
+        }
+        return trash.length;
+      });
+
+      const purged = tx();
+      try { db.exec('VACUUM'); } catch (e) { /* ignore */ }
+      currentUserName = auth.user.name || currentUserName;
+      registrarLog('Lixeira', `${purged} aluno(s) eliminados definitivamente por ${auth.user.name}`);
+      return { success: true, purged, stats: getDbStats() };
+    } catch (err) {
+      console.error('Erro ao esvaziar lixeira:', err);
+      return { success: false, message: err.message };
+    }
+  });
+
+  ipcMain.handle('data:export-import-template', async () => {
+    try {
+      const stamp = new Date().toISOString().slice(0, 10);
+      const result = await dialog.showSaveDialog({
+        title: 'Guardar modelo de importação Excel',
+        defaultPath: `modelo_importacao_alunos_next_level_${stamp}.xlsx`,
+        filters: [{ name: 'Excel', extensions: ['xlsx'] }],
+      });
+      if (result.canceled || !result.filePath) {
+        return { success: false, canceled: true };
+      }
+      const workbook = buildImportTemplateWorkbook();
+      XLSX.writeFile(workbook, result.filePath);
+      registrarLog('Modelo Importação', `Modelo Excel guardado em ${result.filePath}`);
+      return { success: true, path: result.filePath };
+    } catch (err) {
+      console.error('Erro ao exportar modelo:', err);
+      return { success: false, message: err.message };
+    }
+  });
+
+  ipcMain.handle('data:export-full-excel', async () => {
+    try {
+      const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+      const result = await dialog.showSaveDialog({
+        title: 'Exportar dados da academia (Excel reimportável)',
+        defaultPath: `nextlevel_dados_${stamp}.xlsx`,
+        filters: [{ name: 'Excel', extensions: ['xlsx'] }],
+      });
+      if (result.canceled || !result.filePath) {
+        return { success: false, canceled: true };
+      }
+      const workbook = buildFullDataWorkbook();
+      XLSX.writeFile(workbook, result.filePath);
+      const stats = getDbStats();
+      registrarLog('Exportação Dados', `Excel completo exportado para ${result.filePath}`);
+      return { success: true, path: result.filePath, stats };
+    } catch (err) {
+      console.error('Erro ao exportar dados:', err);
+      return { success: false, message: err.message };
+    }
+  });
+
   ipcMain.handle('db:find-duplicates', async () => {
     try {
       const groups = findDuplicateGroups();
@@ -1105,6 +1397,11 @@ app.whenReady().then(() => {
     }
   });
 
+  /**
+   * Reset total dos dados operacionais (alunos, pagamentos, notas, logs).
+   * Mantém utilizadores, licença e configurações.
+   * Por defeito exporta Excel reimportável antes de apagar.
+   */
   ipcMain.handle('db:reset-operational-data', async (event, payload) => {
     try {
       if (String(payload?.confirmation || '').trim().toUpperCase() !== 'RESETAR') {
@@ -1114,14 +1411,43 @@ app.whenReady().then(() => {
       const auth = verifyAdminPassword(payload || {});
       if (!auth.ok) return { success: false, message: auth.message };
 
+      const exportBefore = payload?.exportBeforeReset !== false;
+      let exportPath = null;
+
+      if (exportBefore) {
+        const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+        const save = await dialog.showSaveDialog({
+          title: 'Guardar cópia Excel ANTES de resetar (recomendado)',
+          defaultPath: `nextlevel_antes_reset_${stamp}.xlsx`,
+          filters: [{ name: 'Excel', extensions: ['xlsx'] }],
+          message: 'Os dados actuais serão exportados neste ficheiro. Pode reimportar a folha "Importar Alunos" mais tarde.',
+        });
+        if (save.canceled || !save.filePath) {
+          return {
+            success: false,
+            canceled: true,
+            message: 'Reset cancelado: é necessário guardar o Excel de segurança (ou desative “Exportar antes”).',
+          };
+        }
+        const workbook = buildFullDataWorkbook();
+        XLSX.writeFile(workbook, save.filePath);
+        exportPath = save.filePath;
+      }
+
+      const statsBefore = getDbStats();
+      // Fotos antes de apagar registos (para libertar disco)
+      const fotosRemovidas = clearStudentPhotos();
+
       const tx = db.transaction(() => {
         const stats = {
           pagamentos: db.prepare('SELECT COUNT(*) as total FROM pagamentos').get().total || 0,
           notas: db.prepare('SELECT COUNT(*) as total FROM notas_contacto').get().total || 0,
           alunos: db.prepare('SELECT COUNT(*) as total FROM alunos').get().total || 0,
           logs: db.prepare('SELECT COUNT(*) as total FROM logs').get().total || 0,
+          lixeira: db.prepare('SELECT COUNT(*) as total FROM alunos WHERE deleted = 1').get().total || 0,
         };
 
+        // Apagar dependentes primeiro, depois alunos (inclui soft-deleted)
         db.prepare('DELETE FROM pagamentos').run();
         db.prepare('DELETE FROM notas_contacto').run();
         db.prepare('DELETE FROM alunos').run();
@@ -1130,9 +1456,28 @@ app.whenReady().then(() => {
       });
 
       const stats = tx();
+
+      try {
+        db.exec('VACUUM');
+        db.exec('ANALYZE');
+      } catch (e) {
+        console.warn('VACUUM após reset:', e.message);
+      }
+
       currentUserName = auth.user.name || currentUserName;
-      registrarLog('Reset Seguro', `Dados operacionais resetados por ${auth.user.name}: ${JSON.stringify(stats)}`);
-      return { success: true, stats };
+      registrarLog(
+        'Reset Seguro',
+        `Dados a zero por ${auth.user.name}. Removidos: ${JSON.stringify(stats)}. Export: ${exportPath || 'não'}. Fotos: ${fotosRemovidas}.`,
+      );
+
+      return {
+        success: true,
+        stats,
+        statsBefore,
+        exportPath,
+        fotosRemovidas,
+        statsAfter: getDbStats(),
+      };
     } catch (err) {
       console.error('Erro no reset seguro:', err);
       return { success: false, message: err.message };

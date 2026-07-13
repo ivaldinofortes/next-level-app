@@ -1144,7 +1144,7 @@ function App() {
   // Estados para Auditoria e Segurança
   const [logs, setLogs] = useState<any[]>([]);
   const [carregandoDuplicados, setCarregandoDuplicados] = useState(false);
-  const [resetSeguroForm, setResetSeguroForm] = useState({ password: '', confirmation: '' });
+  const [resetSeguroForm, setResetSeguroForm] = useState({ password: '', confirmation: '', exportBeforeReset: true });
   const [resetSeguroLoading, setResetSeguroLoading] = useState(false);
   const [carregando, setCarregando] = useState(false);
 
@@ -1961,11 +1961,26 @@ function App() {
         email: sessionUser.email,
         password: resetSeguroForm.password,
         confirmation: resetSeguroForm.confirmation,
+        exportBeforeReset: resetSeguroForm.exportBeforeReset !== false,
       });
+      if (res?.canceled) {
+        showToast('Reset cancelado — guarde o Excel de segurança ou desmarque “Exportar antes”.');
+        return;
+      }
       if (res.success) {
-        showToast('✅ Dados operacionais resetados com segurança.');
-        adicionarNotificacao('Limpeza de Sistema', 'Todos os dados de alunos e pagamentos foram removidos.', 'info');
-        setResetSeguroForm({ password: '', confirmation: '' });
+        const n = res.stats?.alunos ?? 0;
+        const p = res.stats?.pagamentos ?? 0;
+        showToast(`✅ Base a zero: ${n} alunos e ${p} pagamentos removidos.`);
+        if (res.exportPath) {
+          showToast(`📄 Cópia Excel: ${res.exportPath}`);
+          try { await electron.ipcRenderer.invoke('show-item-in-folder', res.exportPath); } catch { /* ignore */ }
+        }
+        adicionarNotificacao(
+          'Limpeza de Sistema',
+          `Dados operacionais apagados${res.exportPath ? ' (com exportação Excel prévia)' : ''}.`,
+          'info',
+        );
+        setResetSeguroForm({ password: '', confirmation: '', exportBeforeReset: true });
         await carregarConfiguracoes();
       } else {
         throw new Error(res.message);

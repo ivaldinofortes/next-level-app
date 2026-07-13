@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import * as XLSX from 'xlsx';
-import { X, UploadCloud, Check, AlertCircle, ChevronRight, ChevronLeft, Edit2, CheckCircle2, ArrowRight } from 'lucide-react';
+import { X, UploadCloud, Check, AlertCircle, ChevronRight, ChevronLeft, Edit2, CheckCircle2, ArrowRight, Download, FileSpreadsheet } from 'lucide-react';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -88,11 +88,15 @@ const CAMPOS = [
   { id: 'vencimento',    label: 'Dia/Data Vencimento' },
   { id: 'data_matricula',label: 'Data de Matrícula' },
   { id: 'morada',        label: 'Morada' },
+  { id: 'categoria',     label: 'Categoria' },
+  { id: 'status',        label: 'Status' },
   { id: 'ignorar',       label: '— Ignorar —' },
 ];
 
 function autoMap(header: string): string {
-  const h = header.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  const h = header.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  if (h.includes('categ') || h.includes('plano tipo') || h.includes('personal')) return 'categoria';
+  if (h === 'status' || h.includes('estado') || h === 'situacao' || h === 'situação') return 'status';
   if (h.includes('nome') || h.includes('name') || h.includes('aluno') || h.includes('cliente')) return 'nome';
   if (h.includes('tel') || h.includes('phone') || h.includes('celular') || h.includes('movel')) return 'telefone';
   if (h.includes('mail')) return 'email';
@@ -118,6 +122,8 @@ interface RowData {
   vencimento: string;
   data_matricula: string;
   morada: string;
+  categoria: string;
+  status: string;
 }
 
 interface Props {
@@ -152,8 +158,29 @@ export default function ImportarDadosModal({ onClose, onSuccess, electron, categ
   // Passo 4 — resultado
   const [resultado, setResultado] = useState<{ inseridos: number; erros: number; ignorados?: number } | null>(null);
   const [loading, setLoading] = useState(false);
+  const [templateLoading, setTemplateLoading] = useState(false);
 
   const fileRef = useRef<HTMLInputElement>(null);
+
+  const descarregarModelo = async () => {
+    if (!electron?.ipcRenderer) {
+      alert('Descarregue o modelo a partir da app Electron (Ajustes → Dados & Backup).');
+      return;
+    }
+    setTemplateLoading(true);
+    try {
+      const res = await electron.ipcRenderer.invoke('data:export-import-template');
+      if (res?.canceled) return;
+      if (!res?.success) throw new Error(res?.message || 'Falha ao gerar modelo.');
+      if (res.path) {
+        try { await electron.ipcRenderer.invoke('show-item-in-folder', res.path); } catch { /* ignore */ }
+      }
+    } catch (err: any) {
+      alert(err?.message || 'Não foi possível guardar o modelo Excel.');
+    } finally {
+      setTemplateLoading(false);
+    }
+  };
 
   // -------------------------------------------------------------------------
   // Passo 1: ler ficheiro
@@ -168,7 +195,11 @@ export default function ImportarDadosModal({ onClose, onSuccess, electron, categ
       try {
         const buf = evt.target!.result as ArrayBuffer;
         const wb = XLSX.read(new Uint8Array(buf), { type: 'array', cellDates: false });
-        const ws = wb.Sheets[wb.SheetNames[0]];
+        const preferred =
+          wb.SheetNames.find((n) => /importar\s*alunos/i.test(n))
+          || wb.SheetNames.find((n) => /aluno/i.test(n))
+          || wb.SheetNames[0];
+        const ws = wb.Sheets[preferred];
         const data: unknown[][] = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: '' });
 
         if (data.length < 2) {
@@ -219,6 +250,7 @@ export default function ImportarDadosModal({ onClose, onSuccess, electron, categ
         _erros: [],
         nome: '', telefone: '', email: '', plano: '0',
         vencimento: '', data_matricula: '', morada: '',
+        categoria: '', status: '',
       };
 
       headers.forEach((h, i) => {
@@ -293,8 +325,8 @@ export default function ImportarDadosModal({ onClose, onSuccess, electron, categ
         plano:          r.plano || '0',
         vencimento:     r.vencimento || '',
         data_matricula: r.data_matricula || new Date().toISOString().split('T')[0],
-        categoria:      defaultCategoria,
-        status:         defaultStatus,
+        categoria:      (r.categoria || '').trim() || defaultCategoria,
+        status:         (r.status || '').trim() || defaultStatus,
       }));
 
       console.log('[Import] Enviando', payload.length, 'alunos para o backend');
@@ -382,18 +414,49 @@ export default function ImportarDadosModal({ onClose, onSuccess, electron, categ
 
           {/* ── Passo 1: Upload ── */}
           {step === 1 && (
-            <div className="h-full flex flex-col items-center justify-center text-center">
+            <div className="h-full flex flex-col items-center justify-center text-center px-4">
               <div className="w-20 h-20 rounded-full bg-blue-50 border-[4px] border-blue-100 flex items-center justify-center mb-6 text-blue-500">
                 <UploadCloud size={32} />
               </div>
               <h3 className="text-[20px] font-black nl-text mb-2">Importar Alunos</h3>
-              <p className="text-[13px] text-slate-500 mb-8 max-w-[400px]">
-                Selecione um ficheiro Excel (.xlsx, .xls) ou CSV com os dados dos alunos.
-                A primeira linha deve ser o cabeçalho.
+              <p className="text-[13px] text-slate-500 mb-6 max-w-[440px]">
+                Selecione um ficheiro Excel (.xlsx, .xls) ou CSV. A primeira linha deve ser o cabeçalho.
+                Use o modelo oficial para garantir o formato correcto.
               </p>
-              <button onClick={() => fileRef.current?.click()} className="nl-btn nl-btn-primary !h-12 !px-8 !text-[14px]">
-                Selecionar Ficheiro
-              </button>
+              <div className="flex flex-wrap items-center justify-center gap-3 mb-6">
+                <button
+                  type="button"
+                  onClick={() => fileRef.current?.click()}
+                  className="nl-btn nl-btn-primary !h-12 !px-8 !text-[14px]"
+                >
+                  <UploadCloud size={16} /> Selecionar ficheiro
+                </button>
+                <button
+                  type="button"
+                  onClick={descarregarModelo}
+                  disabled={templateLoading}
+                  className="nl-btn nl-btn-secondary !h-12 !px-6 !text-[13px]"
+                  title="Modelo Excel pré-definido com colunas e exemplos"
+                >
+                  <Download size={16} />
+                  {templateLoading ? 'A gerar modelo…' : 'Descarregar modelo Excel'}
+                </button>
+              </div>
+              <div className="max-w-[480px] rounded-[8px] border border-[var(--border-light)] bg-[var(--bg-surface)] px-4 py-3 text-left">
+                <div className="flex items-start gap-2">
+                  <FileSpreadsheet size={16} className="mt-0.5 shrink-0 text-[var(--color-success)]" />
+                  <div>
+                    <p className="text-[12px] font-semibold nl-text">Colunas do modelo</p>
+                    <p className="mt-1 text-[11px] leading-relaxed nl-text-muted">
+                      Nome · Telefone · Email · Valor Mensalidade · Dia/Data Vencimento ·
+                      Data de Matrícula · Morada · Categoria · Status
+                    </p>
+                    <p className="mt-1.5 text-[10px] nl-text-muted">
+                      A folha deve chamar-se preferencialmente «Importar Alunos». Inclui aba de instruções.
+                    </p>
+                  </div>
+                </div>
+              </div>
               <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleFile} />
             </div>
           )}
